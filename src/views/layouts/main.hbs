@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dbadmin">
+<html lang="en" data-theme="admindb">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{title}} · DBAdmin</title>
+  <title>{{title}} · AdminDB</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -13,8 +13,8 @@
     // Apply the saved theme before first paint to avoid a flash.
     (function () {
       try {
-        var t = localStorage.getItem('dbadmin-theme');
-        if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dbadminDark');
+        var t = localStorage.getItem('admindb-theme');
+        if (t === 'dark') document.documentElement.setAttribute('data-theme', 'admindbDark');
       } catch (e) {}
     })();
   </script>
@@ -36,7 +36,7 @@
         {{{body}}}
       </main>
       <footer class="border-t border-base-300 px-6 py-4 text-center text-xs text-base-content/40">
-        DBAdmin · a browser tool for SQLite databases
+        AdminDB · a browser tool for SQLite databases
       </footer>
     </div>
     <div class="drawer-side z-40">

@@ -1,16 +1,19 @@
 {
-  "name": "dbadmin",
-  "version": "1.0.0",
+  "name": "admindb",
+  "version": "1.0.1",
   "description": "Browser-based SQLite database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "homepage": "https://github.com/MIbnEKhalid/dbadmin#readme",
+  "bin": {
+    "admindb": "dist/cli.js"
+  },
+  "homepage": "https://github.com/MIbnEKhalid/admindb#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MIbnEKhalid/dbadmin.git"
+    "url": "git+https://github.com/MIbnEKhalid/admindb.git"
   },
   "bugs": {
-    "url": "https://github.com/MIbnEKhalid/dbadmin/issues"
+    "url": "https://github.com/MIbnEKhalid/admindb/issues"
   },
   "author": "MIbnEKhalid",
   "files": [

@@ -8,7 +8,7 @@ import { SqliteDatabase } from '../db/database';
 import { createLogger } from '../logger';
 
 function tempRoot(): string {
-  return mkdtempSync(path.join(tmpdir(), 'dbadmin-test-'));
+  return mkdtempSync(path.join(tmpdir(), 'admindb-test-'));
 }
 
 test('DbManager scans a directory and supports create/list/has/remove', async () => {

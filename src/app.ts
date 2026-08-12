@@ -10,7 +10,7 @@ import { registerDatabasesRoutes } from './routes/databases';
 import { errorMessage } from './util';
 
 export interface AppOptions {
-  /** Path to the SQLite file (single-db mode). Defaults to `dbadmin.db`. */
+  /** Path to the SQLite file (single-db mode). Defaults to `admindb.db`. */
   dbPath?: string;
   /** URL prefix used by templates/static assets (e.g. `/admin`). Defaults to `''`. */
   basePath?: string;
@@ -96,8 +96,8 @@ function addErrorHandlers(app: express.Express, logger: Logger): void {
 /** Single-database app (also used as the per-database app in multi-db mode). */
 function createSingleDbApp(options: AppOptions): express.Express {
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
-  const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'dbadmin');
-  const db = options.db ?? new SqliteDatabase(options.dbPath ?? 'dbadmin.db', logger, { readonly: options.readonly });
+  const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
+  const db = options.db ?? new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly: options.readonly });
   const databasesUrl = options.databasesUrl;
 
   const router = express();
@@ -143,7 +143,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
 function createManagerApp(options: AppOptions): express.Express {
   const manager = options.manager!;
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
-  const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'dbadmin');
+  const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
   const readonly = !!options.readonly;
 
   const app = express();

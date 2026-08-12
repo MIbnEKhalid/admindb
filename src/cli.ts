@@ -6,7 +6,7 @@ import { createLogger } from './logger';
 import { DbManager } from './db/manager';
 
 /**
- * Standalone CLI / server entry point. Run `npm start` (or `npx dbadmin`).
+ * Standalone CLI / server entry point. Run `npm start` (or `npx admindb`).
  * Configure via PORT, HOST, DB_PATH, DB_DIR, DB_FILES, BASE_PATH and LOG_LEVEL
  * env vars. Set DB_DIR and/or DB_FILES to enable multi-database mode.
  *
@@ -15,7 +15,7 @@ import { DbManager } from './db/manager';
  * localhost, put it behind an authenticated reverse proxy, a VPN, etc.).
  */
 const config = loadConfig();
-const logger = createLogger(config.logLevel, 'dbadmin');
+const logger = createLogger(config.logLevel, 'admindb');
 const app = express();
 app.disable('x-powered-by');
 
@@ -32,7 +32,7 @@ app.use(config.basePath || '/', router);
 
 const server = app.listen(config.port, config.host, () => {
   const url = `http://${config.host}:${config.port}${config.basePath}/`;
-  logger.info(`DBAdmin listening on ${url}`);
+  logger.info(`AdminDB listening on ${url}`);
   if (multiDb) {
     const sources = [config.dbDir ? `dir:${config.dbDir}` : null, config.dbFiles?.length ? `files:[${config.dbFiles.join(', ')}]` : null]
       .filter(Boolean)

@@ -1,13 +1,13 @@
 /**
- * DBAdmin — public library entry point.
+ * AdminDB — public library entry point.
  *
  * ```ts
- * import { createRouter, DbManager, createLogger } from 'dbadmin';
+ * import { createRouter, DbManager, createLogger } from 'admindb';
  * const app = express();
  * app.use('/admin', createRouter({ dbPath: './my.db', basePath: '/admin' }));
  * ```
  *
- * For the standalone CLI/server run `npm start` or `npx dbadmin` — see
+ * For the standalone CLI/server run `npm start` or `npx admindb` — see
  * `src/cli.ts`.
  */
 export { createRouter, type AppOptions } from './app';

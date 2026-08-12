@@ -1,4 +1,4 @@
-# DBAdmin
+# AdminDB
 
 A browser-based SQLite database administration tool. Manage a SQLite database
 entirely from the browser: browse tables, full CRUD, a visual table designer, an
@@ -21,41 +21,41 @@ multi-database support.
 > - **No authentication or authorization is built in.** The routes are **not
 >   protected**.
 > - **It is your responsibility to protect access.** Do **not** expose
->   DBAdmin to the public internet or to untrusted networks.
+>   AdminDB to the public internet or to untrusted networks.
 > - Recommended ways to protect it:
 >   - bind the standalone server to `127.0.0.1` (`HOST=127.0.0.1`) and use it
 >     only from your own machine, and/or
 >   - run it behind a reverse proxy that requires authentication (Basic auth,
 >     OAuth, mTLS, …) or inside a VPN / private network.
 >
-> Treat DBAdmin as if it were a remote `sqlite3` shell with write access.
+> Treat AdminDB as if it were a remote `sqlite3` shell with write access.
 
 ---
 
 ## Install
 
 ```bash
-npm install dbadmin
+npm install admindb
 ```
 
 Requires **Node.js ≥ 22.5** (for the built-in `node:sqlite` driver).
 
 ## Using as an npm package
 
-DBAdmin is an Express app you can mount inside your own application, under
+AdminDB is an Express app you can mount inside your own application, under
 your own path, on the same port as the rest of your server.
 
 ### Minimal example
 
 ```ts
 import express from 'express';
-import { createRouter } from 'dbadmin';
+import { createRouter } from 'admindb';
 
 const app = express();
 
 app.get('/', (_req, res) => res.send('My main app'));
 
-// All DBAdmin routes live under /admin on the same port.
+// All AdminDB routes live under /admin on the same port.
 app.use('/admin', createRouter({ dbPath: '/data/my.db', basePath: '/admin' }));
 
 app.listen(3000);
@@ -68,7 +68,7 @@ static assets + view engine). Mounting it is just `app.use('/path', router)`.
 
 | Option     | Type                 | Description                                                    |
 | ---------- | -------------------- | -------------------------------------------------------------- |
-| `dbPath`   | `string`             | Path to a single SQLite file (single-db mode). Default: `dbadmin.db` |
+| `dbPath`   | `string`             | Path to a single SQLite file (single-db mode). Default: `admindb.db` |
 | `db`       | `SqliteDatabase`     | An already-open database instance (advanced embedding)         |
 | `manager`  | `DbManager`          | Enables multi-database mode (see below)                        |
 | `basePath` | `string`             | URL prefix used by templates/assets (e.g. `/admin`). Pass the same prefix you mount at |
@@ -80,7 +80,7 @@ Example with a custom logger and prefix:
 
 ```ts
 import express from 'express';
-import { createRouter, createLogger } from 'dbadmin';
+import { createRouter, createLogger } from 'admindb';
 
 const app = express();
 app.use('/tools/db', createRouter({
@@ -98,7 +98,7 @@ from an explicit list of file paths, or both:
 
 ```ts
 import express from 'express';
-import { createRouter, DbManager, createLogger } from 'dbadmin';
+import { createRouter, DbManager, createLogger } from 'admindb';
 
 const app = express();
 app.use('/admin', createRouter({
@@ -200,7 +200,7 @@ Configuration via environment variables:
 | ----------- | ------------------ | ------------------------------------ |
 | `PORT`      | `3000`             | Port to listen on                    |
 | `HOST`      | `0.0.0.0`          | Host / interface to bind             |
-| `DB_PATH`   | `dbadmin.db`   | Single SQLite database file          |
+| `DB_PATH`   | `admindb.db`   | Single SQLite database file          |
 | `DB_DIR`    | —                  | Multi-db source 1: a directory of `.db`/`.sqlite` files |
 | `DB_FILES`  | —                  | Multi-db source 2: comma-separated explicit database file paths |
 | `READONLY`  | —                  | `1` / `true` / `yes` / `on` opens the database(s) read-only     |

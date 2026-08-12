@@ -22,7 +22,7 @@ module.exports = {
   daisyui: {
     themes: [
       {
-        dbadmin: {
+        admindb: {
           primary: '#6d5df6',
           'primary-content': '#ffffff',
           secondary: '#0ea5e9',
@@ -53,7 +53,7 @@ module.exports = {
         },
       },
       {
-        dbadminDark: {
+        admindbDark: {
           primary: '#8b7cf8',
           'primary-content': '#14121f',
           secondary: '#38bdf8',

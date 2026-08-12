@@ -60,9 +60,9 @@
   // ---- Theme -------------------------------------------------------------
 
   function applyTheme(dark) {
-    document.documentElement.setAttribute('data-theme', dark ? 'dbadminDark' : 'dbadmin');
+    document.documentElement.setAttribute('data-theme', dark ? 'admindbDark' : 'admindb');
     try {
-      localStorage.setItem('dbadmin-theme', dark ? 'dark' : 'light');
+      localStorage.setItem('admindb-theme', dark ? 'dark' : 'light');
     } catch (e) { /* ignore */ }
     var btn = document.getElementById('theme-toggle');
     if (btn) btn.innerHTML = dark ? ICONS.sun : ICONS.moon;
@@ -71,7 +71,7 @@
   function initTheme() {
     var stored = null;
     try {
-      stored = localStorage.getItem('dbadmin-theme');
+      stored = localStorage.getItem('admindb-theme');
     } catch (e) { /* ignore */ }
     var dark = stored === 'dark' ||
       (!stored && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -79,7 +79,7 @@
     var btn = document.getElementById('theme-toggle');
     if (btn) {
       btn.addEventListener('click', function () {
-        var current = document.documentElement.getAttribute('data-theme') === 'dbadminDark';
+        var current = document.documentElement.getAttribute('data-theme') === 'admindbDark';
         applyTheme(!current);
       });
     }

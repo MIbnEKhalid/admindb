@@ -266,7 +266,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
       if (!dump.success || !dump.data) throw new Error(dump.error ?? 'Failed to generate dump.');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       res.setHeader('Content-Type', 'application/sql; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="dbadmin-${stamp}.sql"`);
+      res.setHeader('Content-Disposition', `attachment; filename="admindb-${stamp}.sql"`);
       res.send(dump.data);
     } catch (err) {
       next(err);

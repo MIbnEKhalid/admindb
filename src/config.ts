@@ -21,7 +21,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     host: env.HOST ?? '0.0.0.0',
     port: Number.isFinite(port) ? port : 3000,
-    dbPath: env.DB_PATH ?? 'dbadmin.db',
+    dbPath: env.DB_PATH ?? 'admindb.db',
     dbDir: env.DB_DIR ? String(env.DB_DIR) : undefined,
     dbFiles: env.DB_FILES
       ? String(env.DB_FILES)

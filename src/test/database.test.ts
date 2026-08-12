@@ -7,7 +7,7 @@ import { SqliteDatabase } from '../db/database';
 import { createLogger } from '../logger';
 
 function openDb(): { db: SqliteDatabase; cleanup: () => void } {
-  const root = mkdtempSync(path.join(tmpdir(), 'dbadmin-db-test-'));
+  const root = mkdtempSync(path.join(tmpdir(), 'admindb-db-test-'));
   const db = new SqliteDatabase(path.join(root, 'test.db'), createLogger('error'));
   return { db, cleanup: () => { db.close(); rmSync(root, { recursive: true, force: true }); } };
 }
@@ -107,7 +107,7 @@ test('createIndex / dropIndex work and getSchema reports origin', async () => {
 });
 
 test('read-only databases reject all writes and still allow reads', async () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'dbadmin-ro-test-'));
+  const root = mkdtempSync(path.join(tmpdir(), 'admindb-ro-test-'));
   const writable = new SqliteDatabase(path.join(root, 'test.db'), createLogger('error'));
   try {
     await writable.execResult('CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT)');
@@ -212,7 +212,7 @@ test('triggers: create, list, drop', async () => {
 });
 
 test('read-only databases reject view/trigger creation', async () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'dbadmin-rovt-test-'));
+  const root = mkdtempSync(path.join(tmpdir(), 'admindb-rovt-test-'));
   const writable = new SqliteDatabase(path.join(root, 'test.db'), createLogger('error'));
   try {
     await writable.execResult('CREATE TABLE t (a TEXT)');
