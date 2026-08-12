@@ -1,4 +1,4 @@
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import Database from 'better-sqlite3';
 import type { Logger } from '../logger';
 import {
   quoteIdentifier,
@@ -18,6 +18,9 @@ import {
   type TriggerDef,
 } from '../sql/generator';
 import { errorMessage } from '../util';
+
+/** SQLite-compatible bind value accepted by better-sqlite3 statements. */
+export type SQLInputValue = null | number | bigint | string | Uint8Array;
 
 export interface Result<T = unknown> {
   success: boolean;
@@ -173,7 +176,7 @@ export function buildFilterClause(
 }
 
 /**
- * Promise-style wrapper around the standard Node `node:sqlite` driver.
+ * Promise-style wrapper around the better-sqlite3 driver.
  * Every call returns a consistent `{ success, data?, error? }` shape and
  * performs one-time, idempotent schema initialization.
  */
@@ -183,7 +186,7 @@ export interface DbOpenOptions {
 }
 
 export class SqliteDatabase {
-  private db: DatabaseSync;
+  private db: Database.Database;
   private logger: Logger;
   readonly path: string;
   /** True when this database was opened in read-only mode. */
@@ -194,7 +197,7 @@ export class SqliteDatabase {
     this.logger = logger;
     this.isReadOnly = !!options.readonly;
     // Opening read-only also refuses to create the file when it does not exist.
-    this.db = new DatabaseSync(dbPath, { readOnly: this.isReadOnly });
+    this.db = new Database(dbPath, { readonly: this.isReadOnly });
     this.db.exec('PRAGMA foreign_keys = ON;');
     if (this.isReadOnly) {
       // Belt-and-suspenders: even a direct write statement fails at the SQLite layer.

@@ -168,7 +168,7 @@ export class DbManager {
     this.addFile(abs);
     const id = this.idByPath.get(abs);
     if (!id) throw new Error('Failed to register new database.');
-    this.open(id); // node:sqlite creates the file on first open
+    this.open(id); // better-sqlite3 creates the file on first open
     return id;
   }
 
