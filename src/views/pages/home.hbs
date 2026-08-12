@@ -1,0 +1,123 @@
+<div class="space-y-8">
+  <!-- Header -->
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-wider text-primary">Overview</p>
+      <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Database</h1>
+      <p class="mt-1.5 text-sm text-base-content/55">Browse, edit, and query the connected SQLite database from your browser.</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="{{basePath}}/query" class="btn btn-ghost btn-sm gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        Query
+      </a>
+      {{#unless readonly}}
+        <a href="{{basePath}}/designer" class="btn btn-primary btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+          New table
+        </a>
+      {{/unless}}
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="stat-card">
+      <span class="stat-icon bg-primary/10 text-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+      </span>
+      <div>
+        <div class="text-2xl font-extrabold tabular-nums">{{tables.length}}</div>
+        <div class="text-[13px] text-base-content/50">Tables</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon bg-secondary/10 text-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+      </span>
+      <div>
+        <div class="text-2xl font-extrabold tabular-nums">{{totalRows}}</div>
+        <div class="text-[13px] text-base-content/50">Total rows</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon bg-accent/10 text-accent">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+      </span>
+      <div>
+        <div class="text-2xl font-extrabold tabular-nums">{{savedQueries}}</div>
+        <div class="text-[13px] text-base-content/50">Saved queries</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon bg-warning/10 text-warning">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
+      </span>
+      <div>
+        <div class="truncate font-mono text-lg font-bold" title="{{dbPath}}">{{dbPath}}</div>
+        <div class="text-[13px] text-base-content/50">Database file</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tables -->
+  <div>
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-lg font-bold">Tables</h2>
+      <span class="text-sm text-base-content/45">{{tables.length}} total</span>
+    </div>
+
+    {{#if tables.length}}
+      <div class="app-card overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50">
+                <th class="font-semibold">Table</th>
+                <th class="text-right font-semibold">Columns</th>
+                <th class="text-right font-semibold">Rows</th>
+                <th class="text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each tables}}
+                <tr class="group hover:bg-base-200/50">
+                  <td>
+                    <a href="{{../basePath}}/tables/{{this}}" class="inline-flex items-center gap-2.5 font-medium">
+                      <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      </span>
+                      <span class="font-mono text-[13.5px]">{{this}}</span>
+                    </a>
+                  </td>
+                  <td class="text-right tabular-nums text-base-content/60">{{lookup ../cols this}}</td>
+                  <td class="text-right tabular-nums text-base-content/60">{{lookup ../counts this}}</td>
+                  <td class="text-right">
+                    <a href="{{../basePath}}/tables/{{this}}" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
+                      Browse
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                    </a>
+                  </td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {{else}}
+      <div class="empty-state">
+        <span class="empty-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+        </span>
+        <p class="text-sm font-medium text-base-content/70">No tables yet</p>
+        <p class="max-w-sm text-sm text-base-content/45">Create one with the table designer, or run a SQL statement in the query editor to get started.</p>
+        <div class="mt-2 flex gap-2">
+          {{#unless readonly}}
+            <a href="{{basePath}}/designer" class="btn btn-primary btn-sm">New table</a>
+          {{/unless}}
+          <a href="{{basePath}}/query" class="btn btn-outline btn-sm">Query editor</a>
+        </div>
+      </div>
+    {{/if}}
+  </div>
+</div>

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+src/public/css/app.css
+*.log
+.DS_Store
+
+package-lock.json

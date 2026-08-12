@@ -1,0 +1,94 @@
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-wider text-primary">Workspace</p>
+      <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Query editor</h1>
+      <p class="mt-1.5 text-sm text-base-content/55">Run arbitrary SQL — SELECT results render as a table, COUNT gives a summary, and write statements execute.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {{#unless readonly}}
+        <button id="save-query" type="button" class="btn btn-outline btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+          Save query
+        </button>
+      {{/unless}}
+      <button id="run-query" type="button" class="btn btn-primary btn-sm gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        Run
+      </button>
+    </div>
+  </div>
+
+  <!-- Saved queries row -->
+  <div class="flex flex-wrap items-end gap-3">
+    <div class="form-control w-full max-w-xs">
+      <label class="field-label" for="saved-query-select">Saved queries</label>
+      <select id="saved-query-select" class="field-select">
+        <option value="">— select a saved query —</option>
+        {{#each savedQueries}}
+          <option value="{{this.id}}">{{this.name}}</option>
+        {{/each}}
+      </select>
+    </div>
+    {{#unless readonly}}
+      <button id="delete-query" type="button" class="btn btn-ghost btn-sm mb-0.5 text-error" disabled>Delete saved</button>
+      <div class="form-control w-full max-w-xs">
+        <label class="field-label" for="save-query-name">Save current SQL as</label>
+        <div class="join w-full">
+          <input id="save-query-name" type="text" class="field-input join-item !rounded-r-none" placeholder="query name" autocomplete="off" />
+          <button id="save-query-inline" type="button" class="btn btn-outline join-item">Save</button>
+        </div>
+      </div>
+    {{/unless}}
+  </div>
+
+  <!-- Editor -->
+  <div class="app-card overflow-hidden">
+    <div class="flex items-center justify-between border-b border-base-200 bg-base-200/40 px-4 py-2.5">
+      <span class="flex items-center gap-2 text-sm font-semibold text-base-content/60">
+        <span class="grid h-5 w-5 place-items-center rounded-md bg-primary/10 text-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        </span>
+        query.sql
+      </span>
+      <span class="text-[11px] text-base-content/40">Ctrl/⌘ + Enter to run</span>
+    </div>
+    <div class="p-3">
+      <div class="sql-editor-wrap">
+        <pre id="query-gutter" class="sql-gutter" aria-hidden="true">1</pre>
+        <textarea id="query-sql" class="sql-input" rows="10" placeholder="SELECT * FROM users WHERE …" spellcheck="false"></textarea>
+      </div>
+      <div id="query-message" class="mt-3"></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="query-result" class="hidden">
+    <div class="app-card overflow-hidden">
+      <div class="flex items-center gap-2 border-b border-base-200 px-4 py-3">
+        <span id="result-kind" class="grid h-6 w-6 place-items-center rounded-md bg-success/10 text-success">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+        </span>
+        <span id="result-summary" class="text-sm font-medium text-base-content/60"></span>
+        <div class="ml-auto flex items-center gap-1.5">
+          <button id="export-csv" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            CSV
+          </button>
+          <button id="export-json" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            JSON
+          </button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-pin-rows">
+          <thead id="query-result-head" class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50"></thead>
+          <tbody id="query-result-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{basePath}}/js/query.js" defer></script>

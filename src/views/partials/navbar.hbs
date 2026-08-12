@@ -1,0 +1,50 @@
+<div class="sticky top-0 z-30 border-b border-base-300/80 bg-base-100/85 backdrop-blur-md">
+  <div class="navbar mx-auto w-full max-w-[1500px] px-4 sm:px-6 lg:px-8">
+    <div class="flex-none lg:hidden">
+      <label for="sidebar-toggle" class="btn btn-square btn-ghost" aria-label="open sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </label>
+    </div>
+    <div class="flex-1">
+      <a href="{{basePath}}/" class="flex items-center gap-2.5">
+        <span class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-soft">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" />
+          </svg>
+        </span>
+        <span class="text-lg font-bold tracking-tight">DB<span class="text-primary">Admin</span></span>
+      </a>
+    </div>
+    <div class="flex items-center gap-1.5">
+      {{#unless databasesMode}}
+        {{#if databasesUrl}}
+          <a href="{{databasesUrl}}" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
+            Databases
+          </a>
+        {{/if}}
+        <a href="{{basePath}}/query" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+          Query
+        </a>
+        {{#unless readonly}}
+          <a href="{{basePath}}/designer" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+            New table
+          </a>
+        {{/unless}}
+        <a href="{{basePath}}/export" class="btn btn-ghost btn-sm hidden gap-1.5 md:inline-flex">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          Export
+        </a>
+      {{/unless}}
+      <button id="theme-toggle" type="button" class="btn btn-square btn-ghost btn-sm" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>

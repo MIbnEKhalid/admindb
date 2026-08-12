@@ -1,0 +1,203 @@
+<div class="space-y-5">
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3.5">
+      <span class="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+      </span>
+      <div>
+        <h1 class="font-mono text-2xl font-bold tracking-tight">{{table}}</h1>
+        <p class="text-sm text-base-content/55">
+          {{count}} row(s) · {{info.columns.length}} column(s)
+          {{#if pkCols.length}}· PK <span class="font-mono">{{join pkCols ", "}}</span>{{/if}}
+        </p>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{{basePath}}/tables/{{table}}/schema" class="btn btn-ghost btn-sm gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+        Edit schema
+      </a>
+      <a href="{{basePath}}/export" class="btn btn-ghost btn-sm gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+        SQL dump
+      </a>
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="btn btn-outline btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          Export
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        </div>
+        <ul tabindex="0" class="dropdown-content menu z-50 w-40 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-lift">
+          <li><a href="{{basePath}}/api/tables/{{table}}/export?format=csv">CSV</a></li>
+          <li><a href="{{basePath}}/api/tables/{{table}}/export?format=json">JSON</a></li>
+        </ul>
+      </div>
+      {{#unless readonly}}
+        <button id="import-csv" type="button" class="btn btn-outline btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+          Import CSV
+        </button>
+      {{/unless}}
+      <a href="{{basePath}}/query" class="btn btn-outline btn-sm gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        Query
+      </a>
+      {{#unless readonly}}
+        <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+          New row
+        </a>
+      {{/unless}}
+    </div>
+  </div>
+
+  <!-- Row filters -->
+  <form id="filter-form" class="app-card p-4">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <span class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-base-content/45">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414A1 1 0 0014 15.414V20a1 1 0 01-1 1h-2a1 1 0 01-1-1v-4.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+        Filter rows
+      </span>
+      <span class="text-xs text-base-content/40">Tip: <code>=exact</code> · <code>&gt;5</code> · <code>&lt;=10</code> · <code>pre*</code> starts with · plain text = contains</span>
+    </div>
+    <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
+      {{#each colNames}}
+        <label class="block">
+          <span class="field-label !mb-1 font-mono">{{this}}</span>
+          <input type="text" class="field-input filter-input !py-1.5 !text-[13px]" name="{{this}}" value="{{lookup ../filters this}}" placeholder="filter…" autocomplete="off" spellcheck="false" />
+        </label>
+      {{/each}}
+    </div>
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-primary btn-sm gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        Apply filter
+      </button>
+      <button type="button" id="clear-filter" class="btn btn-ghost btn-sm">Clear</button>
+      {{#if filterQS}}
+        <span class="text-xs text-base-content/50">Filtering <b class="tabular-nums">{{count}}</b> row(s).</span>
+      {{/if}}
+    </div>
+  </form>
+
+  <!-- CSV import -->
+  <div id="import-panel" class="app-card hidden p-4">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/45">Import CSV into <span class="font-mono normal-case">{{table}}</span></h2>
+      <button id="import-csv-close" type="button" class="btn btn-ghost btn-xs" aria-label="Close">&times;</button>
+    </div>
+    <div class="space-y-3">
+      <textarea id="import-csv-text" rows="6" class="field-input w-full font-mono text-[13px]" placeholder="id,name,email&#10;1,Ada,ada@example.com&#10;2,Bob,bob@example.com" spellcheck="false"></textarea>
+      <div class="flex flex-wrap items-center gap-3">
+        <input type="file" id="import-csv-file" class="file-input file-input-sm w-full max-w-xs" accept=".csv,text/csv" />
+        <button id="import-csv-submit" type="button" class="btn btn-primary btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+          Import
+        </button>
+      </div>
+      <p class="text-xs text-base-content/45">The first row must be column names matching this table. Empty cells are treated as “not set” so database defaults apply. The import is transactional — a failed row rolls back everything.</p>
+    </div>
+  </div>
+
+  {{#if rows.length}}
+    <div class="app-card overflow-hidden">
+      <!-- Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-200 px-4 py-3">
+        <span class="text-sm text-base-content/55">Showing <b class="tabular-nums">{{firstRow}}</b>–<b class="tabular-nums">{{lastRow}}</b> of <b class="tabular-nums">{{count}}</b> rows</span>
+        <label class="flex items-center gap-2 text-sm text-base-content/55">
+          Rows per page
+          <select id="page-size" class="field-select !w-auto !py-1.5 !text-[13px]" data-table="{{table}}" data-orderby="{{orderBy}}" data-orderdir="{{orderDir}}" data-filters="{{filterQS}}">
+            {{#each sizes}}<option value="{{this}}" {{#if (eq this ../pageSize)}}selected{{/if}}>{{this}}</option>{{/each}}
+          </select>
+        </label>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-pin-rows">
+          <thead>
+            <tr class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50">
+              {{#each colHeaders}}
+                <th class="whitespace-nowrap font-semibold">
+                  <a href="{{this.href}}" class="sort-link {{#if this.active}}active{{/if}}" title="Sort by {{this.name}}">
+                    <span class="font-mono normal-case">{{this.name}}</span>
+                    {{#if this.pk}}<span class="chip chip-pk">PK</span>{{/if}}
+                    <span class="sort-arrow">{{#if (eq this.dir 'desc')}}↓{{else}}↑{{/if}}</span>
+                  </a>
+                </th>
+              {{/each}}
+              <th class="text-right font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each rows}}
+              <tr class="group hover:bg-primary/[0.04]">
+                {{#each this.cells}}
+                  <td class="max-w-xs align-middle">
+                    {{#if this.isNull}}
+                      <span class="chip chip-null">NULL</span>
+                    {{else}}
+                      <span class="block max-w-xs truncate font-mono text-[13px]" title="{{this.display}}">{{truncate this.display 120}}</span>
+                    {{/if}}
+                  </td>
+                {{/each}}
+                <td class="whitespace-nowrap text-right align-middle">
+                  {{#unless ../readonly}}
+                    {{#if this.pkEncoded}}
+                      <div class="row-actions">
+                      <a href="{{../basePath}}/tables/{{../table}}/rows/{{this.pkEncoded}}/edit" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        Edit
+                      </a>
+                      <button type="button" class="btn btn-ghost btn-xs gap-1 text-error js-delete-row"
+                        data-table="{{../table}}" data-pk="{{this.pkEncoded}}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        Delete
+                      </button>
+                    </div>
+                    {{else}}
+                      <span class="text-xs text-base-content/35">No PK</span>
+                    {{/if}}
+                  {{/unless}}
+                </td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      {{#if (gt pages 1)}}
+        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-base-200 px-4 py-3">
+          <span class="text-sm text-base-content/50">Page {{page}} of {{pages}}</span>
+          <div class="flex gap-1.5">
+            <a href="{{basePath}}/tables/{{table}}?page={{sub page 1}}&size={{pageSize}}&orderBy={{orderBy}}&orderDir={{orderDir}}{{#if filterQS}}&{{filterQS}}{{/if}}"
+              class="btn btn-outline btn-sm {{#unless (gt page 1)}}btn-disabled{{/unless}}" aria-disabled="{{#if (gt page 1)}}false{{else}}true{{/if}}">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              Prev
+            </a>
+            <a href="{{basePath}}/tables/{{table}}?page={{add page 1}}&size={{pageSize}}&orderBy={{orderBy}}&orderDir={{orderDir}}{{#if filterQS}}&{{filterQS}}{{/if}}"
+              class="btn btn-outline btn-sm {{#unless (lt page pages)}}btn-disabled{{/unless}}" aria-disabled="{{#if (lt page pages)}}false{{else}}true{{/if}}">
+              Next
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </a>
+          </div>
+        </div>
+      {{/if}}
+    </div>
+  {{else}}
+    <div class="empty-state">
+      <span class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+      </span>
+      <p class="text-sm font-medium text-base-content/70">No rows in <span class="font-mono">{{table}}</span></p>
+      <div class="mt-2 flex gap-2">
+        {{#unless readonly}}
+          <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm">Insert a row</a>
+        {{/unless}}
+        <a href="{{basePath}}/query" class="btn btn-outline btn-sm">Run a query</a>
+      </div>
+    </div>
+  {{/if}}
+</div>
+<script src="{{basePath}}/js/browse.js" defer></script>

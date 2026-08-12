@@ -1,0 +1,81 @@
+<div class="space-y-6">
+  <!-- Header -->
+  <div>
+    <p class="text-sm font-semibold uppercase tracking-wider text-primary">Designer</p>
+    <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Create table</h1>
+    <p class="mt-1.5 text-sm text-base-content/55">Define columns visually — the SQL preview updates live as you type.</p>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-[1fr_380px]">
+    <!-- Left: editor -->
+    <div class="space-y-5">
+      <div class="app-card p-5">
+        <label class="field-label">
+          Table name
+          <span class="chip chip-type">required</span>
+        </label>
+        <input id="table-name" type="text" class="field-input font-mono" placeholder="e.g. users" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <div class="app-card">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-200 px-5 py-4">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/45">Columns</h2>
+          <button id="add-column" type="button" class="btn btn-outline btn-sm gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Add column
+          </button>
+        </div>
+        <div id="columns" class="space-y-3 p-4"></div>
+        <div id="designer-error" class="hidden px-4 pb-4"></div>
+        <div class="flex flex-wrap gap-2 border-t border-base-200 px-5 py-4">
+          {{#unless readonly}}
+            <button id="create-table" type="button" class="btn btn-primary gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+              Create table
+            </button>
+          {{else}}
+            <span class="text-sm font-medium text-warning">Read-only — table creation is disabled.</span>
+          {{/unless}}
+          <button id="copy-sql" type="button" class="btn btn-outline gap-1.5" title="Copy the preview SQL">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" /></svg>
+            Copy SQL
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: live preview + tips -->
+    <aside class="space-y-4 self-start lg:sticky lg:top-24">
+      <div class="app-card overflow-hidden">
+        <div class="flex items-center justify-between border-b border-base-200 bg-base-200/40 px-4 py-3">
+          <h2 class="flex items-center gap-2 text-sm font-semibold text-base-content/60">
+            <span class="grid h-5 w-5 place-items-center rounded-md bg-primary/10 text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </span>
+            SQL preview
+          </h2>
+          <span id="preview-status" class="text-[11px] font-medium text-base-content/40">waiting…</span>
+        </div>
+        <div class="p-4">
+          <pre id="sql-preview" class="code-panel hidden"><code id="preview-code"></code></pre>
+          <div id="preview-placeholder" class="rounded-xl border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/35">
+            Your <code class="font-mono">CREATE TABLE</code> statement will appear here as you build it.
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-base-300/70 bg-base-100 p-4">
+        <h3 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/45">Type guide</h3>
+        <ul class="space-y-1.5 text-[13px] text-base-content/60">
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">TEXT</span><span class="text-base-content/40">Free-form text</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">INTEGER</span><span class="text-base-content/40">Whole numbers</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">REAL</span><span class="text-base-content/40">Decimal numbers</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">BLOB</span><span class="text-base-content/40">Binary data</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">BOOLEAN</span><span class="text-base-content/40">Stored as 0/1</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">DATE</span><span class="text-base-content/40">Datetime + now default</span></li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="{{basePath}}/js/designer.js" defer></script>
