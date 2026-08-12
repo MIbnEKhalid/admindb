@@ -1,6 +1,6 @@
 {
   "name": "admindb",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Browser-based SQLite database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,14 +23,14 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs && npm run build:css",
-    "build:css": "tailwindcss -i ./src/public/css/input.css -o ./dist/public/css/app.css --minify",
+    "build:css": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./src/public/css/input.css -o ./dist/public/css/app.css --minify",
     "start": "node dist/cli.js",
     "dev": "concurrently -k -n server,css \"tsx watch src/cli.ts\" \"npm run dev:css\"",
-    "dev:css": "tailwindcss -i ./src/public/css/input.css -o ./src/public/css/app.css --watch",
+    "dev:css": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./src/public/css/input.css -o ./src/public/css/app.css --watch",
     "prepack": "npm run build",
     "test": "npm run build && node --test dist/test/*.test.js"
   },
@@ -57,6 +57,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.0",
     "concurrently": "^9.1.0",
+    "cross-env": "^10.1.0",
     "daisyui": "^4.12.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.0",

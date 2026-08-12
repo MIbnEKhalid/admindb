@@ -3,7 +3,7 @@
 
 [![Version](https://img.shields.io/npm/v/admindb.svg)](https://www.npmjs.com/package/admindb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Publish](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml)
 [![Downloads](https://img.shields.io/npm/dm/admindb.svg)](https://www.npmjs.com/package/admindb)
 
@@ -18,7 +18,7 @@ multi-database support.
 - **Frontend:** Handlebars server-rendered templates, Tailwind CSS + DaisyUI,
   plain JavaScript (no frontend framework).
 - **Database:** SQLite via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3). Requires
-  **Node.js ≥ 18**.
+  **Node.js ≥ 20**.
 
 > ## ⚠️ Security warning — read first
 >
@@ -46,7 +46,7 @@ multi-database support.
 npm install admindb
 ```
 
-Requires **Node.js ≥ 18**.
+Requires **Node.js ≥ 20**.
 
 ## Using as an npm package
 

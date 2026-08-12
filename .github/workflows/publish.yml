@@ -21,7 +21,7 @@ jobs:
       - name: Setup Node.js for npm
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Cache Node.js modules
@@ -33,8 +33,7 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: Install dependencies
-        run: |
-          for i in {1..3}; do npm install && break || sleep 10; done
+        run: npm ci
 
       # better-sqlite3 is a native module — verify it builds and the test
       # suite (which opens real SQLite DBs) passes on this Node before publishing.
@@ -82,7 +81,7 @@ jobs:
         if: steps.check_github_version.outputs.exists == 'false'
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
 
       - name: Publish to GitHub Packages
