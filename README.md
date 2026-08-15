@@ -9,10 +9,11 @@
 
 
 A browser-based SQLite database administration tool. Manage a SQLite database
-entirely from the browser: browse tables, full CRUD, a visual table designer, an
-arbitrary SQL query runner, saved named queries, SQL-dump export, a
-"generate SQL" preview mode that never executes, a schema editor, and
-multi-database support.
+entirely from the browser: browse tables with full CRUD, inline
+spreadsheet-style grid editing, type-aware filters, bulk row operations, a
+visual table designer, an arbitrary SQL query runner, saved named queries,
+SQL-dump export, a "generate SQL" preview mode that never executes, a schema
+editor, and multi-database support.
 
 - **Backend:** Node.js + TypeScript (compiled to plain JS) on Express.
 - **Frontend:** Handlebars server-rendered templates, Tailwind CSS + DaisyUI,
@@ -132,10 +133,18 @@ In multi-db mode:
 ## Features
 
 - Browse every table and its rows (paginated, with primary-key awareness).
-- **Filter rows by column** — exact (`=value`), comparison (`>5`, `<=10`), prefix
-  (`pre*`) or substring (plain text) matching; filters survive sorting and
-  pagination.
-- Insert, edit, and delete rows (full CRUD). FK columns become dropdowns.
+- **Filter rows by column** — type-aware, per-column filter controls: foreign-key
+  dropdowns, boolean toggles, date and numeric range inputs, plus the exact
+  (`=value`), comparison (`>5`, `<=10`), prefix (`pre*`) and substring (plain
+  text) operators on text columns. Filters survive sorting and pagination.
+- **Inline (spreadsheet-style) editing** — double-click any cell to edit it in
+  place with a type-aware control (FK dropdown, boolean toggle, date picker,
+  number/text input). Changes are staged and highlighted in the grid, then
+  applied all at once in a single transaction, or discarded.
+- Insert and delete rows (full CRUD). FK columns become dropdowns.
+- **Bulk row operations** — select rows with checkboxes (or "select all"), then
+  **delete** them in one transaction (with a warning listing how many rows in
+  other tables reference them) or **export** only the selected rows as CSV/JSON.
 - **Export** table rows or query results as **CSV or JSON**, and **import a CSV
   file** (or pasted CSV) into a table.
 - Create tables visually: name, type, primary key, not-null / unique,
@@ -151,11 +160,10 @@ In multi-db mode:
 - **Indexes:** create indexes (plain or unique, on one or many columns — pick
   columns in order, with a live `CREATE INDEX` SQL preview) and drop them from
   the schema editor; automatic SQLite indexes are protected.
-- **Views:** create / drop `CREATE VIEW` definitions, preview the rows they
-  return, and inspect their SQL — from a dedicated Views page.
-- **Triggers:** create / drop triggers with a structured form (timing, single
-  event, optional `WHEN`, body with a live `CREATE TRIGGER` SQL preview) and
-  inspect existing trigger SQL — from a dedicated Triggers page.
+- **Related rows:** every table that has a foreign key pointing at a table gets
+  its own column at the end of that table's grid — each cell shows how many of
+  its rows reference that record; click it to open a nested table with all of
+  the referencing table's columns and data for that specific record.
 - **Read-only mode:** open the database(s) without write access — the file is
   opened `SQLITE_OPEN_READONLY` + `query_only`, every write route returns `403`,
   and the UI hides/disables all write controls and shows a banner.
@@ -229,15 +237,19 @@ $env:DB_DIR='./db'; npm start                 # PowerShell
 | GET    | `/api/tables`                            | List tables                      |
 | GET    | `/api/tables/:table/info`                | Column + FK metadata, PK columns |
 | GET    | `/api/tables/:table/fk-options`          | Values for FK dropdowns          |
-| GET    | `/api/tables/:table/rows?page&limit&f`   | Paginated rows (`f` = URL-encoded JSON filters, e.g. `{"age":">35"}`) |
+| GET    | `/api/tables/:table/rows?page&limit&f`   | Paginated rows (`f` = URL-encoded JSON filters — legacy strings like `{"age":">35"}` or structured conditions like `{"balance":{"op":"gte","value":"100"}}`) |
 | GET    | `/api/tables/:table/row/:id`             | Single row by (encoded) PK       |
 | POST   | `/api/tables/:table/rows`                | Insert row                       |
 | POST   | `/api/tables/:table/rows/generate`       | Generate INSERT SQL (no execute) |
 | POST   | `/api/tables/:table/rows/import`         | Import CSV (`{ csv }`, header row must match columns) |
 | GET    | `/api/tables/:table/export?format=`      | Download all rows as `csv` or `json` |
-| PUT    | `/api/tables/:table/row/:id`             | Update row                       |
+| PUT    | `/api/tables/:table/row/:id`             | Update row (`{ values, nulls? }` — `nulls` explicitly sets columns to NULL) |
 | PUT    | `/api/tables/:table/row/:id/generate`    | Generate UPDATE SQL (no execute) |
 | DELETE | `/api/tables/:table/row/:id`             | Delete row                       |
+| POST   | `/api/tables/:table/rows/bulk-impact`    | FK-impact preview: how many rows in other tables reference the selected rows |
+| POST   | `/api/tables/:table/rows/bulk-delete`    | Delete selected rows (`{ ids, confirmImpact }`; transactional) |
+| POST   | `/api/tables/:table/rows/bulk-export`    | Export only the selected rows as `csv`/`json` (`{ ids, format }`) |
+| POST   | `/api/tables/:table/rows/bulk-update`    | Apply staged inline edits (`{ updates: [{ id, values?, nulls? }] }`; transactional) |
 | POST   | `/api/tables`                            | Create table                     |
 | POST   | `/api/tables/generate`                   | Generate CREATE SQL (no execute) |
 | GET    | `/api/tables/:table/schema`              | Full schema (constraints, indexes, FK refs) |
@@ -248,15 +260,6 @@ $env:DB_DIR='./db'; npm start                 # PowerShell
 | DELETE | `/api/tables/:table`                     | Drop the table (safety-checked)  |
 | POST   | `/api/tables/:table/indexes`             | Create an index (`{ name?, columns[], unique? }`) |
 | DELETE | `/api/tables/:table/indexes/:index`      | Drop an index (auto indexes refused) |
-| GET    | `/api/views`                             | List views                       |
-| GET    | `/api/views/:name/rows`                  | Preview a view's rows            |
-| POST   | `/api/views/generate`                    | Generate CREATE VIEW SQL (no execute) |
-| POST   | `/api/views`                             | Create a view (`{ name, sql }`)  |
-| DELETE | `/api/views/:name`                       | Drop a view                      |
-| GET    | `/api/triggers`                          | List triggers                    |
-| POST   | `/api/triggers/generate`                 | Generate CREATE TRIGGER SQL (no execute) |
-| POST   | `/api/triggers`                          | Create a trigger (`{ name, table, timing, event, when?, body }`) |
-| DELETE | `/api/triggers/:name`                    | Drop a trigger                   |
 | POST   | `/api/query`                             | Run arbitrary SQL                |
 | POST   | `/api/query/export`                      | Run a SELECT and download as `csv`/`json` |
 | GET    | `/api/queries`                           | List saved queries               |
@@ -274,10 +277,26 @@ In multi-db mode, every route is scoped under the database, e.g.
 - **Insert forms pre-fill defaults.** On the "new row" form, columns that have
   a schema default are pre-filled (string/number/boolean literals and
   `CURRENT_TIMESTAMP`-style defaults) so you can see and adjust them.
-- **Row filters.** Each column's filter supports exact match (`=value`),
-  comparison (`>5`, `>=5`, `<5`, `<=5`, `!=value`), prefix (`pre*`) and
-  case-insensitive substring (plain text). Filters are carried in the URL and
-  survive sorting and pagination.
+- **Row filters.** The filter panel adapts to each column's type: foreign keys
+  become dropdowns (with a "not set / NULL" option), booleans become
+  any/true/false toggles, and dates and numbers become min/max range inputs.
+  Text columns keep the operator syntax: exact match (`=value`), comparison
+  (`>5`, `>=5`, `<5`, `<=5`, `!=value`), prefix (`pre*`) and case-insensitive
+  substring (plain text). Filters are carried in the URL (as legacy strings or
+  structured conditions) and survive sorting and pagination.
+- **Inline editing is staged, not instant.** Double-click a cell to edit it in
+  place; edits are buffered locally and highlighted in the grid rather than
+  written immediately. Press **Apply** to write every pending change to the
+  database in a single transaction (the page then reloads so related-row counts
+  stay accurate), or **Discard** to revert everything back to the saved values.
+  Clearing a text/date/number field stages a `NULL`.
+- **Bulk operations.** Checkboxes select rows on the current page; "select all"
+  checks every visible row. **Delete** first shows a warning listing each table
+  that references the selected rows and how many rows point at them (these may
+  be cascaded away or orphaned depending on the foreign-key action, and the
+  delete can fail if a constraint blocks it). **Export CSV / JSON** downloads
+  only the selected rows. Both delete and export are capped at 1000 rows per
+  batch.
 - **CSV import.** The first row must be a header whose names match existing
   columns (unknown or duplicate names are rejected). Empty cells are treated as
   "not set" so database defaults apply. The whole import runs in a single
@@ -311,8 +330,10 @@ npm test           # builds and runs the unit tests
 
 `npm test` compiles TypeScript to `dist/` and runs the `node:test` suite
 covering the SQL generator (INSERT / UPDATE / CREATE output, type mapping,
-quoting, rejection of unsupported types), the SQL classifier, and the database
-manager.
+quoting, rejection of unsupported types), the SQL classifier, CSV parsing and
+serialization, row filters (legacy and structured conditions), the database
+layer (pagination, transactions, bulk update/delete, read-only enforcement),
+and the database manager.
 
 ## Publishing to npm
 

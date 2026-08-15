@@ -2,6 +2,7 @@ import type { Router, Request, Response, NextFunction } from 'express';
 import type { SqliteDatabase, TableInfoData } from '../db/database';
 import type { Logger } from '../logger';
 import { generateSqlDump } from '../db/export';
+import { quoteIdentifier } from '../sql/generator';
 import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS } from '../util';
 
 interface PageContext {
@@ -91,7 +92,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
       const countR = await db.getRowCount(table, filters);
       const rowsR = await db.getRows(table, { page, limit: pageSize, orderBy, orderDir, filters });
       const count = countR.success ? (countR.data as number) : 0;
-      const rows = buildDisplayRows((rowsR.data ?? []) as Record<string, unknown>[], info.data);
+      const rawRows = (rowsR.data ?? []) as Record<string, unknown>[];
       const pages = Math.max(1, Math.ceil(count / pageSize));
       const basePath = String(res.locals.basePath ?? '');
       const sizes = [25, 50, 100, 250];
@@ -109,6 +110,49 @@ export function registerPages(router: Router, ctx: PageContext): void {
         };
       });
 
+      // Every table with a foreign key pointing at this one gets its own column
+      // at the end of the grid; each cell shows how many of its rows reference
+      // that particular row (click to expand the referencing rows inline).
+      const refsR = await db.getReferencingTables(table);
+      const refColumns = (refsR.data ?? [])
+        .filter((r) => !r.table.startsWith('_'))
+        .map((rt) => {
+          const ref = rt.refs[0];
+          return { table: rt.table, from: ref?.from ?? '', to: ref?.to ?? '' };
+        });
+
+      // Per-row reference counts: one grouped query per referencing table.
+      const countMap = new Map<string, Map<string, number>>();
+      for (const col of refColumns) {
+        const values = rawRows
+          .map((r) => r[col.to])
+          .filter((v): v is string | number => v !== null && v !== undefined);
+        if (!values.length) continue;
+        const placeholders = values.map(() => '?').join(', ');
+        const cR = await db.all(
+          `SELECT ${quoteIdentifier(col.from)} AS fk, COUNT(*) AS c FROM ${quoteIdentifier(col.table)} WHERE ${quoteIdentifier(col.from)} IN (${placeholders}) GROUP BY ${quoteIdentifier(col.from)}`,
+          values,
+        );
+        const map = new Map<string, number>();
+        for (const row of (cR.data ?? []) as Record<string, unknown>[]) map.set(String(row.fk), Number(row.c));
+        countMap.set(col.table, map);
+      }
+
+      const rows = buildDisplayRows(rawRows, info.data).map((dr, i) => {
+        const raw = rawRows[i];
+        const refs = refColumns.map((col) => {
+          const v = raw[col.to];
+          return {
+            table: col.table,
+            from: col.from,
+            to: col.to,
+            value: v === null || v === undefined ? '' : String(v),
+            count: v === null || v === undefined ? 0 : (countMap.get(col.table)?.get(String(v)) ?? 0),
+          };
+        });
+        return { ...dr, refs };
+      });
+
       res.locals.currentTable = table;
       res.render('pages/table', {
         title: table,
@@ -122,6 +166,8 @@ export function registerPages(router: Router, ctx: PageContext): void {
         pkCols: info.data.primaryKey,
         colNames: info.data.columns.map((c) => c.name),
         colHeaders,
+        refColumns,
+        hasPk: info.data.primaryKey.length > 0,
         orderBy: orderBy ?? '',
         orderDir,
         sizes,
@@ -129,6 +175,13 @@ export function registerPages(router: Router, ctx: PageContext): void {
         filterQS,
         firstRow: count === 0 ? 0 : (page - 1) * pageSize + 1,
         lastRow: Math.min(page * pageSize, count),
+        browseConfig: {
+          table,
+          filters,
+          pkCols: info.data.primaryKey,
+          hasPk: info.data.primaryKey.length > 0,
+          readonly: db.isReadOnly,
+        },
       });
     } catch (err) {
       next(err);
@@ -225,35 +278,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     try {
       const queries = await db.listSavedQueries();
       res.render('pages/query', { title: 'Query editor', savedQueries: queries.success ? queries.data : [] });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // Views list + create.
-  router.get('/views', async (_req: Request, res: Response, next: NextFunction) => {
-    try {
-      const views = await db.listViews();
-      res.render('pages/views', {
-        title: 'Views',
-        views: views.success ? views.data : [],
-        config: {},
-      });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // Triggers list + create.
-  router.get('/triggers', async (_req: Request, res: Response, next: NextFunction) => {
-    try {
-      const [triggers, tables] = await Promise.all([db.listTriggers(), db.listTables()]);
-      res.render('pages/triggers', {
-        title: 'Triggers',
-        triggers: triggers.success ? triggers.data : [],
-        tables: (tables.data ?? []).map((t) => t.name).filter((n) => !n.startsWith('_')),
-        config: {},
-      });
     } catch (err) {
       next(err);
     }

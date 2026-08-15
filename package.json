@@ -1,6 +1,6 @@
 {
   "name": "admindb",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Browser-based SQLite database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

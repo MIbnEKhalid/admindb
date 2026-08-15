@@ -11,10 +11,6 @@ import {
   generateDropTable,
   generateCreateIndex,
   generateDropIndex,
-  generateCreateView,
-  generateDropView,
-  generateCreateTrigger,
-  generateDropTrigger,
   renderColumnDef,
   quoteIdentifier,
   sqlValue,
@@ -192,44 +188,4 @@ test('generateCreateIndex validates names and requires columns', () => {
 test('generateDropIndex quotes the index name', () => {
   assert.equal(generateDropIndex('idx_users_email'), 'DROP INDEX "idx_users_email";');
   assert.throws(() => generateDropIndex('bad; DROP'), /Invalid index name/);
-});
-
-test('generateCreateView builds a CREATE VIEW from a SELECT', () => {
-  const sql = generateCreateView('active_users', 'SELECT id, name FROM users WHERE active = 1;');
-  assert.equal(sql, 'CREATE VIEW "active_users" AS\nSELECT id, name FROM users WHERE active = 1;');
-  assert.throws(() => generateCreateView('', 'SELECT 1'), /View name/);
-  assert.throws(() => generateCreateView('v', '  '), /SELECT statement is required/);
-});
-
-test('generateDropView quotes the view name', () => {
-  assert.equal(generateDropView('active_users'), 'DROP VIEW "active_users";');
-  assert.throws(() => generateDropView('bad; DROP'), /Invalid view name/);
-});
-
-test('generateCreateTrigger builds a trigger with WHEN and body', () => {
-  const sql = generateCreateTrigger({
-    name: 'audit_user_updates',
-    table: 'users',
-    timing: 'AFTER',
-    event: 'UPDATE',
-    when: 'NEW.age >= 18',
-    body: "INSERT INTO audit_log (table_name, action) VALUES ('users', 'x');",
-  });
-  assert.equal(
-    sql,
-    'CREATE TRIGGER "audit_user_updates" AFTER UPDATE ON "users" WHEN NEW.age >= 18\nBEGIN\nINSERT INTO audit_log (table_name, action) VALUES (\'users\', \'x\');\nEND;',
-  );
-});
-
-test('generateCreateTrigger normalises timing/event and requires body/event', () => {
-  const sql = generateCreateTrigger({ name: 't1', table: 'orders', timing: 'after', event: 'delete', body: 'SELECT 1;' } as never);
-  assert.equal(sql, 'CREATE TRIGGER "t1" AFTER DELETE ON "orders"\nBEGIN\nSELECT 1;\nEND;');
-  assert.throws(() => generateCreateTrigger({ name: 't1', table: 'orders', timing: 'BEFORE', event: 'NOTHING', body: 'x' } as never), /Invalid trigger event/);
-  assert.throws(() => generateCreateTrigger({ name: 't1', table: 'orders', timing: 'SOMETIME', event: 'INSERT', body: 'x' } as never), /Invalid trigger timing/);
-  assert.throws(() => generateCreateTrigger({ name: 't1', table: 'orders', timing: 'BEFORE', event: 'INSERT', body: '  ' }), /Trigger body is required/);
-});
-
-test('generateDropTrigger quotes the trigger name', () => {
-  assert.equal(generateDropTrigger('audit_user_updates'), 'DROP TRIGGER "audit_user_updates";');
-  assert.throws(() => generateDropTrigger('bad; DROP'), /Invalid trigger name/);
 });

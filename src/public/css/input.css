@@ -86,6 +86,44 @@
     @apply opacity-100;
   }
 
+  /* Inline (spreadsheet-style) cell editing */
+  .js-inline-cell {
+    cursor: text;
+    position: relative;
+  }
+  .js-inline-cell:hover {
+    box-shadow: inset 0 0 0 1px oklch(var(--p) / 0.45);
+  }
+  .js-inline-cell.js-editing {
+    box-shadow: inset 0 0 0 2px oklch(var(--p) / 0.85);
+    cursor: default;
+    background: color-mix(in oklab, oklch(var(--b1)) 88%, oklch(var(--p) / 0.16));
+  }
+  .js-inline-cell.js-editing .js-cell-value {
+    display: none;
+  }
+  .js-inline-cell.opacity-60 {
+    opacity: 0.55;
+  }
+
+  /* Pending (staged) edit — highlighted until the user presses Apply.
+     Uses the theme's base color (--b1) + a primary tint so it renders
+     correctly in both the light and dark (black) themes. */
+  .js-inline-cell.cell-dirty {
+    background: color-mix(in oklab, oklch(var(--b1)) 90%, oklch(var(--p) / 0.14));
+    box-shadow: inset 0 0 0 1px oklch(var(--p) / 0.75);
+  }
+  .js-inline-cell.cell-dirty::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: oklch(var(--p));
+  }
+
   /* Sortable column headers */
   .sort-link {
     @apply inline-flex items-center gap-1.5 font-semibold text-base-content/70 transition-colors hover:text-primary;
@@ -174,6 +212,21 @@
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Related-rows nested panel */
+  .js-ref-anim {
+    animation: ref-slide 0.16s ease-out;
+  }
+  @keyframes ref-slide {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }

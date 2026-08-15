@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { SqliteDatabase } from './database';
-import type { Logger } from '../logger';
+import { createLogger, type Logger } from '../logger';
 import { errorMessage } from '../util';
 
 const DB_EXTENSIONS = ['.db', '.sqlite', '.sqlite3'];
@@ -47,9 +47,9 @@ export class DbManager {
   private pathById = new Map<string, string>(); // id -> absPath
   private openDbs = new Map<string, SqliteDatabase>(); // id -> db
 
-  constructor(options: DbManagerOptions | string, logger: Logger) {
+  constructor(options: DbManagerOptions | string, logger?: Logger) {
     const opts = typeof options === 'string' ? { dir: options } : (options ?? {});
-    this.logger = logger;
+    this.logger = logger ?? createLogger('info', 'admindb');
     this.dir = opts.dir ? path.resolve(opts.dir) : undefined;
     this.createDir = this.dir ?? process.cwd();
     this.readonlyMode = !!opts.readonly;

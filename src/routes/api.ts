@@ -1,5 +1,5 @@
 import type { Router, Request, Response } from 'express';
-import type { SqliteDatabase, TableInfoData } from '../db/database';
+import type { SqliteDatabase, SQLInputValue, TableInfoData, WhereClause } from '../db/database';
 import type { Logger } from '../logger';
 import {
   generateCreateTable,
@@ -12,17 +12,13 @@ import {
   generateDropTable,
   generateCreateIndex,
   generateDropIndex,
-  generateCreateView,
-  generateDropView,
-  generateCreateTrigger,
-  generateDropTrigger,
+  quoteIdentifier,
   type ColumnDef,
   type IndexDef,
-  type TriggerDef,
 } from '../sql/generator';
 import { classifySql } from '../sql/classifier';
 import { toCsv, toJson, parseCsv } from '../csv';
-import { coerceFormValue, decodePk, errorMessage, normalizeRow, parseFilters } from '../util';
+import { coerceFormValue, decodePk, errorMessage, normalizeCell, normalizeRow, parseFilters } from '../util';
 
 interface ApiContext {
   db: SqliteDatabase;
@@ -71,12 +67,93 @@ function buildFields(
   return fields;
 }
 
+/**
+ * Build the SET fields for an UPDATE from form values plus an explicit list of
+ * columns to null out (the "clear to NULL" affordance of inline editing).
+ */
+function buildUpdateFields(
+  info: TableInfoData,
+  values: Record<string, unknown>,
+  nulls: string[],
+): { column: string; value: unknown }[] {
+  const fields = buildFields(info, values, { excludePk: true });
+  const typeMap = new Map(info.columns.map((c) => [c.name, c.type]));
+  const pkSet = new Set(info.primaryKey);
+  for (const col of nulls) {
+    if (pkSet.has(col) || !typeMap.has(col)) continue;
+    if (fields.some((f) => f.column === col)) continue;
+    fields.push({ column: col, value: null });
+  }
+  return fields;
+}
+
 function pkWhere(info: TableInfoData, encodedId: string): { column: string; value: unknown }[] | null {
   if (!info.primaryKey.length) return null;
   const vals = decodePk(encodedId);
   if (vals.length !== info.primaryKey.length) return null;
   const typeMap = new Map(info.columns.map((c) => [c.name, c.type]));
   return info.primaryKey.map((col, i) => ({ column: col, value: coerceFormValue(vals[i], typeMap.get(col)!) }));
+}
+
+/** Hard cap on how many rows can be selected for a bulk operation at once. */
+const MAX_BULK_ROWS = 1000;
+
+/**
+ * Turn a list of encoded primary-key ids (from the grid's row checkboxes) into
+ * the WHERE clauses needed to address each row. Returns null when the table has
+ * no usable primary key or when none of the ids resolve.
+ */
+function resolvePkRows(info: TableInfoData, ids: unknown): WhereClause[][] | null {
+  if (!info.primaryKey.length) return null;
+  const list = Array.isArray(ids) ? ids : ids == null ? [] : [ids];
+  const out: WhereClause[][] = [];
+  for (const id of list) {
+    const where = pkWhere(info, String(id));
+    if (where) out.push(where);
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * How many rows in OTHER tables reference any of the selected rows (via foreign
+ * keys pointing at the selected table). Used to warn before a bulk delete —
+ * those rows may be cascaded away or orphaned depending on the FK action.
+ */
+async function computeBulkImpact(
+  db: SqliteDatabase,
+  info: TableInfoData,
+  wheres: WhereClause[][],
+): Promise<{ references: { table: string; from: string; to: string; count: number }[]; total: number }> {
+  const rowsR = await db.getRowsByPks(info.table, wheres);
+  const rows = (rowsR.data ?? []) as Record<string, unknown>[];
+  const refsR = await db.getReferencingTables(info.table);
+  const references: { table: string; from: string; to: string; count: number }[] = [];
+  const toColumn = (to: string): string | null => to || info.primaryKey[0] || info.columns[0]?.name || null;
+
+  for (const rt of refsR.data ?? []) {
+    if (rt.table.startsWith('_')) continue;
+    for (const ref of rt.refs) {
+      const col = toColumn(ref.to);
+      if (!col) continue;
+      // Deduplicate the referenced values (preserving their native type).
+      const byStr = new Map<string, unknown>();
+      for (const row of rows) {
+        const v = row[col];
+        if (v === null || v === undefined) continue;
+        byStr.set(String(normalizeCell(v)), v);
+      }
+      if (!byStr.size) continue;
+      const values = [...byStr.values()] as SQLInputValue[];
+      const placeholders = values.map(() => '?').join(', ');
+      const cR = await db.all(
+        `SELECT COUNT(*) AS c FROM ${quoteIdentifier(rt.table)} WHERE ${quoteIdentifier(ref.from)} IN (${placeholders})`,
+        values,
+      );
+      const count = Number(((cR.data ?? [])[0] as { c?: number | bigint })?.c ?? 0);
+      if (count > 0) references.push({ table: rt.table, from: ref.from, to: ref.to, count });
+    }
+  }
+  return { references, total: references.reduce((n, r) => n + r.count, 0) };
 }
 
 export function registerApi(router: Router, ctx: ApiContext): void {
@@ -88,7 +165,15 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   router.use((req: Request, res: Response, next: import('express').NextFunction) => {
     if (!db.isReadOnly || req.method === 'GET') return next();
     const p = req.path;
-    if (p.endsWith('/generate') || p.endsWith('/api/query/export') || p.endsWith('/api/query')) return next();
+    if (
+      p.endsWith('/generate') ||
+      p.endsWith('/api/query/export') ||
+      p.endsWith('/api/query') ||
+      p.endsWith('/rows/bulk-impact') ||
+      p.endsWith('/rows/bulk-export')
+    ) {
+      return next();
+    }
     return res.status(403).json({ success: false, error: 'Database is open in read-only mode — write operations are disabled.' });
   });
 
@@ -122,13 +207,17 @@ export function registerApi(router: Router, ctx: ApiContext): void {
         try {
           const refInfo = await requireTable(db, fk.table);
           if (!refInfo) continue;
+          // The FK may reference a non-PK unique column (e.g. Users.UserName),
+          // so the option value must be the referenced column's value, not the
+          // referenced table's primary key.
+          const refCol = fk.to || refInfo.primaryKey[0] || refInfo.columns[0]?.name;
           const pk = refInfo.primaryKey[0] ?? refInfo.columns[0]?.name;
           const labelCols = refInfo.columns.filter((c) => c.name !== pk).slice(0, 2).map((c) => c.name);
           const rowsR = await db.getAllRows(fk.table);
           const rows = ((rowsR.data ?? []) as Record<string, unknown>[]).slice(0, 500);
           options[fk.from] = rows.map((row) => ({
-            value: row[pk],
-            label: labelCols.length ? labelCols.map((c) => String(row[c] ?? '')).join(' · ') : String(row[pk] ?? ''),
+            value: row[refCol],
+            label: labelCols.length ? labelCols.map((c) => String(row[c] ?? '')).join(' · ') : String(row[refCol] ?? ''),
           }));
         } catch (err) {
           logger.warn(`fk-options for ${fk.from}: ${errorMessage(err)}`);
@@ -158,6 +247,57 @@ export function registerApi(router: Router, ctx: ApiContext): void {
         limit,
         filters,
       });
+    }),
+  );
+
+  // Related rows: rows in other tables whose foreign keys point at this row.
+  router.get(
+    '/api/tables/:table/rows/:id/references',
+    wrap(async (req, res) => {
+      const info = await requireTable(db, req.params.table);
+      if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+      if (!info.primaryKey.length) return fail(res, `Table "${req.params.table}" has no primary key, so related rows cannot be resolved.`, 400);
+      const pk = decodePk(req.params.id);
+      if (pk.length !== info.primaryKey.length) return fail(res, 'Invalid row id.', 400);
+      const typeMap = new Map(info.columns.map((c) => [c.name, c.type]));
+      const where = info.primaryKey.map((col, i) => ({ column: col, value: coerceFormValue(pk[i], typeMap.get(col)!) }));
+      const rowR = await db.getRow(req.params.table, where);
+      if (!rowR.success || !rowR.data) return fail(res, 'Row not found.', 404);
+      const row = rowR.data as Record<string, unknown>;
+
+      const refsR = await db.getReferencingTables(req.params.table);
+      if (!refsR.success) return fail(res, refsR.error ?? 'Failed to load references.', 500);
+
+      const references: {
+        table: string;
+        from: string;
+        to: string;
+        value: unknown;
+        count: number;
+        columns: string[];
+        rows: Record<string, unknown>[];
+      }[] = [];
+      for (const rt of refsR.data ?? []) {
+        if (rt.table.startsWith('_')) continue;
+        const refInfo = await requireTable(db, rt.table);
+        if (!refInfo) continue;
+        for (const ref of rt.refs) {
+          const value = row[ref.to];
+          if (value === null || value === undefined) continue;
+          const r = await db.getRowsByFk(rt.table, ref.from, value, 50);
+          if (!r.success) continue;
+          references.push({
+            table: rt.table,
+            from: ref.from,
+            to: ref.to,
+            value: normalizeCell(value),
+            count: r.data!.total,
+            columns: refInfo.columns.map((c) => c.name),
+            rows: r.data!.rows.map(normalizeRow),
+          });
+        }
+      }
+      ok(res, { references });
     }),
   );
 
@@ -292,7 +432,8 @@ export function registerApi(router: Router, ctx: ApiContext): void {
       const where = pkWhere(info, req.params.id);
       if (!where) return fail(res, 'Invalid primary key.', 400);
       const values = (req.body?.values ?? {}) as Record<string, unknown>;
-      const fields = buildFields(info, values, { excludePk: true });
+      const nulls = Array.isArray(req.body?.nulls) ? (req.body.nulls as unknown[]).map(String) : [];
+      const fields = buildUpdateFields(info, values, nulls);
       if (!fields.length) return fail(res, 'No fields to update.');
       const sql = generateUpdate(req.params.table, fields, where);
       const r = await db.updateRow(req.params.table, fields, where);
@@ -309,7 +450,8 @@ export function registerApi(router: Router, ctx: ApiContext): void {
       const where = pkWhere(info, req.params.id);
       if (!where) return fail(res, 'Invalid primary key.', 400);
       const values = (req.body?.values ?? {}) as Record<string, unknown>;
-      const fields = buildFields(info, values, { excludePk: true });
+      const nulls = Array.isArray(req.body?.nulls) ? (req.body.nulls as unknown[]).map(String) : [];
+      const fields = buildUpdateFields(info, values, nulls);
       if (!fields.length) return fail(res, 'No fields to update.');
       ok(res, { sql: generateUpdate(req.params.table, fields, where) });
     }),
@@ -325,6 +467,123 @@ export function registerApi(router: Router, ctx: ApiContext): void {
       const r = await db.deleteRow(req.params.table, where);
       if (!r.success) return fail(res, r.error ?? 'Delete failed.', 400);
       ok(res, { message: 'Row deleted.' });
+    }),
+  );
+
+  // ---- Bulk row operations -----------------------------------------------
+
+  /**
+   * FK-impact preview: how many rows in other tables reference the selected
+   * rows. Shown to the user before a bulk delete so cascades/orphaning are
+   * understood up front.
+   */
+  router.post(
+    '/api/tables/:table/rows/bulk-impact',
+    wrap(async (req, res) => {
+      const info = await requireTable(db, req.params.table);
+      if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+      const wheres = resolvePkRows(info, (req.body ?? {}).ids);
+      if (!wheres || !wheres.length) return fail(res, 'No valid rows selected.', 400);
+      if (wheres.length > MAX_BULK_ROWS) return fail(res, `Select at most ${MAX_BULK_ROWS} rows at a time.`, 400);
+      const impact = await computeBulkImpact(db, info, wheres);
+      ok(res, { selected: wheres.length, references: impact.references, total: impact.total });
+    }),
+  );
+
+  /**
+   * Bulk delete the selected rows inside a single transaction. When other
+   * tables reference them, the client must acknowledge the impact
+   * (`confirmImpact: true`) — this is the safety net behind the UI warning.
+   */
+  router.post(
+    '/api/tables/:table/rows/bulk-delete',
+    wrap(async (req, res) => {
+      const info = await requireTable(db, req.params.table);
+      if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+      const body = (req.body ?? {}) as { ids?: unknown; confirmImpact?: unknown };
+      const wheres = resolvePkRows(info, body.ids);
+      if (!wheres || !wheres.length) return fail(res, 'No valid rows selected.', 400);
+      if (wheres.length > MAX_BULK_ROWS) return fail(res, `Select at most ${MAX_BULK_ROWS} rows at a time.`, 400);
+      const impact = await computeBulkImpact(db, info, wheres);
+      if (impact.total > 0 && body.confirmImpact !== true) {
+        return res.status(409).json({
+          success: false,
+          error: 'These rows are referenced by other tables. Confirm the impact before deleting.',
+          data: { references: impact.references, total: impact.total },
+        });
+      }
+      const r = await db.deleteRows(req.params.table, wheres);
+      if (!r.success) return fail(res, r.error ?? 'Bulk delete failed.', 400);
+      ok(res, { message: `Deleted ${r.data?.deleted ?? 0} row(s).`, deleted: r.data?.deleted ?? 0 });
+    }),
+  );
+
+  /**
+   * Export only the selected rows (CSV or JSON). The content is returned in the
+   * JSON envelope so the client can trigger a download without a full page reload.
+   */
+  router.post(
+    '/api/tables/:table/rows/bulk-export',
+    wrap(async (req, res) => {
+      const info = await requireTable(db, req.params.table);
+      if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+      const body = (req.body ?? {}) as { ids?: unknown; format?: unknown };
+      const wheres = resolvePkRows(info, body.ids);
+      if (!wheres || !wheres.length) return fail(res, 'No valid rows selected.', 400);
+      if (wheres.length > MAX_BULK_ROWS) return fail(res, `Select at most ${MAX_BULK_ROWS} rows at a time.`, 400);
+      const format = String(body.format ?? 'csv').toLowerCase() === 'json' ? 'json' : 'csv';
+      const rowsR = await db.getRowsByPks(req.params.table, wheres);
+      if (!rowsR.success) return fail(res, rowsR.error ?? 'Export failed.', 500);
+      const rows = ((rowsR.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
+      const columns = info.columns.map((c) => c.name);
+      const content = format === 'json' ? toJson(rows) : toCsv(rows, columns);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      ok(res, {
+        format,
+        filename: `${req.params.table}-selected-${stamp}.${format}`,
+        content,
+        rowCount: rows.length,
+      });
+    }),
+  );
+
+  /**
+   * Apply staged inline-grid edits: update many cells across many rows inside a
+   * single transaction. Each entry is `{ id, values?, nulls? }` where `id` is
+   * the encoded primary key. This is the "Apply" step of the Neon-style
+   * spreadsheet editing flow (edits are buffered client-side until this runs).
+   */
+  router.post('/api/tables/:table/rows/bulk-update',
+    wrap(async (req, res) => {
+      const info = await requireTable(db, req.params.table);
+      if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+      if (!info.primaryKey.length) {
+        return fail(res, `Table "${req.params.table}" has no primary key, so inline edits cannot be applied.`, 400);
+      }
+      const updates = Array.isArray(req.body?.updates) ? (req.body.updates as unknown[]) : [];
+      if (!updates.length) return fail(res, 'No changes to apply.', 400);
+      if (updates.length > MAX_BULK_ROWS) return fail(res, `Select at most ${MAX_BULK_ROWS} rows at a time.`, 400);
+
+      const rows: { fields: { column: string; value: unknown }[]; where: WhereClause[] }[] = [];
+      for (const u of updates) {
+        const entry = (u ?? {}) as { id?: unknown; values?: unknown; nulls?: unknown };
+        const where = pkWhere(info, String(entry.id ?? ''));
+        if (!where) continue;
+        const fields = buildUpdateFields(
+          info,
+          (entry.values ?? {}) as Record<string, unknown>,
+          Array.isArray(entry.nulls) ? (entry.nulls as unknown[]).map(String) : [],
+        );
+        if (fields.length) rows.push({ fields, where });
+      }
+      if (!rows.length) return fail(res, 'No fields to update.', 400);
+
+      const r = await db.updateRows(req.params.table, rows);
+      if (!r.success) return fail(res, r.error ?? 'Update failed.', 400);
+      ok(res, {
+        message: `Applied ${r.data?.updated ?? 0} row change(s).`,
+        updated: r.data?.updated ?? 0,
+      });
     }),
   );
 
@@ -529,122 +788,6 @@ export function registerApi(router: Router, ctx: ApiContext): void {
     }),
   );
 
-  // ---- Views & triggers --------------------------------------------------
-
-  router.get(
-    '/api/views',
-    wrap(async (_req, res) => {
-      const r = await db.listViews();
-      if (!r.success) return fail(res, r.error ?? 'Failed to list views.', 500);
-      ok(res, r.data);
-    }),
-  );
-
-  router.get(
-    '/api/views/:name/rows',
-    wrap(async (req, res) => {
-      const r = await db.getViewRows(req.params.name);
-      if (!r.success) return fail(res, r.error ?? 'Failed to read view.', 400);
-      ok(res, { rows: ((r.data ?? []) as Record<string, unknown>[]).map(normalizeRow) });
-    }),
-  );
-
-  router.post(
-    '/api/views/generate',
-    wrap(async (req, res) => {
-      const name = String(req.body?.name ?? '').trim();
-      const sql = String(req.body?.sql ?? '').trim();
-      try {
-        ok(res, { sql: generateCreateView(name, sql) });
-      } catch (err) {
-        fail(res, errorMessage(err));
-      }
-    }),
-  );
-
-  router.post(
-    '/api/views',
-    wrap(async (req, res) => {
-      const name = String(req.body?.name ?? '').trim();
-      const sql = String(req.body?.sql ?? '').trim();
-      let genSql: string;
-      try {
-        genSql = generateCreateView(name, sql);
-      } catch (err) {
-        return fail(res, errorMessage(err));
-      }
-      const r = await db.createView(name, sql);
-      if (!r.success) return fail(res, r.error ?? 'Failed to create view.', 400);
-      ok(res, { message: `View "${name}" created.`, sql: genSql }, 201);
-    }),
-  );
-
-  router.delete(
-    '/api/views/:name',
-    wrap(async (req, res) => {
-      let genSql: string;
-      try {
-        genSql = generateDropView(req.params.name);
-      } catch (err) {
-        return fail(res, errorMessage(err));
-      }
-      const r = await db.dropView(req.params.name);
-      if (!r.success) return fail(res, r.error ?? 'Failed to drop view.', 400);
-      ok(res, { message: `View "${req.params.name}" dropped.`, sql: genSql });
-    }),
-  );
-
-  router.get(
-    '/api/triggers',
-    wrap(async (_req, res) => {
-      const r = await db.listTriggers();
-      if (!r.success) return fail(res, r.error ?? 'Failed to list triggers.', 500);
-      ok(res, r.data);
-    }),
-  );
-
-  router.post(
-    '/api/triggers/generate',
-    wrap(async (req, res) => {
-      try {
-        ok(res, { sql: generateCreateTrigger((req.body ?? {}) as TriggerDef) });
-      } catch (err) {
-        fail(res, errorMessage(err));
-      }
-    }),
-  );
-
-  router.post(
-    '/api/triggers',
-    wrap(async (req, res) => {
-      const def = (req.body ?? {}) as TriggerDef;
-      let genSql: string;
-      try {
-        genSql = generateCreateTrigger(def);
-      } catch (err) {
-        return fail(res, errorMessage(err));
-      }
-      const r = await db.createTrigger(def);
-      if (!r.success) return fail(res, r.error ?? 'Failed to create trigger.', 400);
-      ok(res, { message: `Trigger "${def.name}" created.`, sql: genSql }, 201);
-    }),
-  );
-
-  router.delete(
-    '/api/triggers/:name',
-    wrap(async (req, res) => {
-      let genSql: string;
-      try {
-        genSql = generateDropTrigger(req.params.name);
-      } catch (err) {
-        return fail(res, errorMessage(err));
-      }
-      const r = await db.dropTrigger(req.params.name);
-      if (!r.success) return fail(res, r.error ?? 'Failed to drop trigger.', 400);
-      ok(res, { message: `Trigger "${req.params.name}" dropped.`, sql: genSql });
-    }),
-  );
-
   // ---- Query runner ------------------------------------------------------
 
   router.post(
@@ -652,6 +795,19 @@ export function registerApi(router: Router, ctx: ApiContext): void {
     wrap(async (req, res) => {
       const sql = String(req.body?.sql ?? '').trim();
       if (!sql) return fail(res, 'SQL is required.');
+
+      // Scripts (more than one statement, e.g. a schema/migration script) cannot
+      // be represented as a single prepared statement, so run them via `exec`.
+      if (db.hasMultipleStatements(sql)) {
+        if (db.isReadOnly) {
+          return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
+        }
+        const r = await db.execResult(sql);
+        if (!r.success) return fail(res, r.error ?? 'Query failed.', 400);
+        ok(res, { kind: 'write', changes: null, message: 'Statement(s) executed successfully.' });
+        return;
+      }
+
       const { kind } = classifySql(sql);
 
       if (kind === 'count') {

@@ -6,3 +6,5 @@ dist/
 src/public/css/app.css
 *.log
 .DS_Store
+
+test/

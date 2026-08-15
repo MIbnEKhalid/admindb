@@ -9,15 +9,13 @@ import {
   generateDropTable,
   generateCreateIndex,
   generateDropIndex,
-  generateCreateView,
-  generateDropView,
-  generateCreateTrigger,
-  generateDropTrigger,
   type ColumnDef,
   type IndexDef,
-  type TriggerDef,
 } from '../sql/generator';
-import { errorMessage } from '../util';
+import { errorMessage, type FilterCondition, type FilterValue } from '../util';
+
+/** Structured filter types are shared with the API layer. */
+export type { FilterCondition, FilterValue } from '../util';
 
 /** SQLite-compatible bind value accepted by better-sqlite3 statements. */
 export type SQLInputValue = null | number | bigint | string | Uint8Array;
@@ -81,22 +79,8 @@ export interface IndexInfo {
   sql?: string | null;
 }
 
-export interface ViewInfo {
-  name: string;
-  /** The `CREATE VIEW …` statement from sqlite_master. */
-  sql: string | null;
-}
-
-export interface TriggerInfo {
-  name: string;
-  /** The table (or view) the trigger fires on. */
-  table: string;
-  /** The `CREATE TRIGGER …` statement from sqlite_master. */
-  sql: string | null;
-}
-
 export interface RowFilters {
-  [column: string]: string;
+  [column: string]: FilterValue;
 }
 
 export interface ColumnDetail extends ColumnInfo {
@@ -119,6 +103,14 @@ export interface SchemaInfo {
   references: { table: string; from: string; to: string }[];
 }
 
+export interface ReferencingTableInfo {
+  table: string;
+  /** FK columns in `table` that point at this table (`from` → `to`). */
+  refs: { from: string; to: string }[];
+  /** Rows in `table` whose FK column(s) actually reference this table. */
+  refCount: number;
+}
+
 export const INTERNAL_TABLES = {
   savedQueries: '_saved_queries',
 } as const;
@@ -130,11 +122,65 @@ function escapeLike(s: string): string {
 
 /**
  * Build a parameterized WHERE clause from per-column filters.
- * Supported syntax in a filter value:
- *   - `=value` exact match, `!=value` not-equal, `>value`, `>=value`, `<value`, `<=value`
- *   - `value*`  prefix match
- *   - anything else → case-insensitive substring (LIKE '%value%')
+ *
+ * A filter value is either:
+ *   - the legacy string syntax: `=value` exact, `!=value`, `>value`, `>=value`,
+ *     `<value`, `<=value`, `value*` prefix, anything else → substring match; or
+ *   - a structured `FilterCondition` (or array of them) produced by the
+ *     type-aware filter form (FK dropdowns, boolean toggles, date/number ranges).
  */
+function pushFilterCondition(conds: string[], params: SQLInputValue[], quotedCol: string, c: FilterCondition): void {
+  const value = String(c.value ?? '');
+  switch (c.op) {
+    case 'eq':
+      conds.push(`${quotedCol} = ?`);
+      params.push(value);
+      break;
+    case 'neq':
+      conds.push(`${quotedCol} != ?`);
+      params.push(value);
+      break;
+    case 'gt':
+      conds.push(`${quotedCol} > ?`);
+      params.push(value);
+      break;
+    case 'gte':
+      conds.push(`${quotedCol} >= ?`);
+      params.push(value);
+      break;
+    case 'lt':
+      conds.push(`${quotedCol} < ?`);
+      params.push(value);
+      break;
+    case 'lte':
+      conds.push(`${quotedCol} <= ?`);
+      params.push(value);
+      break;
+    case 'like':
+      conds.push(`${quotedCol} LIKE ? ESCAPE '\\'`);
+      params.push('%' + escapeLike(value) + '%');
+      break;
+    case 'prefix':
+      conds.push(`${quotedCol} LIKE ? ESCAPE '\\'`);
+      params.push(escapeLike(value) + '%');
+      break;
+    case 'between':
+      conds.push(`${quotedCol} >= ?`);
+      params.push(value);
+      conds.push(`${quotedCol} <= ?`);
+      params.push(String(c.max ?? ''));
+      break;
+    case 'null':
+      conds.push(`${quotedCol} IS NULL`);
+      break;
+    case 'notnull':
+      conds.push(`${quotedCol} IS NOT NULL`);
+      break;
+    default:
+      break;
+  }
+}
+
 export function buildFilterClause(
   filters: RowFilters | undefined,
   availableCols: string[],
@@ -143,9 +189,23 @@ export function buildFilterClause(
   const params: SQLInputValue[] = [];
   const colSet = new Set(availableCols);
   for (const [col, raw] of Object.entries(filters ?? {})) {
-    const value = String(raw ?? '').trim();
-    if (value === '' || !colSet.has(col)) continue;
+    if (!colSet.has(col)) continue;
     const q = quoteIdentifier(col);
+
+    if (Array.isArray(raw)) {
+      for (const c of raw) {
+        if (c && typeof c === 'object') pushFilterCondition(conds, params, q, c);
+      }
+      continue;
+    }
+    if (raw && typeof raw === 'object') {
+      pushFilterCondition(conds, params, q, raw as FilterCondition);
+      continue;
+    }
+
+    // Legacy string syntax.
+    const value = String(raw ?? '').trim();
+    if (value === '') continue;
     if (value.startsWith('>=')) {
       conds.push(`${q} >= ?`);
       params.push(value.slice(2).trim());
@@ -272,6 +332,22 @@ export class SqliteDatabase {
       this.db.exec(sql);
       return { changes: undefined };
     });
+  }
+
+  /**
+   * True when `sql` contains more than one statement. Detection is delegated to
+   * SQLite itself via `prepare()` (which refuses multi-statement strings), so
+   * comments, string literals and quoted identifiers are handled correctly.
+   */
+  hasMultipleStatements(sql: string): boolean {
+    const s = String(sql ?? '').trim();
+    if (!s) return false;
+    try {
+      this.db.prepare(s);
+      return false;
+    } catch (err) {
+      return /more than one statement/i.test(errorMessage(err));
+    }
   }
 
   /** Run a write statement, reporting row changes when it is a single statement. */
@@ -422,10 +498,96 @@ export class SqliteDatabase {
     return this.run(sql, [...fields.map((f) => this.toBind(f.value)), ...where.map((w) => this.toBind(w.value))]);
   }
 
+  /**
+   * Apply many row updates (each with its own SET fields + primary-key WHERE
+   * clause) inside a single transaction. Used by the bulk "apply changes"
+   * flow of inline grid editing. Rolls everything back if any row fails.
+   */
+  async updateRows(
+    table: string,
+    rows: { fields: WhereClause[]; where: WhereClause[] }[],
+  ): Promise<Result<{ updated: number }>> {
+    if (this.isReadOnly) return this.readonlyBlocked();
+    return this.tryRun(() => {
+      this.db.exec('BEGIN');
+      try {
+        let updated = 0;
+        for (const { fields, where } of rows) {
+          if (!fields.length || !where.length) continue;
+          const sets = fields.map((f) => `${quoteIdentifier(f.column)} = ?`);
+          const conds = where.map((w) => `${quoteIdentifier(w.column)} = ?`);
+          const sql = `UPDATE ${quoteIdentifier(table)} SET ${sets.join(', ')} WHERE ${conds.join(' AND ')}`;
+          const info = this.db.prepare(sql).run(
+            ...[...fields.map((f) => this.toBind(f.value)), ...where.map((w) => this.toBind(w.value))],
+          );
+          updated += Number(info.changes);
+        }
+        this.db.exec('COMMIT');
+        return { updated };
+      } catch (err) {
+        try {
+          this.db.exec('ROLLBACK');
+        } catch {
+          /* ignore */
+        }
+        throw err;
+      }
+    });
+  }
+
   async deleteRow(table: string, where: WhereClause[]): Promise<Result<{ changes: number; lastInsertRowid: number | null }>> {
     const conds = where.map((w) => `${quoteIdentifier(w.column)} = ?`);
     const sql = `DELETE FROM ${quoteIdentifier(table)} WHERE ${conds.join(' AND ')}`;
     return this.run(sql, where.map((w) => this.toBind(w.value)));
+  }
+
+  /**
+   * Delete many rows (each identified by its primary-key WHERE clause) inside a
+   * single transaction. Used by bulk delete.
+   */
+  async deleteRows(table: string, rows: WhereClause[][]): Promise<Result<{ deleted: number }>> {
+    if (this.isReadOnly) return this.readonlyBlocked();
+    return this.tryRun(() => {
+      this.db.exec('BEGIN');
+      try {
+        let deleted = 0;
+        for (const where of rows) {
+          if (!where.length) continue;
+          const conds = where.map((w) => `${quoteIdentifier(w.column)} = ?`);
+          const sql = `DELETE FROM ${quoteIdentifier(table)} WHERE ${conds.join(' AND ')}`;
+          const info = this.db.prepare(sql).run(...where.map((w) => this.toBind(w.value)));
+          deleted += Number(info.changes);
+        }
+        this.db.exec('COMMIT');
+        return { deleted };
+      } catch (err) {
+        try {
+          this.db.exec('ROLLBACK');
+        } catch {
+          /* ignore */
+        }
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Fetch the rows matching the given primary-key WHERE clauses in one query
+   * (`(a = ? AND b = ?) OR …`). Used by bulk export and FK-impact checks.
+   */
+  async getRowsByPks(table: string, pks: WhereClause[][]): Promise<Result<Record<string, unknown>[]>> {
+    return this.tryRun(() => {
+      const groups: string[] = [];
+      const params: SQLInputValue[] = [];
+      for (const where of pks) {
+        if (!where.length) continue;
+        groups.push(where.map((w) => `${quoteIdentifier(w.column)} = ?`).join(' AND '));
+        params.push(...where.map((w) => this.toBind(w.value)));
+      }
+      if (!groups.length) return [];
+      const sql = `SELECT * FROM ${quoteIdentifier(table)} WHERE ${groups.map((g) => `(${g})`).join(' OR ')}`;
+      return this.db.prepare(sql).all(...params) as unknown as Record<string, unknown>[];
+    });
   }
 
   async getCreateStatement(table: string): Promise<Result<string | null>> {
@@ -560,6 +722,70 @@ export class SqliteDatabase {
     });
   }
 
+  /**
+   * Other tables with foreign keys pointing at `table`, grouped by table, each
+   * with the FK column mapping and a count of rows that actually reference it.
+   */
+  async getReferencingTables(table: string): Promise<Result<ReferencingTableInfo[]>> {
+    return this.tryRun(() => {
+      const allTables = (this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+        .all() as unknown as { name: string }[]).map((r) => r.name);
+
+      const byTable = new Map<string, { from: string; to: string }[]>();
+      for (const t of allTables) {
+        if (t === table) continue;
+        try {
+          const fks = this.db.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(t)})`).all() as unknown as ForeignKeyInfo[];
+          for (const fk of fks) {
+            if (fk.table === table) {
+              const arr = byTable.get(t) ?? [];
+              arr.push({ from: fk.from, to: fk.to ?? '' });
+              byTable.set(t, arr);
+            }
+          }
+        } catch {
+          /* ignore unreadable tables */
+        }
+      }
+
+      const result: ReferencingTableInfo[] = [];
+      for (const [t, refs] of byTable) {
+        let refCount = 0;
+        try {
+          const conds = refs.map((r) => `${quoteIdentifier(r.from)} IS NOT NULL`);
+          const row = this.db.prepare(`SELECT COUNT(*) AS c FROM ${quoteIdentifier(t)} WHERE ${conds.join(' OR ')}`).get() as {
+            c: number | bigint;
+          };
+          refCount = Number(row.c);
+        } catch {
+          /* count is best-effort */
+        }
+        result.push({ table: t, refs, refCount });
+      }
+      result.sort((a, b) => a.table.localeCompare(b.table));
+      return result;
+    });
+  }
+
+  /**
+   * Rows in `table` whose `column` equals `value` — used to show which rows in
+   * a referencing table point at a specific row via a foreign key — with the
+   * total matching count.
+   */
+  async getRowsByFk(table: string, column: string, value: unknown, limit = 50): Promise<Result<{ rows: Record<string, unknown>[]; total: number }>> {
+    return this.tryRun(() => {
+      const n = Math.max(1, Math.min(500, Number(limit) || 50));
+      const countRow = this.db
+        .prepare(`SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)} WHERE ${quoteIdentifier(column)} = ?`)
+        .get(value) as { c: number | bigint };
+      const rows = this.db
+        .prepare(`SELECT * FROM ${quoteIdentifier(table)} WHERE ${quoteIdentifier(column)} = ? LIMIT ${n}`)
+        .all(value) as unknown as Record<string, unknown>[];
+      return { rows, total: Number(countRow.c) };
+    });
+  }
+
   async renameTable(oldName: string, newName: string): Promise<Result<{ changes?: number }>> {
     return this.execResult(generateRenameTable(oldName, newName));
   }
@@ -586,50 +812,6 @@ export class SqliteDatabase {
 
   async dropIndex(indexName: string): Promise<Result<{ changes?: number }>> {
     return this.execResult(generateDropIndex(indexName));
-  }
-
-  // ---- Views & triggers -------------------------------------------------
-
-  async listViews(): Promise<Result<ViewInfo[]>> {
-    return this.tryRun(() => {
-      const rows = this.db
-        .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as unknown as { name: string; sql: string | null }[];
-      return rows.map((r) => ({ name: r.name, sql: r.sql ?? null }));
-    });
-  }
-
-  /** Preview the first `limit` rows of a view (browse). */
-  async getViewRows(viewName: string, limit = 200): Promise<Result<Record<string, unknown>[]>> {
-    return this.tryRun(() => {
-      const n = Math.max(1, Math.min(1000, Number(limit) || 200));
-      return this.db.prepare(`SELECT * FROM ${quoteIdentifier(viewName)} LIMIT ${n}`).all() as unknown as Record<string, unknown>[];
-    });
-  }
-
-  async createView(name: string, selectSql: string): Promise<Result<{ changes?: number }>> {
-    return this.execResult(generateCreateView(name, selectSql));
-  }
-
-  async dropView(name: string): Promise<Result<{ changes?: number }>> {
-    return this.execResult(generateDropView(name));
-  }
-
-  async listTriggers(): Promise<Result<TriggerInfo[]>> {
-    return this.tryRun(() => {
-      const rows = this.db
-        .prepare('SELECT name, tbl_name AS "table", sql FROM sqlite_master WHERE type = \'trigger\' AND name NOT LIKE \'sqlite_%\' ORDER BY name')
-        .all() as unknown as { name: string; table: string; sql: string | null }[];
-      return rows.map((r) => ({ name: r.name, table: r.table, sql: r.sql ?? null }));
-    });
-  }
-
-  async createTrigger(def: TriggerDef): Promise<Result<{ changes?: number }>> {
-    return this.execResult(generateCreateTrigger(def));
-  }
-
-  async dropTrigger(name: string): Promise<Result<{ changes?: number }>> {
-    return this.execResult(generateDropTrigger(name));
   }
 
   private getTableInfoSync(table: string): TableInfoData | null {

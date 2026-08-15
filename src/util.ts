@@ -5,9 +5,26 @@ export function errorMessage(err: unknown): string {
   return String(err);
 }
 
+/** Operators understood by the structured (type-aware) filter conditions. */
+export type FilterOp =
+  | 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte'
+  | 'like' | 'prefix' | 'between' | 'null' | 'notnull';
+
+/** A single structured filter condition produced by the type-aware filter form. */
+export interface FilterCondition {
+  op: FilterOp;
+  /** Primary operand for scalar operators; lower bound for `between`. */
+  value?: string;
+  /** Upper bound for `between`. */
+  max?: string;
+}
+
+/** A filter value: the legacy string syntax or one/more structured conditions. */
+export type FilterValue = string | FilterCondition | FilterCondition[];
+
 /** Row filters keyed by column name. */
 export interface RowFilters {
-  [column: string]: string;
+  [column: string]: FilterValue;
 }
 
 /** Parse the `f` query parameter (URL-encoded JSON object) into row filters. */
@@ -16,7 +33,14 @@ export function parseFilters(raw: unknown): RowFilters {
   const add = (obj: unknown): void => {
     if (obj && typeof obj === 'object') {
       for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        if (v !== undefined && v !== null && v !== '') out[k] = String(v);
+        if (v === undefined || v === null || v === '') continue;
+        if (Array.isArray(v)) {
+          if (v.length) out[k] = v as FilterCondition[];
+        } else if (typeof v === 'object') {
+          out[k] = v as FilterCondition;
+        } else {
+          out[k] = String(v);
+        }
       }
     }
   };
@@ -36,7 +60,16 @@ export function parseFilters(raw: unknown): RowFilters {
 export function filtersToQS(filters: RowFilters | undefined): string {
   const out: RowFilters = {};
   for (const [k, v] of Object.entries(filters ?? {})) {
-    if (v !== undefined && v !== null && String(v).trim() !== '') out[k] = String(v).trim();
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) {
+      if (v.length) out[k] = v;
+      continue;
+    }
+    if (typeof v === 'object') {
+      if (Object.keys(v).length) out[k] = v;
+      continue;
+    }
+    if (String(v).trim() !== '') out[k] = String(v).trim();
   }
   const keys = Object.keys(out);
   if (!keys.length) return '';
