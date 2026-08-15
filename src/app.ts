@@ -7,7 +7,11 @@ import { createLogger, type Logger, type LogLevel } from './logger';
 import { registerPages } from './routes/pages';
 import { registerApi } from './routes/api';
 import { registerDatabasesRoutes } from './routes/databases';
+import { getPackageVersion } from './args';
 import { errorMessage } from './util';
+
+/** Installed package version, exposed to every template as `{{version}}`. */
+const APP_VERSION = getPackageVersion();
 
 export interface AppOptions {
   /** Path to the SQLite file (single-db mode). Defaults to `admindb.db`. */
@@ -22,6 +26,18 @@ export interface AppOptions {
   manager?: DbManager;
   /** Open the database read-only — all write routes are rejected with 403. */
   readonly?: boolean;
+  /**
+   * Manager mode: show the filesystem file-browser on the databases landing
+   * page. Defaults to `true`. Set to `false` to disable browsing (e.g. when the
+   * server was started with specific database files only).
+   */
+  allowBrowse?: boolean;
+  /**
+   * Manager mode: restrict the file-browser to this folder (absolute path).
+   * When set, the browser cannot navigate above it and only databases inside it
+   * can be opened.
+   */
+  browseRoot?: string;
   /** Internal: URL of the databases list (used by per-db apps to link "switch database"). */
   databasesUrl?: string;
   /** Internal: current database id (for locals/display). */
@@ -120,6 +136,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
       res.locals.databasesUrl = databasesUrl ?? null;
       res.locals.databasesMode = false;
       res.locals.readonly = db.isReadOnly;
+      res.locals.version = APP_VERSION;
       if (!req.path.startsWith('/api/')) {
         const all = await db.listTables();
         const names = (all.data ?? []).map((t) => t.name);
@@ -164,6 +181,7 @@ function createManagerApp(options: AppOptions): express.Express {
       res.locals.databasesUrl = null;
       res.locals.databasesMode = true;
       res.locals.readonly = readonly;
+      res.locals.version = APP_VERSION;
       if (!req.path.startsWith('/api/')) {
         res.locals.tables = [];
         res.locals.internalTables = [];
@@ -181,6 +199,8 @@ function createManagerApp(options: AppOptions): express.Express {
     logger,
     basePath,
     readonly,
+    allowBrowse: options.allowBrowse,
+    browseRoot: options.browseRoot,
     invalidate: (id) => subApps.delete(id),
   });
   app.use('/:dbId', (req: express.Request, res: express.Response, next: express.NextFunction) => {

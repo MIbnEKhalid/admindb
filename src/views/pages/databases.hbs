@@ -28,6 +28,47 @@
     </p>
   </div>
 
+  <!-- Open an existing database file -->
+  {{#if allowBrowse}}
+    <div class="app-card p-5">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/45">Open an existing database</h2>
+        <span class="text-xs text-base-content/40">.db · .sqlite · .sqlite3</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <input id="fs-path" class="field-input font-mono sm:!w-96" placeholder="Absolute path to a folder, e.g. C:\data" autocomplete="off" spellcheck="false" />
+        <button id="fs-go" type="button" class="btn btn-outline btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          Go
+        </button>
+        <button id="fs-up" type="button" class="btn btn-ghost btn-sm gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h13M3 10l4-4m-4 4l4 4" /></svg>
+          Up
+        </button>
+      </div>
+      <div class="mt-3 overflow-hidden rounded-xl border border-base-300">
+        <div id="fs-current" class="border-b border-base-200 bg-base-200/50 px-3 py-2 font-mono text-xs text-base-content/60"></div>
+        <div id="fs-listing" class="max-h-80 divide-y divide-base-200/70 overflow-auto"></div>
+      </div>
+      <p class="mt-2.5 text-xs text-base-content/45">
+        Browse the filesystem to select an existing database; opening it adds it to the list above so you can
+        switch between databases freely.
+        {{#if browseRoot}}
+          <span class="font-medium text-base-content/60">Browsing is limited to <code class="font-mono">{{browseRoot}}</code>.</span>
+        {{/if}}
+        <span class="font-medium text-warning">This server has no authentication — treat it like a remote filesystem &amp; database shell.</span>
+      </p>
+    </div>
+  {{else}}
+    <div class="app-card p-5">
+      <p class="text-sm text-base-content/60">
+        <b class="text-base-content/80">File browsing is disabled.</b>
+        This server was started with specific database files, so the filesystem browser is turned off — use the
+        list of available databases below.
+      </p>
+    </div>
+  {{/if}}
+
   <!-- List -->
   <div>
     <div class="mb-3 flex items-center justify-between">

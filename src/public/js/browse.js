@@ -803,7 +803,14 @@
     pop.style.visibility = 'visible';
     refOpenBtn = btn;
 
-    const onViewChange = () => closeRefPop();
+    // Close when the page behind the popover scrolls or the window resizes,
+    // but NOT when the nested table's own scroll container is scrolled — the
+    // capture-phase listener fires for every scroll target, including the
+    // mini-table inside the popover, which would otherwise close it instantly.
+    const onViewChange = (e) => {
+      if (e && e.target && pop.contains(e.target)) return;
+      closeRefPop();
+    };
     window.addEventListener('scroll', onViewChange, true);
     window.addEventListener('resize', onViewChange);
     const onClickOutside = (e) => {

@@ -1,8 +1,19 @@
 /** Small shared helpers used across the server. */
 
+import path from 'node:path';
+
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+/**
+ * True when `p` is equal to `root` or lives inside it (both treated as
+ * absolute). Used to sandbox the filesystem file-browser to an allowed folder.
+ */
+export function isPathWithinRoot(root: string, p: string): boolean {
+  const rel = path.relative(path.resolve(root), path.resolve(p));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
 /** Operators understood by the structured (type-aware) filter conditions. */

@@ -144,6 +144,34 @@ export class DbManager {
     return db;
   }
 
+  /**
+   * Register and open an existing database file by path, returning its id.
+   * Used by the "Open an existing database" file browser. Validates that the
+   * file is a readable SQLite database before keeping it registered.
+   */
+  openFile(absPath: string): string {
+    const abs = path.resolve(String(absPath ?? '').trim());
+    if (!abs) throw new Error('Database path is required.');
+    if (!existsSync(abs) || !statSync(abs).isFile()) {
+      throw new Error(`Not a file: ${abs}`);
+    }
+    const existing = this.idByPath.get(abs);
+    if (existing) return existing;
+    this.addFile(abs);
+    const id = this.idByPath.get(abs);
+    if (!id) throw new Error('Failed to register database file.');
+    try {
+      this.open(id); // throws if the file is not a readable SQLite database
+    } catch (err) {
+      // Roll the registration back so a bad file doesn't linger in the list.
+      this.pathById.delete(id);
+      this.idByPath.delete(abs);
+      this.files = this.files.filter((p) => p !== abs);
+      throw err;
+    }
+    return id;
+  }
+
   get(id: string): SqliteDatabase | undefined {
     return this.openDbs.get(id);
   }

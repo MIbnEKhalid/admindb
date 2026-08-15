@@ -23,9 +23,11 @@ editor, and multi-database support.
 
 > ## ⚠️ Security warning — read first
 >
-> **This tool exposes full, unauthenticated database access.** Every page and
-> API route (browse, edit, delete, run arbitrary SQL, change the schema, export
-> the whole database) is available to **anyone who can reach the server**.
+> **This tool exposes full, unauthenticated database AND filesystem access.**
+> Every page and API route (browse, edit, delete, run arbitrary SQL, change the
+> schema, export the whole database, and — in manager mode — browse the
+> filesystem to open database files) is available to **anyone who can reach the
+> server**.
 >
 > - **No authentication or authorization is built in.** The routes are **not
 >   protected**.
@@ -48,6 +50,26 @@ npm install admindb
 ```
 
 Requires **Node.js ≥ 20**.
+
+### Use as a standalone CLI tool
+
+AdminDB ships a command-line server. Install it globally (or just run it with
+`npx` — no install needed):
+
+```bash
+npm install -g admindb
+admindb                    # starts the server → open http://localhost:3000
+```
+
+Run it without installing anything:
+
+```bash
+npx admindb -p 8080        # run on port 8080
+```
+
+The `admindb` command starts the built-in server and opens the web UI in your
+browser. See [Run the built-in server](#run-the-built-in-server) for all the
+flags — `--port`, `--open <file>`, `--dir <folder>`, `--readonly`, and more.
 
 ## Using as an npm package
 
@@ -83,6 +105,8 @@ static assets + view engine). Mounting it is just `app.use('/path', router)`.
 | `basePath` | `string`             | URL prefix used by templates/assets (e.g. `/admin`). Pass the same prefix you mount at |
 | `logger`   | `Logger`             | Custom logger (see `createLogger`)                             |
 | `logLevel` | `'debug'\|'info'\|'warn'\|'error'` | Log verbosity (used when no logger is passed)     |
+| `allowBrowse` | `boolean`         | Manager mode: show the filesystem file-browser on the databases page. Set `false` to disable it (e.g. when the server was started with specific database files). Default: `true` |
+| `browseRoot` | `string`          | Manager mode: restrict the file-browser to this folder (absolute path) — it cannot navigate above it and only databases inside it can be opened |
 | `readonly` | `boolean`            | Open the database(s) **read-only**: every write is rejected (403), write controls are disabled in the UI, and a banner is shown. The DB file is opened with `SQLITE_OPEN_READONLY` + `PRAGMA query_only` as a belt-and-suspenders guard. Default: `false` |
 
 Example with a custom logger and prefix:
@@ -167,6 +191,10 @@ In multi-db mode:
 - **Read-only mode:** open the database(s) without write access — the file is
   opened `SQLITE_OPEN_READONLY` + `query_only`, every write route returns `403`,
   and the UI hides/disables all write controls and shows a banner.
+- **Standalone CLI / file browser:** `admindb` runs as a full web app — with no
+  arguments it opens a **Databases** landing page where you can browse the
+  filesystem and open any SQLite database file, or create new ones. Flags set
+  the port, open a file, manage a folder, and more (`admindb --help`).
 - **Multiple databases:** directory scanning and/or explicit file lists, each
   with its own workspace under `/{db}/…`.
 
@@ -210,25 +238,69 @@ npm run build
 npm start        # open http://localhost:3000
 ```
 
-Configuration via environment variables:
+The server is a full standalone web app. With no arguments it runs in
+**manager mode**: a **Databases** landing page where you can browse the
+filesystem and open any SQLite database file (`.db` / `.sqlite` / `.sqlite3`),
+or create new ones.
 
-| Variable    | Default            | Description                          |
-| ----------- | ------------------ | ------------------------------------ |
-| `PORT`      | `3000`             | Port to listen on                    |
-| `HOST`      | `0.0.0.0`          | Host / interface to bind             |
-| `DB_PATH`   | `admindb.db`   | Single SQLite database file          |
-| `DB_DIR`    | —                  | Multi-db source 1: a directory of `.db`/`.sqlite` files |
-| `DB_FILES`  | —                  | Multi-db source 2: comma-separated explicit database file paths |
-| `READONLY`  | —                  | `1` / `true` / `yes` / `on` opens the database(s) read-only     |
-| `BASE_PATH` | `''`               | URL prefix (e.g. `/admin`)           |
-| `LOG_LEVEL` | `info`             | `debug` \| `info` \| `warn` \| `error` |
+### CLI flags
 
-Multi-db mode activates when `DB_DIR` and/or `DB_FILES` is set:
+| Flag                 | Description                                              |
+| -------------------- | -------------------------------------------------------- |
+| `-p, --port <port>`  | Port to listen on (default `3000`)                       |
+| `-H, --host <host>`  | Host / interface to bind (default `0.0.0.0`)             |
+| `-o, --open <file>`  | Open a single database file directly                     |
+| `-d, --dir <dir>`    | Manage a folder of database files                        |
+| `--files <list>`     | Comma-separated database file paths to manage            |
+| `-b, --base-path <p>`| URL prefix to serve under (default `/`)                  |
+| `-r, --readonly`     | Open databases read-only (all writes disabled)           |
+| `-l, --log-level <l>`| `debug` \| `info` \| `warn` \| `error` (default `info`)  |
+| `-h, --help`         | Show help                                               |
+| `-v, --version`      | Show the version                                         |
+
+A positional `path` argument opens a database file directly, or manages a
+folder when it is a directory. Flags override the environment variables below:
+
+| Variable    | Default | Description                          |
+| ----------- | ------- | ------------------------------------ |
+| `PORT`      | `3000`  | Port to listen on                    |
+| `HOST`      | `0.0.0.0` | Host / interface to bind           |
+| `DB_PATH`   | —       | Single SQLite database file          |
+| `DB_DIR`    | —       | Folder of `.db`/`.sqlite` files      |
+| `DB_FILES`  | —       | Comma-separated explicit database file paths |
+| `READONLY`  | —       | `1` / `true` / `yes` / `on` opens the database(s) read-only |
+| `BASE_PATH` | `''`    | URL prefix (e.g. `/admin`)           |
+| `LOG_LEVEL` | `info`  | `debug` \| `info` \| `warn` \| `error` |
+
+Examples:
+
+```bash
+admindb                        # manager UI on http://localhost:3000
+admindb -p 8080                # same, on port 8080
+admindb ./data/app.db          # open a single database file
+admindb --open ~/notes.sqlite  # open a file directly
+admindb -d ./dbs               # manage a folder of databases
+admindb --files a.db,b.db -r   # open two files read-only
+```
 
 ```powershell
-$env:DB_DIR='./db'; npm start                 # PowerShell
+$env:DB_DIR='./db'; npm start   # PowerShell
 # bash/zsh:  DB_DIR=./db npm start
 ```
+
+When the server runs without an explicit single file, the **Databases** landing
+page lists the managed databases and includes an **"Open an existing
+database"** file browser: navigate folders, pick a database file, and open it.
+Opened files are added to the list so you can switch between databases freely.
+
+File-browser policy:
+- When a **folder** is given (`--dir`, a directory path, or `DB_DIR`), browsing
+  is limited to that folder — it cannot navigate above it and only databases
+  inside it can be opened.
+- When specific **files** are given (`--files`, or `DB_FILES`) without a folder,
+  file browsing is **disabled** entirely; only the configured databases are
+  listed.
+- With no folder or files, browsing is unrestricted.
 
 ## The JSON REST API (under `basePath`)
 
@@ -269,6 +341,17 @@ $env:DB_DIR='./db'; npm start                 # PowerShell
 In multi-db mode, every route is scoped under the database, e.g.
 `/api/app.db/tables`. Every API response uses the consistent shape
 `{ success, data?, error? }`.
+
+In manager mode (the databases landing page), these extra endpoints manage
+database files and power the filesystem browser:
+
+| Method | Path                    | Purpose                                     |
+| ------ | ----------------------- | ------------------------------------------- |
+| GET    | `/api/databases`        | List managed databases                      |
+| POST   | `/api/databases`        | Create a new database (`{ name }`)          |
+| DELETE | `/api/databases/:id`    | Delete a database                           |
+| GET    | `/api/fs/list?path=`    | List subfolders + SQLite files under a path (file browser) |
+| POST   | `/api/databases/open`   | Open/register an existing database file by path (`{ path }`) |
 
 ## Behaviour notes
 
