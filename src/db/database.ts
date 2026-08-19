@@ -54,6 +54,10 @@ export interface TableInfoData {
   columns: ColumnInfo[];
   foreignKeys: ForeignKeyInfo[];
   primaryKey: string[];
+  /** Indexes (including UNIQUE / JSON-expression indexes) — used by the data generator. */
+  indexes: IndexInfo[];
+  /** The table's `CREATE TABLE` statement (used to parse CHECK constraints). */
+  sql: string | null;
 }
 
 export interface SavedQuery {
@@ -388,6 +392,34 @@ export class SqliteDatabase {
         .filter((c) => c.pk > 0)
         .sort((a, b) => a.pk - b.pk)
         .map((c) => c.name);
+
+      // Indexes — the data generator needs them to detect UNIQUE columns and
+      // JSON-expression indexes (which throw "malformed JSON" at insert time
+      // if the column is filled with non-JSON text).
+      const indexRows = this.db
+        .prepare(`PRAGMA index_list(${quoteIdentifier(table)})`)
+        .all() as unknown as { seq: number; name: string; unique: number; origin: string; partial: number }[];
+      const indexes: IndexInfo[] = indexRows.map((ix) => {
+        const ixCols = (this.db
+          .prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`)
+          .all() as unknown as { seqno: number; cid: number; name: string }[]).map((c) => c.name);
+        const sqlRow = this.db
+          .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
+          .get(ix.name) as { sql?: string | null } | undefined;
+        return {
+          name: ix.name,
+          unique: !!ix.unique,
+          partial: ix.partial,
+          origin: ix.origin,
+          columns: ixCols,
+          sql: sqlRow?.sql ?? null,
+        };
+      });
+
+      const ddlRow = this.db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(table) as { sql?: string | null } | undefined;
+
       return {
         table,
         columns: cols.map((c) => ({
@@ -408,6 +440,8 @@ export class SqliteDatabase {
           on_delete: f.on_delete,
         })),
         primaryKey,
+        indexes,
+        sql: ddlRow?.sql ?? null,
       };
     });
   }
@@ -819,7 +853,7 @@ export class SqliteDatabase {
       const cols = this.db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as unknown as ColumnInfo[];
       if (!cols.length) return null;
       const primaryKey = cols.filter((c) => c.pk > 0).sort((a, b) => a.pk - b.pk).map((c) => c.name);
-      return { table, columns: cols, foreignKeys: [], primaryKey };
+      return { table, columns: cols, foreignKeys: [], primaryKey, indexes: [], sql: null };
     } catch {
       return null;
     }

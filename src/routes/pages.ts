@@ -4,6 +4,7 @@ import type { Logger } from '../logger';
 import { generateSqlDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
 import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS } from '../util';
+import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/generator';
 
 interface PageContext {
   db: SqliteDatabase;
@@ -207,6 +208,29 @@ export function registerPages(router: Router, ctx: PageContext): void {
         schema: schema.data,
         isInternal: table.startsWith('_'),
         config: { table, isInternal: table.startsWith('_') },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Data generator / seeder: pick per-column strategies and row count, then
+  // insert generated rows (or preview the SQL).
+  router.get('/tables/:table/seed', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const table = req.params.table;
+      const info = await db.getTableInfo(table);
+      if (!info.success || !info.data || info.data.columns.length === 0) {
+        return notFound(res, `Table "${table}" does not exist.`);
+      }
+      const columns = buildColumnConfigs(info.data);
+      res.locals.currentTable = table;
+      res.render('pages/seed', {
+        title: `Seed data · ${table}`,
+        table,
+        maxRows: MAX_SEED_ROWS,
+        quickCounts: [10, 100, 1000, MAX_SEED_ROWS],
+        seedConfig: { table, columns, maxRows: MAX_SEED_ROWS },
       });
     } catch (err) {
       next(err);
