@@ -24,13 +24,13 @@ interface DisplayRow {
 }
 
 function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoData): DisplayRow[] {
-  const pkCols = info.primaryKey;
+  const pkCols = info.primaryKey.length ? info.primaryKey : ['_rowid_'];
   return rawRows.map((row) => ({
     cells: info.columns.map((c) => {
       const v = normalizeCell(row[c.name]);
       return { name: c.name, value: v, isNull: v === null || v === undefined, display: v == null ? '' : String(v) };
     }),
-    pkEncoded: pkCols.length ? encodePk(pkCols.map((c) => row[c])) : null,
+    pkEncoded: encodePk(pkCols.map((c) => row[c])),
   }));
 }
 
@@ -168,7 +168,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
         colNames: info.data.columns.map((c) => c.name),
         colHeaders,
         refColumns,
-        hasPk: info.data.primaryKey.length > 0,
+        hasPk: true,
         orderBy: orderBy ?? '',
         orderDir,
         sizes,
@@ -179,8 +179,8 @@ export function registerPages(router: Router, ctx: PageContext): void {
         browseConfig: {
           table,
           filters,
-          pkCols: info.data.primaryKey,
-          hasPk: info.data.primaryKey.length > 0,
+          pkCols: info.data.primaryKey.length ? info.data.primaryKey : ['_rowid_'],
+          hasPk: true,
           readonly: db.isReadOnly,
         },
       });
@@ -269,23 +269,20 @@ export function registerPages(router: Router, ctx: PageContext): void {
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
       }
-      const pkColumns = info.data.primaryKey;
-      if (!pkColumns.length) {
-        return notFound(res, `Table "${table}" has no primary key, so rows cannot be edited from the UI.`);
-      }
+      const pkColumns = info.data.primaryKey.length ? info.data.primaryKey : ['_rowid_'];
       const pk = decodePk(req.params.id);
       if (pk.length !== pkColumns.length) {
-        return notFound(res, 'Invalid primary key.');
+        return notFound(res, 'Invalid row identifier.');
       }
       res.locals.currentTable = table;
       res.render('pages/form', {
         title: `Edit row · ${table}`,
         table,
         mode: 'edit',
-        pk,
+        pk: req.params.id,
         pkColumns,
-        infoSummary: `${info.data.columns.length} column(s) · PK: ${pkColumns.join(', ')}`,
-        config: { table, mode: 'edit', pk, pkColumns },
+        infoSummary: `${info.data.columns.length} column(s)` + (info.data.primaryKey.length ? ` · PK: ${info.data.primaryKey.join(', ')}` : ''),
+        config: { table, mode: 'edit', pk: req.params.id, pkColumns },
       });
     } catch (err) {
       next(err);

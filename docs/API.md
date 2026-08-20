@@ -65,3 +65,65 @@ These endpoints manage database files and power the filesystem browser:
 | DELETE | `/api/databases/:id`  | Delete a database                           |
 | GET    | `/api/fs/list?path=`  | List subfolders + SQLite files under a path (file browser) |
 | POST   | `/api/databases/open` | Open/register an existing database file by path (`{ path }`) |
+
+## Authentication & Sessions
+
+| Method | Path                  | Purpose                                     |
+| ------ | --------------------- | ------------------------------------------- |
+| GET    | `/login`              | Web UI login page                           |
+| POST   | `/login`              | Authenticate with `{ username, password }` and get session token |
+| POST   | `/logout`             | Terminate session and clear cookie          |
+| GET    | `/logout`             | Terminate session and redirect to `/login`  |
+
+All API endpoints accept:
+- **HTTP Basic Auth**: `Authorization: Basic <base64(username:password)>`
+- **Bearer Token**: `Authorization: Bearer <sessionToken>`
+- **Session Cookie**: `admindb_session=<sessionToken>`
+
+### Generating Password Hashes
+Generate salted `scrypt` password hashes for custom credentials:
+```bash
+npm run generatehash
+# Enter password -> outputs scrypt:<salt>:<hash>
+```
+
+Paste the generated hash into `ADMINDB_PASSWORD`, CLI `-P`, or `auth.password` option.
+
+### Disabling Native Authentication
+Pass `auth: false`, CLI `--no-auth`, or `ADMINDB_AUTH=false` to turn off built-in authentication when integrating your own security layer.
+
+> ⚠️ **Notice**: The native authentication system is designed for basic protection. In production environments, place AdminDB behind an authenticated gateway or use custom authentication middleware.
+
+## TypeScript API Types
+
+All request and response types are exported by the package entry point for client/SDK consumers:
+
+```ts
+import type {
+  ApiResponse,
+  ApiSuccessResponse,
+  ApiErrorResponse,
+  GetRowsResponse,
+  GetRowsResponseData,
+  TableInfoResponse,
+  TableInfoResponseData,
+  ExecuteQueryResponse,
+  ExecuteQueryResponseData,
+  BulkDeleteResponse,
+  BulkUpdateResponse,
+  SeedConfigResponse,
+  SeedGenerateResponse,
+  ListDatabasesResponse,
+  ListFsResponse,
+} from 'admindb';
+
+async function fetchTableRows(table: string): Promise<GetRowsResponseData> {
+  const res = await fetch(`/api/tables/${table}/rows`);
+  const json: GetRowsResponse = await res.json();
+  if (!json.success) {
+    throw new Error(json.error);
+  }
+  return json.data;
+}
+```
+

@@ -54,29 +54,49 @@ export interface MappedType {
 }
 
 /**
- * Map a designer-friendly type to a real SQLite column type.
+ * Map a designer-friendly or custom SQL type to a real SQLite column type.
  * DATE-style types map to a datetime column with a current-timestamp default.
- * Throws for unsupported types.
  */
 export function mapColumnType(type: string): MappedType {
-  const t = String(type).trim().toUpperCase();
+  const t = String(type ?? '').trim().toUpperCase();
+  if (!t) return { sqlType: 'TEXT' };
   switch (t) {
     case 'INTEGER':
+    case 'INT':
+    case 'BIGINT':
+    case 'SMALLINT':
+    case 'TINYINT':
       return { sqlType: 'INTEGER' };
     case 'TEXT':
+    case 'VARCHAR':
+    case 'CHAR':
+    case 'CLOB':
+    case 'STRING':
       return { sqlType: 'TEXT' };
     case 'REAL':
+    case 'FLOAT':
+    case 'DOUBLE':
+    case 'DECIMAL':
+    case 'NUMERIC':
+    case 'NUMBER':
       return { sqlType: 'REAL' };
     case 'BLOB':
+    case 'BINARY':
+    case 'VARBINARY':
       return { sqlType: 'BLOB' };
     case 'BOOLEAN':
+    case 'BOOL':
       return { sqlType: 'INTEGER' };
     case 'DATE':
       return { sqlType: 'DATETIME', defaultAuto: 'CURRENT_TIMESTAMP' };
     case 'DATETIME':
+    case 'TIMESTAMP':
       return { sqlType: 'DATETIME' };
     default:
-      throw new Error(`Unsupported column type: "${type}". Supported types: ${DESIGNER_TYPES.join(', ')}`);
+      if (/^[A-Za-z0-9_(),\s]+$/.test(t)) {
+        return { sqlType: t };
+      }
+      throw new Error(`Unsupported column type: "${type}". Supported types include: ${DESIGNER_TYPES.join(', ')} or standard SQL types.`);
   }
 }
 
@@ -92,6 +112,23 @@ function validateIdentifier(kind: string, name: string): void {
 export interface RenderOptions {
   /** Constrain DDL to what `ALTER TABLE ADD COLUMN` supports. */
   forAddColumn?: boolean;
+}
+
+/** Format a raw user-provided default value safely for SQL DDL. */
+export function formatSqlDefault(raw: string, colType?: string): string {
+  const s = String(raw ?? '').trim().replace(/;/g, '');
+  if (!s) return '';
+  if (/^null$/i.test(s)) return 'NULL';
+  if (/^[-+]?\d+(\.\d+)?$/.test(s)) return s;
+  if (/^(true|false)$/i.test(s)) return s.toUpperCase() === 'TRUE' ? '1' : '0';
+  if (/^'.*'$/s.test(s) || /^".*"$/s.test(s)) return s;
+  if (/^[a-zA-Z_]\w*\s*\(.*\)$/s.test(s)) return s;
+  if (/^CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME$/i.test(s)) return s.toUpperCase();
+  const t = (colType || '').toUpperCase();
+  if (t.includes('TEXT') || t.includes('CHAR') || t.includes('CLOB') || t.includes('VARCHAR') || t.includes('STRING')) {
+    return escapeString(s);
+  }
+  return s;
 }
 
 /**
@@ -118,7 +155,7 @@ export function renderColumnDef(col: ColumnDef, opts: RenderOptions = {}): strin
   if (col.notNull) def += ' NOT NULL';
   if (!opts.forAddColumn && col.unique) def += ' UNIQUE';
 
-  const rawDefault = String(col.defaultValue ?? '').trim().replace(/;/g, '');
+  const rawDefault = formatSqlDefault(String(col.defaultValue ?? ''), col.type);
   const dflt = rawDefault || mapped.defaultAuto || '';
   if (dflt) def += ` DEFAULT ${dflt}`;
   else if (opts.forAddColumn && col.notNull) {

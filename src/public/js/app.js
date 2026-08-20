@@ -106,6 +106,147 @@
     });
   }
 
+  // ---- Universal Confirm Dialog -------------------------------------------
+
+  function confirmDialog(options) {
+    return new Promise(function (resolve) {
+      if (typeof options === 'string') {
+        options = { message: options };
+      }
+      options = options || {};
+      var title = options.title || 'Confirm action';
+      var message = options.message || 'Are you sure you want to proceed?';
+      var confirmText = options.confirmText || (options.danger !== false ? 'Delete' : 'Confirm');
+      var cancelText = options.cancelText || 'Cancel';
+      var isDanger = options.danger !== false;
+      var requireMatch = options.requireInputMatch ? String(options.requireInputMatch).trim() : null;
+
+      var overlay = document.createElement('div');
+      overlay.className =
+        'fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 opacity-0 transition-opacity duration-200';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+
+      var card = document.createElement('div');
+      card.className =
+        'app-card w-full max-w-lg overflow-hidden shadow-2xl border border-base-300 transform scale-95 transition-transform duration-200';
+
+      var badgeColor = isDanger ? 'bg-error/10 text-error border-error/20' : 'bg-warning/10 text-warning border-warning/20';
+      var confirmBtnClass = isDanger ? 'btn-error text-white' : 'btn-primary';
+
+      var itemHtml = '';
+      if (options.item) {
+        var itemTypeLabel = options.itemType ? escapeHtml(options.itemType) + ': ' : '';
+        itemHtml =
+          '<div class="mb-3.5 flex items-center gap-2 rounded-xl border border-base-300 bg-base-200/60 px-3.5 py-2.5">' +
+          '<span class="text-xs font-semibold uppercase tracking-wider text-base-content/50">' + itemTypeLabel + '</span>' +
+          '<span class="font-mono text-sm font-bold text-base-content break-all">' + escapeHtml(options.item) + '</span>' +
+          '</div>';
+      }
+
+      var inputMatchHtml = '';
+      if (requireMatch) {
+        inputMatchHtml =
+          '<div class="mt-4 space-y-1.5">' +
+          '<label class="text-xs font-medium text-base-content/70">To confirm, type <span class="font-mono font-bold text-base-content select-all">' + escapeHtml(requireMatch) + '</span> below:</label>' +
+          '<input type="text" class="field-input font-mono js-confirm-input" placeholder="' + escapeHtml(options.requireInputPlaceholder || requireMatch) + '" autocomplete="off" spellcheck="false" />' +
+          '</div>';
+      }
+
+      var detailsHtml = options.detailsHtml ? '<div class="mt-3.5 max-h-48 overflow-y-auto rounded-xl border border-base-200 bg-base-200/40 p-3 text-xs leading-relaxed text-base-content/75">' + options.detailsHtml + '</div>' : '';
+
+      card.innerHTML =
+        '<div class="flex items-start justify-between gap-3 border-b border-base-200 px-6 py-4">' +
+        '  <div class="flex items-center gap-3">' +
+        '    <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl border ' + badgeColor + '">' +
+        (isDanger ? ICONS.warning : ICONS.info) +
+        '    </div>' +
+        '    <div>' +
+        '      <h3 class="text-base font-bold text-base-content">' + escapeHtml(title) + '</h3>' +
+        '      <p class="text-xs text-base-content/50 font-medium">' + (isDanger ? 'Destructive Action' : 'Action Confirmation') + '</p>' +
+        '    </div>' +
+        '  </div>' +
+        '  <button type="button" class="btn btn-ghost btn-xs btn-circle js-modal-cancel text-base-content/40 hover:text-base-content" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="px-6 py-5">' +
+        itemHtml +
+        '  <p class="text-sm text-base-content/80 leading-relaxed">' + escapeHtml(message) + '</p>' +
+        detailsHtml +
+        inputMatchHtml +
+        '</div>' +
+        '<div class="flex flex-wrap items-center justify-end gap-2.5 border-t border-base-200 bg-base-200/30 px-6 py-4">' +
+        '  <button type="button" class="btn btn-ghost btn-sm js-modal-cancel">' + escapeHtml(cancelText) + '</button>' +
+        '  <button type="button" class="btn ' + confirmBtnClass + ' btn-sm js-modal-confirm" ' + (requireMatch ? 'disabled' : '') + '>' + escapeHtml(confirmText) + '</button>' +
+        '</div>';
+
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      requestAnimationFrame(function () {
+        overlay.classList.remove('opacity-0');
+        overlay.classList.add('opacity-100');
+        card.classList.remove('scale-95');
+        card.classList.add('scale-100');
+      });
+
+      var confirmBtn = card.querySelector('.js-modal-confirm');
+      var cancelBtns = card.querySelectorAll('.js-modal-cancel');
+      var inputEl = card.querySelector('.js-confirm-input');
+
+      if (inputEl) {
+        inputEl.addEventListener('input', function () {
+          var val = inputEl.value.trim();
+          confirmBtn.disabled = val !== requireMatch;
+        });
+        inputEl.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && !confirmBtn.disabled) {
+            e.preventDefault();
+            finish(true);
+          }
+        });
+        setTimeout(function () { inputEl.focus(); }, 50);
+      } else {
+        var cancelBtn = card.querySelector('.js-modal-cancel');
+        if (cancelBtn) setTimeout(function () { cancelBtn.focus(); }, 50);
+      }
+
+      var finished = false;
+      function finish(result) {
+        if (finished) return;
+        finished = true;
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.classList.remove('opacity-100');
+        overlay.classList.add('opacity-0');
+        card.classList.remove('scale-100');
+        card.classList.add('scale-95');
+        setTimeout(function () {
+          overlay.remove();
+          resolve(result);
+        }, 180);
+      }
+
+      function onKeyDown(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          finish(false);
+        }
+      }
+      document.addEventListener('keydown', onKeyDown);
+
+      cancelBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () { finish(false); });
+      });
+
+      confirmBtn.addEventListener('click', function () {
+        if (!confirmBtn.disabled) finish(true);
+      });
+
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) finish(false);
+      });
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initTheme();
     initTableFilter();
@@ -115,6 +256,7 @@
     escapeHtml: escapeHtml,
     showToast: showToast,
     showError: function (message) { showToast(message, 'error'); },
+    confirm: confirmDialog,
     applyTheme: applyTheme,
   };
 })();

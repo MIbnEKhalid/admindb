@@ -33,7 +33,7 @@ test('sqlValue formats values safely', () => {
   assert.equal(sqlValue(3.14), '3.14');
 });
 
-test('mapColumnType maps designer types to real column types', () => {
+test('mapColumnType maps designer and standard SQL types', () => {
   assert.equal(mapColumnType('INTEGER').sqlType, 'INTEGER');
   assert.equal(mapColumnType('TEXT').sqlType, 'TEXT');
   assert.equal(mapColumnType('REAL').sqlType, 'REAL');
@@ -42,11 +42,14 @@ test('mapColumnType maps designer types to real column types', () => {
   assert.equal(mapColumnType('DATE').sqlType, 'DATETIME');
   assert.equal(mapColumnType('DATE').defaultAuto, 'CURRENT_TIMESTAMP');
   assert.equal(mapColumnType('datetime').sqlType, 'DATETIME');
+  assert.equal(mapColumnType('VARCHAR(255)').sqlType, 'VARCHAR(255)');
+  assert.equal(mapColumnType('BIGINT').sqlType, 'INTEGER');
+  assert.equal(mapColumnType('DECIMAL(10,2)').sqlType, 'DECIMAL(10,2)');
 });
 
 test('mapColumnType rejects unsupported types', () => {
-  assert.throws(() => mapColumnType('FOO'), /Unsupported column type/);
-  assert.throws(() => mapColumnType('VARCHAR(255)'), /Unsupported column type/);
+  assert.throws(() => mapColumnType('INVALID; DROP TABLE'), /Unsupported column type/);
+  assert.throws(() => mapColumnType("TEXT'--"), /Unsupported column type/);
 });
 
 test('generateCreateTable produces a valid CREATE TABLE', () => {

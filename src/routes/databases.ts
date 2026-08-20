@@ -52,6 +52,14 @@ export interface DatabaseRow extends DatabaseEntry {
   tables: number;
 }
 
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  isDb: boolean;
+  size: number;
+}
+
 export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): void {
   const { manager } = ctx;
   const allowBrowse = ctx.allowBrowse ?? true;
@@ -108,14 +116,6 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
   );
 
   // ---- Filesystem browser (open an existing database file) ----------------
-
-  interface FsEntry {
-    name: string;
-    path: string;
-    isDir: boolean;
-    isDb: boolean;
-    size: number;
-  }
 
   function listDirectory(abs: string): FsEntry[] {
     const entries: FsEntry[] = [];

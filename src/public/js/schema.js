@@ -4,7 +4,7 @@
   const cfgEl = document.getElementById('schema-config');
   if (!cfgEl) return;
   const cfg = JSON.parse(cfgEl.textContent);
-  const DESIGNER_TYPES = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'];
+  const DESIGNER_TYPES = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'VARCHAR(255)', 'BIGINT', 'DECIMAL(10,2)', 'DATE', 'DATETIME', 'JSON'];
   const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
   const t = encodeURIComponent(cfg.table);
 
@@ -58,15 +58,25 @@
     }
   }
 
+  function renderTypeOptions(selectedType) {
+    const upper = (selectedType || 'TEXT').toUpperCase();
+    const all = [...DESIGNER_TYPES];
+    if (selectedType && !all.map((x) => x.toUpperCase()).includes(upper)) {
+      all.unshift(selectedType);
+    }
+    return all.map((x) => '<option value="' + escapeHtml(x) + '"' + (x.toUpperCase() === upper ? ' selected' : '') + '>' + escapeHtml(x) + '</option>').join('');
+  }
+
   function buildAddForm() {
     formEl.innerHTML = '';
     formEl.innerHTML = [
       '<div class="col-span-2 sm:col-span-3"><label class="field-label">Name</label><input class="field-input ac-name" placeholder="column_name" autocomplete="off" spellcheck="false"></div>',
-      '<div class="col-span-1 sm:col-span-2"><label class="field-label">Type</label><select class="field-select ac-type">' + DESIGNER_TYPES.map((x) => '<option>' + x + '</option>').join('') + '</select></div>',
+      '<div class="col-span-1 sm:col-span-2"><label class="field-label">Type</label><select class="field-select ac-type">' + renderTypeOptions('TEXT') + '</select></div>',
       '<div class="col-span-1 sm:col-span-2"><label class="field-label">FK table</label><select class="field-select ac-fk-table"><option value="">— none —</option>' + fkTables.map((x) => '<option>' + escapeHtml(x) + '</option>').join('') + '</select></div>',
       '<div class="col-span-1 sm:col-span-2"><label class="field-label">FK column</label><select class="field-select ac-fk-col"><option value="">—</option></select></div>',
       '<div class="col-span-1 sm:col-span-2"><label class="field-label">Default</label><input class="field-input ac-default" placeholder="0, CURRENT_TIMESTAMP" autocomplete="off" spellcheck="false"></div>',
-      '<div class="col-span-2 flex items-end gap-1 pb-0.5 sm:col-span-1">',
+      '<div class="col-span-2 flex items-end gap-1.5 pb-0.5 sm:col-span-1">',
+      '<label class="flex cursor-pointer flex-col items-center gap-1" title="Primary key"><input type="checkbox" class="checkbox checkbox-xs ac-pk"><span class="text-[10px] font-semibold uppercase text-base-content/50">PK</span></label>',
       '<label class="flex cursor-pointer flex-col items-center gap-1" title="Not null"><input type="checkbox" class="checkbox checkbox-xs ac-notnull"><span class="text-[10px] font-semibold uppercase text-base-content/50">NN</span></label>',
       '<label class="flex cursor-pointer flex-col items-center gap-1" title="Unique"><input type="checkbox" class="checkbox checkbox-xs ac-unique"><span class="text-[10px] font-semibold uppercase text-base-content/50">UQ</span></label>',
       '</div>',
@@ -95,6 +105,7 @@
     const column = {
       name,
       type: formEl.querySelector('.ac-type').value,
+      primaryKey: formEl.querySelector('.ac-pk').checked,
       notNull: formEl.querySelector('.ac-notnull').checked,
       unique: formEl.querySelector('.ac-unique').checked,
       defaultValue: formEl.querySelector('.ac-default').value.trim() || null,
@@ -111,6 +122,7 @@
 
   if (addBtn) {
     addBtn.addEventListener('click', () => {
+      if (editPanel) editPanel.classList.add('hidden');
       panel.classList.toggle('hidden');
       if (!panel.classList.contains('hidden')) {
         errEl.classList.add('hidden');
@@ -120,6 +132,106 @@
   }
   if (cancelBtn) cancelBtn.addEventListener('click', () => { panel.classList.add('hidden'); formEl.innerHTML = ''; });
   if (submitBtn) submitBtn.addEventListener('click', addColumn);
+
+  // ---- Edit column (type & constraints) ------------------------------------
+
+  const editPanel = document.getElementById('edit-column-panel');
+  const editFormEl = document.getElementById('edit-column-form');
+  const editErrEl = document.getElementById('edit-column-error');
+  const editSubmitBtn = document.getElementById('edit-column-submit');
+  const editCancelBtn = document.getElementById('edit-column-cancel');
+  const editTargetSpan = document.getElementById('edit-column-target');
+  let currentEditingCol = null;
+
+  async function openEditColumn(colData) {
+    if (!editPanel || !editFormEl) return;
+    if (panel) panel.classList.add('hidden');
+    currentEditingCol = colData.name;
+    if (editTargetSpan) editTargetSpan.textContent = '"' + colData.name + '"';
+    editErrEl.classList.add('hidden');
+
+    editFormEl.innerHTML = [
+      '<div class="col-span-2 sm:col-span-3"><label class="field-label">Name</label><input class="field-input ec-name" value="' + escapeHtml(colData.name) + '" autocomplete="off" spellcheck="false"></div>',
+      '<div class="col-span-1 sm:col-span-2"><label class="field-label">Type</label><select class="field-select ec-type">' + renderTypeOptions(colData.type) + '</select></div>',
+      '<div class="col-span-1 sm:col-span-2"><label class="field-label">FK table</label><select class="field-select ec-fk-table"><option value="">— none —</option>' + fkTables.map((x) => '<option value="' + escapeHtml(x) + '"' + (colData.fkTable === x ? ' selected' : '') + '>' + escapeHtml(x) + '</option>').join('') + '</select></div>',
+      '<div class="col-span-1 sm:col-span-2"><label class="field-label">FK column</label><select class="field-select ec-fk-col"><option value="">—</option></select></div>',
+      '<div class="col-span-1 sm:col-span-2"><label class="field-label">Default</label><input class="field-input ec-default" value="' + escapeHtml(colData.defaultValue || '') + '" placeholder="0, CURRENT_TIMESTAMP" autocomplete="off" spellcheck="false"></div>',
+      '<div class="col-span-2 flex items-end gap-1.5 pb-0.5 sm:col-span-1">',
+      '<label class="flex cursor-pointer flex-col items-center gap-1" title="Primary key"><input type="checkbox" class="checkbox checkbox-xs ec-pk"' + (colData.primaryKey ? ' checked' : '') + '><span class="text-[10px] font-semibold uppercase text-base-content/50">PK</span></label>',
+      '<label class="flex cursor-pointer flex-col items-center gap-1" title="Not null"><input type="checkbox" class="checkbox checkbox-xs ec-notnull"' + (colData.notNull ? ' checked' : '') + '><span class="text-[10px] font-semibold uppercase text-base-content/50">NN</span></label>',
+      '<label class="flex cursor-pointer flex-col items-center gap-1" title="Unique"><input type="checkbox" class="checkbox checkbox-xs ec-unique"' + (colData.unique ? ' checked' : '') + '><span class="text-[10px] font-semibold uppercase text-base-content/50">UQ</span></label>',
+      '</div>',
+    ].join('');
+
+    const fkTableSel = editFormEl.querySelector('.ec-fk-table');
+    const fkColSel = editFormEl.querySelector('.ec-fk-col');
+
+    async function updateFkCols(table, selectedCol) {
+      fkColSel.innerHTML = '<option value="">—</option>';
+      if (!table) return;
+      try {
+        const targetInfo = await Api.get('/api/tables/' + encodeURIComponent(table) + '/info');
+        fkColSel.innerHTML = '<option value="">—</option>' + targetInfo.columns.map((c) => '<option value="' + escapeHtml(c.name) + '"' + (c.name === selectedCol ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>').join('');
+      } catch (e) { /* ignore */ }
+    }
+
+    if (colData.fkTable) {
+      await updateFkCols(colData.fkTable, colData.fkTo);
+    }
+
+    fkTableSel.addEventListener('change', () => updateFkCols(fkTableSel.value, ''));
+
+    editPanel.classList.remove('hidden');
+    editPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async function saveEditedColumn() {
+    if (!currentEditingCol) return;
+    editErrEl.classList.add('hidden');
+    const name = (editFormEl.querySelector('.ec-name').value || '').trim();
+    if (!name) return showError(editErrEl, 'Column name is required.');
+    if (!NAME_RE.test(name)) return showError(editErrEl, 'Invalid column name: "' + name + '". Use letters, digits and underscores.');
+    const fkTable = editFormEl.querySelector('.ec-fk-table').value;
+    const fkCol = editFormEl.querySelector('.ec-fk-col').value;
+    const column = {
+      name,
+      type: editFormEl.querySelector('.ec-type').value,
+      primaryKey: editFormEl.querySelector('.ec-pk').checked,
+      notNull: editFormEl.querySelector('.ec-notnull').checked,
+      unique: editFormEl.querySelector('.ec-unique').checked,
+      defaultValue: editFormEl.querySelector('.ec-default').value.trim() || null,
+      foreignKey: fkTable && fkCol ? { table: fkTable, column: fkCol } : null,
+    };
+
+    if (editSubmitBtn) editSubmitBtn.disabled = true;
+    try {
+      const data = await Api.put('/api/tables/' + t + '/columns/' + encodeURIComponent(currentEditingCol), { column });
+      UI.showToast(data.message || 'Column updated.', 'success');
+      window.location.reload();
+    } catch (e) {
+      showError(editErrEl, e.message);
+    } finally {
+      if (editSubmitBtn) editSubmitBtn.disabled = false;
+    }
+  }
+
+  if (editCancelBtn) editCancelBtn.addEventListener('click', () => { editPanel.classList.add('hidden'); editFormEl.innerHTML = ''; currentEditingCol = null; });
+  if (editSubmitBtn) editSubmitBtn.addEventListener('click', saveEditedColumn);
+
+  document.querySelectorAll('.col-edit').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openEditColumn({
+        name: btn.dataset.column || '',
+        type: btn.dataset.type || 'TEXT',
+        primaryKey: btn.dataset.pk === 'true',
+        notNull: btn.dataset.notnull === 'true',
+        unique: btn.dataset.unique === 'true',
+        defaultValue: btn.dataset.default || '',
+        fkTable: btn.dataset.fkTable || '',
+        fkTo: btn.dataset.fkTo || '',
+      });
+    });
+  });
 
   // ---- Column rename (inline) ---------------------------------------------
 
@@ -171,12 +283,21 @@
   // ---- Drop column ---------------------------------------------------------
 
   document.querySelectorAll('.col-drop').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const tr = btn.closest('tr');
       if (!tr) return;
       const cell = tr.querySelector('.col-name-cell');
-      const name = cell.dataset.column;
-      if (!window.confirm('Drop column "' + name + '" permanently? This cannot be undone.')) return;
+      const name = cell ? cell.dataset.column : '';
+      if (!name) return;
+      const confirmed = await UI.confirm({
+        title: 'Drop Column',
+        message: 'Dropping column "' + name + '" will permanently delete all data stored in this column for all rows in table "' + cfg.table + '". This action cannot be undone.',
+        item: name,
+        itemType: 'Column',
+        confirmText: 'Drop column',
+        danger: true,
+      });
+      if (!confirmed) return;
       Api.del('/api/tables/' + t + '/columns/' + encodeURIComponent(name))
         .then((data) => {
           UI.showToast(data.message || 'Column dropped.', 'success');
@@ -190,8 +311,17 @@
 
   const dropBtn = document.getElementById('drop-table');
   if (dropBtn) {
-    dropBtn.addEventListener('click', () => {
-      if (!window.confirm('Drop table "' + cfg.table + '" permanently? All of its data will be lost.')) return;
+    dropBtn.addEventListener('click', async () => {
+      const confirmed = await UI.confirm({
+        title: 'Drop Table',
+        message: 'Dropping table "' + cfg.table + '" permanently erases the table schema, all indexes, and all stored records. This action cannot be undone.',
+        item: cfg.table,
+        itemType: 'Table',
+        requireInputMatch: cfg.table,
+        confirmText: 'Drop table',
+        danger: true,
+      });
+      if (!confirmed) return;
       Api.del('/api/tables/' + t)
         .then(() => {
           UI.showToast('Table dropped.', 'success');
@@ -297,10 +427,18 @@
   }
 
   document.querySelectorAll('.index-drop').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const name = btn.dataset.index;
       if (!name) return;
-      if (!window.confirm('Drop index "' + name + '" permanently?')) return;
+      const confirmed = await UI.confirm({
+        title: 'Drop Index',
+        message: 'Are you sure you want to permanently drop index "' + name + '" on table "' + cfg.table + '"?',
+        item: name,
+        itemType: 'Index',
+        confirmText: 'Drop index',
+        danger: true,
+      });
+      if (!confirmed) return;
       Api.del('/api/tables/' + t + '/indexes/' + encodeURIComponent(name))
         .then((data) => {
           UI.showToast(data.message || 'Index dropped.', 'success');

@@ -46,11 +46,19 @@
 
   function initRowDelete() {
     document.querySelectorAll('.js-delete-row').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const table = btn.dataset.table;
         const pk = btn.dataset.pk;
         if (!table || !pk) return;
-        if (!window.confirm('Delete this row? This cannot be undone.')) return;
+        const confirmed = await UI.confirm({
+          title: 'Delete Row',
+          message: 'Are you sure you want to permanently delete this row? This action cannot be undone.',
+          item: pk,
+          itemType: 'Primary Key',
+          confirmText: 'Delete row',
+          danger: true,
+        });
+        if (!confirmed) return;
         Api.del('/api/tables/' + encodeURIComponent(table) + '/row/' + encodeURIComponent(pk))
           .then(() => {
             UI.showToast('Row deleted.', 'success');
@@ -438,7 +446,16 @@
       });
   }
 
-  function discardPending() {
+  async function discardPending() {
+    const n = pendingChanges.size;
+    if (!n) return;
+    const confirmed = await UI.confirm({
+      title: 'Discard Changes',
+      message: 'You have ' + n + ' pending inline edit(s). Are you sure you want to discard all staged changes and revert to the saved values?',
+      confirmText: 'Discard ' + n + ' change(s)',
+      danger: true,
+    });
+    if (!confirmed) return;
     for (const ch of pendingChanges.values()) {
       renderCellValue(ch.td, ch.origNull ? null : ch.origValue);
       ch.td.classList.remove('cell-dirty');
@@ -447,6 +464,7 @@
     }
     pendingChanges.clear();
     updateChangesBar();
+    UI.showToast('Pending edits discarded.', 'info');
   }
 
   function buildChangesBar() {
@@ -609,62 +627,32 @@
     const refs = (impact && impact.references) || [];
     const details = refs.length
       ? '<p class="mb-2 font-medium text-warning">⚠ Other tables reference these records:</p>' +
-        '<ul class="mb-3 list-disc space-y-1 pl-5">' +
+        '<ul class="mb-2 list-disc space-y-1 pl-5 text-xs">' +
         refs.map((r) =>
-          '<li><code class="font-mono">' + escapeHtml(r.table) + '.' + escapeHtml(r.from) + '</code> — <b class="tabular-nums">' + r.count + '</b> row(s) point at them</li>'
+          '<li><code class="font-mono font-bold">' + escapeHtml(r.table) + '.' + escapeHtml(r.from) + '</code> — <b class="tabular-nums">' + r.count + '</b> row(s) point at them</li>'
         ).join('') +
         '</ul>' +
-        '<p class="text-xs text-base-content/55">Depending on the foreign-key action, those rows may be deleted or orphaned. Deleting the selected rows can fail if a constraint blocks it.</p>'
-      : '<p class="text-base-content/60">No other tables reference these rows — a clean delete.</p>';
+        '<p class="text-[11px] text-base-content/55">Depending on foreign key rules, those rows may cascade-delete or block this action.</p>'
+      : '<p class="text-xs text-base-content/60">No other tables reference these rows — safe to delete.</p>';
 
-    const message =
-      '<p class="mb-3">Delete <b class="tabular-nums">' + ids.length + '</b> selected row(s) from <code class="font-mono">' + escapeHtml(cfg.table) + '</code>? This cannot be undone.</p>' +
-      details;
-
-    showConfirmModal({
-      title: 'Delete selected rows',
-      message: message,
-      confirmLabel: 'Delete ' + ids.length + ' row(s)',
+    const confirmed = await UI.confirm({
+      title: 'Delete Selected Rows',
+      message: 'Delete ' + ids.length + ' selected row(s) from table "' + cfg.table + '"? This action cannot be undone.',
+      item: cfg.table,
+      itemType: 'Table',
+      detailsHtml: details,
+      confirmText: 'Delete ' + ids.length + ' row(s)',
       danger: true,
-      onConfirm: async () => {
-        try {
-          const data = await Api.post('/api/tables/' + t + '/rows/bulk-delete', { ids, confirmImpact: true });
-          UI.showToast(data.message || 'Rows deleted.', 'success');
-          window.location.reload();
-        } catch (e) {
-          UI.showError(e.message);
-        }
-      },
     });
-  }
+    if (!confirmed) return;
 
-  function showConfirmModal(opts) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4';
-    const card = document.createElement('div');
-    card.className = 'app-card w-full max-w-lg overflow-hidden';
-    card.innerHTML =
-      '<div class="border-b border-base-200 px-5 py-4"><h3 class="text-base font-semibold">' + escapeHtml(opts.title) + '</h3></div>' +
-      '<div class="max-h-[55vh] overflow-auto px-5 py-4 text-sm leading-relaxed">' + opts.message + '</div>' +
-      '<div class="flex flex-wrap justify-end gap-2 border-t border-base-200 px-5 py-3">' +
-      '<button type="button" class="btn btn-ghost btn-sm js-modal-cancel">Cancel</button>' +
-      '<button type="button" class="btn btn-sm ' + (opts.danger ? 'btn-error' : 'btn-primary') + ' js-modal-ok">' + escapeHtml(opts.confirmLabel || 'Confirm') + '</button>' +
-      '</div>';
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-
-    const onKey = (e) => { if (e.key === 'Escape') close(false); };
-    const close = (result) => {
-      document.removeEventListener('keydown', onKey);
-      overlay.remove();
-      if (result && opts.onConfirm) opts.onConfirm();
-    };
-    document.addEventListener('keydown', onKey);
-    overlay.querySelector('.js-modal-cancel').addEventListener('click', () => close(false));
-    overlay.querySelector('.js-modal-ok').addEventListener('click', () => close(true));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
-    const okBtn = overlay.querySelector('.js-modal-ok');
-    if (okBtn) okBtn.focus();
+    try {
+      const data = await Api.post('/api/tables/' + t + '/rows/bulk-delete', { ids, confirmImpact: true });
+      UI.showToast(data.message || 'Rows deleted.', 'success');
+      window.location.reload();
+    } catch (e) {
+      UI.showError(e.message);
+    }
   }
 
   // ---- CSV import ---------------------------------------------------------

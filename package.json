@@ -32,7 +32,9 @@
     "dev": "concurrently -k -n server,css \"tsx watch src/cli.ts\" \"npm run dev:css\"",
     "dev:css": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./src/public/css/input.css -o ./src/public/css/app.css --watch",
     "prepack": "npm run build",
-    "test": "npm run build && node --test dist/test/*.test.js"
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "generatehash": "node scripts/generate-hash.mjs",
+    "lint": "tsc --noEmit"
   },
   "keywords": [
     "sqlite",

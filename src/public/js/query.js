@@ -109,11 +109,28 @@
     if (resultSummary) resultSummary.textContent = text;
   }
 
+  function isDestructiveSql(sql) {
+    var cleaned = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
+    if (/\b(drop\s+(table|view|index|trigger)|truncate\b)/i.test(cleaned)) return true;
+    if (/\bdelete\s+from\b/i.test(cleaned) && !/\bwhere\b/i.test(cleaned)) return true;
+    return false;
+  }
+
   async function run() {
     const sql = editor.value.trim();
     if (!sql) {
       setMessage('Enter a SQL statement first.', 'warning');
       return;
+    }
+    if (isDestructiveSql(sql)) {
+      const confirmed = await UI.confirm({
+        title: 'Execute Destructive SQL',
+        message: 'This SQL statement contains potentially destructive operations (e.g. DROP, TRUNCATE, or unrestricted DELETE) that may permanently erase database schemas or data.',
+        detailsHtml: '<pre class="font-mono text-xs text-base-content/85 whitespace-pre-wrap break-all">' + escapeHtml(sql.length > 350 ? sql.slice(0, 350) + '…' : sql) + '</pre>',
+        confirmText: 'Execute anyway',
+        danger: true,
+      });
+      if (!confirmed) return;
     }
     messageEl.innerHTML = '';
     resultEl.classList.add('hidden');
@@ -202,7 +219,17 @@
   async function deleteQuery() {
     const id = selectEl.value;
     if (!id) return;
-    if (!window.confirm('Delete this saved query?')) return;
+    const q = queriesCache.find((x) => String(x.id) === String(id));
+    const queryName = q ? q.name : 'Saved query';
+    const confirmed = await UI.confirm({
+      title: 'Delete Saved Query',
+      message: 'Are you sure you want to delete the saved query "' + queryName + '"?',
+      item: queryName,
+      itemType: 'Saved Query',
+      confirmText: 'Delete query',
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       await Api.del('/api/queries/' + id);
       UI.showToast('Query deleted.', 'success');

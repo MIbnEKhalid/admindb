@@ -28,9 +28,8 @@
       Read-only mode — this database is open without write access. All writes are disabled.
     </div>
   {{/if}}
-  <div class="drawer lg:drawer-open">
-    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" />
-    <div class="drawer-content flex min-h-screen flex-col">
+  {{#if noSidebar}}
+    <div class="flex min-h-screen flex-col">
       {{> navbar}}
       <main class="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         {{{body}}}
@@ -39,11 +38,24 @@
         AdminDB{{#if version}} v{{version}}{{/if}} · a browser tool for SQLite databases
       </footer>
     </div>
-    <div class="drawer-side z-40">
-      <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
-      {{> sidebar}}
+  {{else}}
+    <div class="drawer lg:drawer-open">
+      <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" />
+      <div class="drawer-content flex min-h-screen flex-col">
+        {{> navbar}}
+        <main class="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {{{body}}}
+        </main>
+        <footer class="border-t border-base-300 px-6 py-4 text-center text-xs text-base-content/40">
+          AdminDB{{#if version}} v{{version}}{{/if}} · a browser tool for SQLite databases
+        </footer>
+      </div>
+      <div class="drawer-side z-40">
+        <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
+        {{> sidebar}}
+      </div>
     </div>
-  </div>
+  {{/if}}
   <div id="toast-container" class="pointer-events-none fixed inset-x-0 top-4 z-50 flex flex-col items-center gap-2 px-4"></div>
 </body>
 </html>

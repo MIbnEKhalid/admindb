@@ -320,25 +320,112 @@ Opened files are added to the list so you can switch between databases freely.
 - **Multiple databases** — directory scanning and/or explicit file lists, each
   with its own workspace under `/{db}/…`.
 
-## Security warning
+## Authentication & Security
 
-> ⚠️ **This tool exposes full, unauthenticated database AND filesystem access.**
-> Every page and API route (browse, edit, delete, run arbitrary SQL, change the
-> schema, export the whole database, and — in manager mode — browse the
-> filesystem to open database files) is available to **anyone who can reach the
-> server**.
->
-> - **No authentication or authorization is built in.** The routes are **not
->   protected**.
-> - **It is your responsibility to protect access.** Do **not** expose
->   AdminDB to the public internet or to untrusted networks.
-> - Recommended ways to protect it:
->   - bind the standalone server to `127.0.0.1` (`HOST=127.0.0.1`) and use it
->     only from your own machine, and/or
->   - run it behind a reverse proxy that requires authentication (Basic auth,
->     OAuth, mTLS, …) or inside a VPN / private network.
->
-> Treat AdminDB as if it were a remote `sqlite3` shell with write access.
+AdminDB includes a built-in native authentication system that is **enabled by default**, while giving developers complete freedom to customize credentials with salted password hashes, disable it, or supply their own authentication layer.
+
+> ⚠️ **Production Security Notice:**
+> The built-in native authentication is intended for **basic/lightweight protection** (e.g. local networks, staging environments, internal developer tools). For production deployments with sensitive or public data, **always use your own robust authentication system** (such as OAuth2 / OIDC, enterprise SSO, mTLS, or custom Express middleware) or place AdminDB behind an authenticated reverse proxy or API gateway.
+
+### Default Credentials
+- **Default Username:** `admin`
+- **Default Password:** `admin` *(stored via a hardcoded salted `scrypt` cryptographic hash)*
+
+> 💡 *When running with the default password, a warning badge is displayed in the navigation bar to remind you to set custom credentials.*
+
+---
+
+### Generating a Secure Password Hash (`npm run generatehash`)
+
+To secure your installation with a custom password, generate a salted cryptographic `scrypt` hash using the built-in generator script:
+
+```bash
+npm run generatehash
+```
+
+The script will prompt you:
+```text
+Enter password to hash: [your-strong-password]
+```
+
+And outputs a secure hash format:
+```text
+scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75...
+```
+
+You can then **paste this hash in place of your password** across any configuration method:
+
+#### 1. Via Environment Variables (`.env`)
+```bash
+# Set your custom username and generated password hash
+export ADMINDB_USERNAME="ops"
+export ADMINDB_PASSWORD="scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75..."
+
+# Run AdminDB
+npx admindb
+```
+
+#### 2. Via Standalone CLI Options
+```bash
+# Pass the username and generated password hash directly
+admindb -u ops -P "scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75..."
+```
+
+#### 3. When Embedding in Express (`createRouter`)
+```ts
+import { createRouter } from 'admindb';
+
+app.use('/admin', createRouter({
+  dbPath: './data/app.db',
+  auth: {
+    enabled: true,
+    username: 'ops',
+    password: 'scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75...',
+    secret: process.env.SESSION_SECRET,
+  },
+}));
+```
+
+---
+
+### Disabling Native Authentication
+
+If you want no protection (e.g. for local scratchpads) or want to handle authentication entirely with your own custom Express middleware / gateway:
+
+#### 1. Via CLI Flag
+```bash
+admindb --no-auth
+```
+
+#### 2. Via Environment Variables
+```bash
+ADMINDB_AUTH=false admindb
+# or
+ADMINDB_NO_AUTH=1 admindb
+```
+
+#### 3. Via Express Options
+```ts
+// Attach your own authentication middleware before AdminDB
+app.use('/admin', myCustomAuthMiddleware, createRouter({
+  dbPath: './data/app.db',
+  auth: false, // Disables built-in auth completely
+}));
+```
+
+---
+
+### Supported Authentication Methods
+1. **Web Browser UI:** Form login at `/login` with constant-time verification, salted scrypt key derivation, and `HMAC-SHA256` signed HTTP-only session cookies.
+2. **HTTP Basic Auth:** Send `Authorization: Basic <base64(username:password)>` with API requests.
+3. **Bearer Token:** Send `Authorization: Bearer <sessionToken>` in REST API headers.
+
+## Security Warning & Best Practices
+
+> ⚠️ **AdminDB provides full administrative access to your database and filesystem.**
+> - Always set a strong, custom `ADMINDB_PASSWORD` or pass custom credentials before deploying to a shared network.
+> - If exposing over the internet, place the application behind HTTPS / SSL termination.
+> - When authentication is disabled (`--no-auth` / `auth: false`), ensure the port is bound to `127.0.0.1` or protected by your own gateway.
 
 ## API
 

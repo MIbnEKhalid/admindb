@@ -67,7 +67,20 @@
         })
         .catch(() => {});
     });
-    row.querySelector('.remove-col').addEventListener('click', () => row.remove());
+    row.querySelector('.remove-col').addEventListener('click', async () => {
+      const colName = row.querySelector('.col-name').value.trim();
+      if (colName) {
+        const confirmed = await UI.confirm({
+          title: 'Remove Column',
+          message: 'Remove column "' + colName + '" from the table definition?',
+          confirmText: 'Remove',
+          danger: true,
+        });
+        if (!confirmed) return;
+      }
+      row.remove();
+      schedulePreview();
+    });
 
     row.querySelectorAll('input, select').forEach((el) => {
       el.addEventListener('input', schedulePreview);

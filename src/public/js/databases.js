@@ -43,10 +43,19 @@
   }
 
   document.querySelectorAll('.js-delete-db').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
       if (!id) return;
-      if (!window.confirm('Delete database "' + id + '" permanently? This removes the file and all of its data.')) return;
+      const confirmed = await UI.confirm({
+        title: 'Delete Database',
+        message: 'Are you sure you want to permanently delete database "' + id + '"? This will remove the SQLite database file and all stored tables and records from the disk.',
+        item: id,
+        itemType: 'Database',
+        requireInputMatch: id,
+        confirmText: 'Delete database',
+        danger: true,
+      });
+      if (!confirmed) return;
       Api.del('/api/databases/' + encodeURIComponent(id))
         .then((data) => {
           UI.showToast(data.message || 'Database deleted.', 'success');

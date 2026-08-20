@@ -9,6 +9,13 @@ import { registerApi } from './routes/api';
 import { registerDatabasesRoutes } from './routes/databases';
 import { getPackageVersion } from './args';
 import { errorMessage } from './util';
+import {
+  resolveAuthConfig,
+  createAuthMiddleware,
+  registerAuthRoutes,
+  type AuthConfig,
+  type ResolvedAuthConfig,
+} from './auth';
 
 /** Installed package version, exposed to every template as `{{version}}`. */
 const APP_VERSION = getPackageVersion();
@@ -26,6 +33,13 @@ export interface AppOptions {
   manager?: DbManager;
   /** Open the database read-only — all write routes are rejected with 403. */
   readonly?: boolean;
+  /**
+   * Authentication configuration.
+   * - `true` (default): authentication enabled with default or env credentials.
+   * - `false`: completely disables authentication (no protection / developer's own auth).
+   * - `{ username, password, secret, ... }`: custom credentials and options.
+   */
+  auth?: boolean | AuthConfig;
   /**
    * Manager mode: show the filesystem file-browser on the databases landing
    * page. Defaults to `true`. Set to `false` to disable browsing (e.g. when the
@@ -77,7 +91,7 @@ function setupViewEngine(app: express.Express, logger: Logger): void {
           const s = v == null ? '' : String(v);
           return s.length > n ? `${s.slice(0, n)}…` : s;
         },
-        json: (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c'),
+        json: (v: unknown) => (JSON.stringify(v ?? null) ?? 'null').replace(/</g, '\\u003c'),
         add: (a: unknown, b: unknown) => Number(a) + Number(b),
         sub: (a: unknown, b: unknown) => Number(a) - Number(b),
         gt: (a: unknown, b: unknown) => Number(a) > Number(b),
@@ -115,6 +129,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
   const db = options.db ?? new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly: options.readonly });
   const databasesUrl = options.databasesUrl;
+  const authConfig = resolveAuthConfig(options.auth);
 
   const router = express();
   router.disable('x-powered-by');
@@ -124,6 +139,13 @@ function createSingleDbApp(options: AppOptions): express.Express {
 
   setupViewEngine(router, logger);
   router.use(express.json({ limit: '10mb' }));
+  router.use(express.urlencoded({ extended: false }));
+
+  // Register authentication endpoints (/login, /logout)
+  registerAuthRoutes(router, authConfig, basePath, logger);
+
+  // Authentication gatekeeper middleware
+  router.use(createAuthMiddleware(authConfig, basePath, logger));
 
   // Page locals (skipped for API + static paths).
   router.use(async (req, res, next) => {
@@ -137,6 +159,8 @@ function createSingleDbApp(options: AppOptions): express.Express {
       res.locals.databasesMode = false;
       res.locals.readonly = db.isReadOnly;
       res.locals.version = APP_VERSION;
+      res.locals.authEnabled = authConfig.enabled;
+      res.locals.isDefaultPassword = authConfig.isDefaultPassword;
       if (!req.path.startsWith('/api/')) {
         const all = await db.listTables();
         const names = (all.data ?? []).map((t) => t.name);
@@ -162,6 +186,7 @@ function createManagerApp(options: AppOptions): express.Express {
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
   const readonly = !!options.readonly;
+  const authConfig = resolveAuthConfig(options.auth);
 
   const app = express();
   app.disable('x-powered-by');
@@ -169,6 +194,13 @@ function createManagerApp(options: AppOptions): express.Express {
   app.use(express.static(path.join(__dirname, 'public')));
   setupViewEngine(app, logger);
   app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: false }));
+
+  // Register authentication endpoints (/login, /logout)
+  registerAuthRoutes(app, authConfig, basePath, logger);
+
+  // Authentication gatekeeper middleware
+  app.use(createAuthMiddleware(authConfig, basePath, logger));
 
   // Locals for the databases landing page.
   app.use(async (req, res, next) => {
@@ -182,6 +214,8 @@ function createManagerApp(options: AppOptions): express.Express {
       res.locals.databasesMode = true;
       res.locals.readonly = readonly;
       res.locals.version = APP_VERSION;
+      res.locals.authEnabled = authConfig.enabled;
+      res.locals.isDefaultPassword = authConfig.isDefaultPassword;
       if (!req.path.startsWith('/api/')) {
         res.locals.tables = [];
         res.locals.internalTables = [];
@@ -226,6 +260,7 @@ function createManagerApp(options: AppOptions): express.Express {
         dbId,
         databasesUrl: `${basePath ? basePath : ''}/`,
         readonly,
+        auth: authConfig,
       });
       subApps.set(dbId, sub);
     }
@@ -235,3 +270,4 @@ function createManagerApp(options: AppOptions): express.Express {
   addErrorHandlers(app, logger);
   return app;
 }
+

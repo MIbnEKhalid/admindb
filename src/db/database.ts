@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import type { Logger } from '../logger';
 import {
   quoteIdentifier,
+  generateCreateTable,
   generateAddColumn,
   generateRenameTable,
   generateRenameColumn,
@@ -471,7 +472,7 @@ export class SqliteDatabase {
       const offset = (page - 1) * limit;
       const { where, params } = buildFilterClause(opts.filters, cols.map((c) => c.name));
 
-      let sql = `SELECT * FROM ${quoteIdentifier(table)}${where}`;
+      let sql = `SELECT rowid AS _rowid_, * FROM ${quoteIdentifier(table)}${where}`;
       if (orderCol) sql += ` ORDER BY ${quoteIdentifier(orderCol)} ${orderDir}`;
       sql += ` LIMIT ${limit} OFFSET ${offset}`;
 
@@ -480,13 +481,13 @@ export class SqliteDatabase {
   }
 
   async getAllRows(table: string): Promise<Result<Record<string, unknown>[]>> {
-    return this.tryRun(() => this.db.prepare(`SELECT * FROM ${quoteIdentifier(table)}`).all() as unknown as Record<string, unknown>[]);
+    return this.tryRun(() => this.db.prepare(`SELECT rowid AS _rowid_, * FROM ${quoteIdentifier(table)}`).all() as unknown as Record<string, unknown>[]);
   }
 
   async getRow(table: string, where: WhereClause[]): Promise<Result<Record<string, unknown> | null>> {
     return this.tryRun(() => {
       const conds = where.map((w) => `${quoteIdentifier(w.column)} = ?`);
-      const sql = `SELECT * FROM ${quoteIdentifier(table)} WHERE ${conds.join(' AND ')} LIMIT 1`;
+      const sql = `SELECT rowid AS _rowid_, * FROM ${quoteIdentifier(table)} WHERE ${conds.join(' AND ')} LIMIT 1`;
       const row = this.db.prepare(sql).get(...where.map((w) => this.toBind(w.value)));
       return row ? (row as Record<string, unknown>) : null;
     });
@@ -619,7 +620,7 @@ export class SqliteDatabase {
         params.push(...where.map((w) => this.toBind(w.value)));
       }
       if (!groups.length) return [];
-      const sql = `SELECT * FROM ${quoteIdentifier(table)} WHERE ${groups.map((g) => `(${g})`).join(' OR ')}`;
+      const sql = `SELECT rowid AS _rowid_, * FROM ${quoteIdentifier(table)} WHERE ${groups.map((g) => `(${g})`).join(' OR ')}`;
       return this.db.prepare(sql).all(...params) as unknown as Record<string, unknown>[];
     });
   }
@@ -825,7 +826,144 @@ export class SqliteDatabase {
   }
 
   async addColumn(table: string, col: ColumnDef): Promise<Result<{ changes?: number }>> {
-    return this.execResult(generateAddColumn(table, col));
+    if (this.isReadOnly) return this.readonlyBlocked();
+    return this.tryRun(() => {
+      if (col.primaryKey) {
+        return this.modifyTableStructure(table, (existingCols) => [...existingCols, col]);
+      }
+      try {
+        const colCopy = { ...col, unique: false };
+        const sql = generateAddColumn(table, colCopy);
+        this.db.exec(sql);
+        if (col.unique) {
+          const idxName = `idx_${table}_${col.name}_unique`;
+          this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(idxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(col.name)});`);
+        }
+        return { changes: 1 };
+      } catch {
+        return this.modifyTableStructure(table, (existingCols) => [...existingCols, col]);
+      }
+    });
+  }
+
+  async modifyColumn(table: string, oldColName: string, newColDef: ColumnDef): Promise<Result<{ changes?: number }>> {
+    if (this.isReadOnly) return this.readonlyBlocked();
+    return this.tryRun(() => {
+      const newName = String(newColDef.name || oldColName).trim();
+      return this.modifyTableStructure(
+        table,
+        (cols) => {
+          const idx = cols.findIndex((c) => c.name === oldColName);
+          if (idx === -1) throw new Error(`Column "${oldColName}" does not exist in table "${table}".`);
+          const updated = [...cols];
+          updated[idx] = {
+            ...updated[idx],
+            name: newName,
+            type: newColDef.type || updated[idx].type,
+            primaryKey: newColDef.primaryKey !== undefined ? newColDef.primaryKey : updated[idx].primaryKey,
+            notNull: newColDef.notNull !== undefined ? newColDef.notNull : updated[idx].notNull,
+            unique: newColDef.unique !== undefined ? newColDef.unique : updated[idx].unique,
+            defaultValue: newColDef.defaultValue !== undefined ? newColDef.defaultValue : updated[idx].defaultValue,
+            foreignKey: newColDef.foreignKey !== undefined ? newColDef.foreignKey : updated[idx].foreignKey,
+          };
+          return updated;
+        },
+        oldColName,
+        newName,
+      );
+    });
+  }
+
+  private modifyTableStructure(
+    table: string,
+    transformColumns: (columns: ColumnDef[]) => ColumnDef[],
+    renamedOldCol?: string,
+    renamedNewCol?: string,
+  ): { changes: number } {
+    const rawCols = this.db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as unknown as ColumnInfo[];
+    if (!rawCols.length) throw new Error(`Table "${table}" does not exist.`);
+
+    const fks = this.db.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`).all() as unknown as ForeignKeyInfo[];
+    const indexRows = this.db.prepare(`PRAGMA index_list(${quoteIdentifier(table)})`).all() as unknown as { seq: number; name: string; unique: number; origin: string; partial: number }[];
+
+    const userIndexes: { name: string; unique: boolean; columns: string[] }[] = [];
+    for (const ix of indexRows) {
+      if (ix.origin === 'c') {
+        const ixCols = (this.db.prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`).all() as unknown as { seqno: number; cid: number; name: string }[]).map((c) => c.name);
+        userIndexes.push({
+          name: ix.name,
+          unique: !!ix.unique,
+          columns: ixCols.map((c) => (renamedOldCol && renamedNewCol && c === renamedOldCol ? renamedNewCol : c)),
+        });
+      }
+    }
+
+    const currentCols: ColumnDef[] = rawCols.map((c) => {
+      const existingFk = fks.find((f) => f.from === c.name);
+      return {
+        name: c.name,
+        type: c.type,
+        primaryKey: c.pk > 0,
+        notNull: !!c.notnull,
+        unique: false,
+        defaultValue: c.dflt_value,
+        foreignKey: existingFk ? { table: existingFk.table, column: existingFk.to ?? '' } : null,
+      };
+    });
+
+    const newCols = transformColumns(currentCols);
+    const tempTable = `_admindb_tmp_${table}_${Date.now()}`;
+    const createSql = generateCreateTable(tempTable, newCols);
+
+    const oldColMap = new Set(rawCols.map((c) => c.name));
+    const matchingOldCols: string[] = [];
+    const matchingNewCols: string[] = [];
+
+    for (const nc of newCols) {
+      let sourceColName = nc.name;
+      if (renamedOldCol && renamedNewCol && nc.name === renamedNewCol) {
+        sourceColName = renamedOldCol;
+      }
+      if (oldColMap.has(sourceColName)) {
+        matchingOldCols.push(quoteIdentifier(sourceColName));
+        matchingNewCols.push(quoteIdentifier(nc.name));
+      }
+    }
+
+    this.db.exec('PRAGMA foreign_keys = OFF;');
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      this.db.exec(createSql);
+      if (matchingOldCols.length > 0) {
+        this.db.exec(`INSERT INTO ${quoteIdentifier(tempTable)} (${matchingNewCols.join(', ')}) SELECT ${matchingOldCols.join(', ')} FROM ${quoteIdentifier(table)};`);
+      }
+      this.db.exec(`DROP TABLE ${quoteIdentifier(table)};`);
+      this.db.exec(`ALTER TABLE ${quoteIdentifier(tempTable)} RENAME TO ${quoteIdentifier(table)};`);
+
+      for (const ix of userIndexes) {
+        const uq = ix.unique ? 'UNIQUE ' : '';
+        const ixColsStr = ix.columns.map(quoteIdentifier).join(', ');
+        try {
+          this.db.exec(`CREATE ${uq}INDEX IF NOT EXISTS ${quoteIdentifier(ix.name)} ON ${quoteIdentifier(table)} (${ixColsStr});`);
+        } catch {
+          /* ignore index recreation error */
+        }
+      }
+
+      const fkCheck = this.db.prepare('PRAGMA foreign_key_check;').all();
+      if (fkCheck.length > 0) {
+        throw new Error('Foreign key constraint check failed after schema modification.');
+      }
+
+      this.db.exec('COMMIT;');
+      return { changes: 1 };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;'); } catch { /* ignore */ }
+      try { this.db.exec(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTable)};`); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      this.db.exec('PRAGMA foreign_keys = ON;');
+    }
   }
 
   async renameColumn(table: string, oldName: string, newName: string): Promise<Result<{ changes?: number }>> {

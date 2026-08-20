@@ -29,6 +29,14 @@ export interface CliArgs {
   logLevel?: LogLevel;
   /** Open databases read-only (`--readonly`). */
   readonly: boolean;
+  /** Whether authentication is enabled (defaults to true). Set to false via `--no-auth`. */
+  auth?: boolean;
+  /** Custom admin username (`--username`, `-u`). */
+  authUsername?: string;
+  /** Custom admin password (`--password`, `-P`). */
+  authPassword?: string;
+  /** Secret key for session cookie signing (`--auth-secret`). */
+  authSecret?: string;
 }
 
 export function helpText(): string {
@@ -45,32 +53,40 @@ export function helpText(): string {
     'you browse the filesystem and open any database file, or create new ones.',
     '',
     'Arguments:',
-    '  path                 Path to a database file (opens it directly) or to a',
-    '                       folder of databases (lists them). Default: the',
-    '                       current directory.',
+    '  path                     Path to a database file (opens it directly) or to a',
+    '                           folder of databases (lists them). Default: the',
+    '                           current directory.',
     '',
     'Options:',
-    '  -p, --port <port>     Port to listen on (default: 3000)',
-    '  -H, --host <host>     Host/interface to bind (default: 0.0.0.0)',
-    '  -o, --open <file>     Open a single database file',
-    '  -d, --dir <dir>       Folder of database files to manage',
-    '      --files <list>    Comma-separated database file paths',
-    '  -b, --base-path <p>   URL prefix to serve under (default: /)',
-    '  -r, --readonly        Open databases read-only (all writes disabled)',
-    '  -l, --log-level <l>   debug | info | warn | error (default: info)',
-    '  -h, --help            Show this help',
-    '  -v, --version         Show the version',
+    '  -p, --port <port>         Port to listen on (default: 3000)',
+    '  -H, --host <host>         Host/interface to bind (default: 0.0.0.0)',
+    '  -o, --open <file>         Open a single database file',
+    '  -d, --dir <dir>           Folder of database files to manage',
+    '      --files <list>        Comma-separated database file paths',
+    '  -b, --base-path <p>       URL prefix to serve under (default: /)',
+    '  -r, --readonly            Open databases read-only (all writes disabled)',
+    '      --no-auth             Disable authentication completely (no login barrier)',
+    '      --auth                Enable authentication (default: on)',
+    '  -u, --username <user>     Set admin username (default: admin, or ADMINDB_USERNAME)',
+    '  -P, --password <pass>     Set admin password (default: admin, or ADMINDB_PASSWORD)',
+    '      --auth-secret <sec>   Secret key used to sign session cookies',
+    '  -l, --log-level <l>       debug | info | warn | error (default: info)',
+    '  -h, --help                Show this help',
+    '  -v, --version             Show the version',
     '',
     'Environment variables (used when the matching flag is not given):',
-    '  PORT, HOST, DB_PATH, DB_DIR, DB_FILES, BASE_PATH, READONLY, LOG_LEVEL',
+    '  PORT, HOST, DB_PATH, DB_DIR, DB_FILES, BASE_PATH, READONLY, LOG_LEVEL,',
+    '  ADMINDB_AUTH, ADMINDB_NO_AUTH, ADMINDB_USERNAME, ADMINDB_PASSWORD, ADMINDB_SECRET',
     '',
     'Examples:',
-    '  admindb                          # manager UI on http://localhost:3000',
-    '  admindb -p 8080                  # same, on port 8080',
-    '  admindb ./data/app.db            # open a single database file',
-    '  admindb --open ~/notes.sqlite    # open a file (direct)',
-    '  admindb -d ./dbs                 # manage a folder of databases',
-    '  admindb --files a.db,b.db -r     # open two files read-only',
+    '  admindb                                  # manager UI with default auth (admin/admin)',
+    '  admindb --no-auth                        # run with authentication turned off',
+    '  admindb -u dev -P secret123              # run with custom credentials',
+    '  admindb -p 8080                          # run on port 8080',
+    '  admindb ./data/app.db                    # open a single database file',
+    '  admindb --open ~/notes.sqlite            # open a file (direct)',
+    '  admindb -d ./dbs                         # manage a folder of databases',
+    '  admindb --files a.db,b.db -r             # open two files read-only',
   ].join('\n');
 }
 
@@ -160,6 +176,22 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       args.logLevel = v as LogLevel;
     } else if (tok === '-r' || tok === '--readonly') {
       args.readonly = true;
+    } else if (tok === '--no-auth') {
+      args.auth = false;
+    } else if (tok === '--auth') {
+      args.auth = true;
+    } else if (isFlag(tok, '-u', '--username', '--user')) {
+      const v = takeValue('--username');
+      if (v === undefined) return invalid('Missing value for --username.');
+      args.authUsername = v;
+    } else if (isFlag(tok, '-P', '--password', '--pass')) {
+      const v = takeValue('--password');
+      if (v === undefined) return invalid('Missing value for --password.');
+      args.authPassword = v;
+    } else if (isFlag(tok, '--auth-secret', '--secret')) {
+      const v = takeValue('--auth-secret');
+      if (v === undefined) return invalid('Missing value for --auth-secret.');
+      args.authSecret = v;
     } else if (tok.startsWith('-') && tok.length > 1) {
       return invalid(`Unknown option: "${tok}".`);
     } else {

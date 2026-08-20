@@ -13,28 +13,63 @@
       </a>
     </div>
     <div class="flex items-center gap-1.5">
-      {{#unless databasesMode}}
-        {{#if databasesUrl}}
-          <a href="{{databasesUrl}}" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
-            Databases
+      {{#unless noSidebar}}
+        {{#unless databasesMode}}
+          {{#if databasesUrl}}
+            <a href="{{databasesUrl}}" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
+              Databases
+            </a>
+          {{/if}}
+          <a href="{{basePath}}/query" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            Query
           </a>
-        {{/if}}
-        <a href="{{basePath}}/query" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-          Query
-        </a>
-        {{#unless readonly}}
-          <a href="{{basePath}}/designer" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
-            New table
+          {{#unless readonly}}
+            <a href="{{basePath}}/designer" class="btn btn-ghost btn-sm hidden gap-1.5 sm:inline-flex">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+              New table
+            </a>
+          {{/unless}}
+          <a href="{{basePath}}/export" class="btn btn-ghost btn-sm hidden gap-1.5 md:inline-flex">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            Export
           </a>
         {{/unless}}
-        <a href="{{basePath}}/export" class="btn btn-ghost btn-sm hidden gap-1.5 md:inline-flex">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          Export
-        </a>
       {{/unless}}
+
+      {{#if authEnabled}}
+        {{#if authUser}}
+          {{#if isDefaultPassword}}
+            <span class="badge badge-warning badge-sm gap-1 hidden sm:inline-flex font-mono text-[11px]" title="Using default password (admin). Set ADMINDB_PASSWORD in production.">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              default pass
+            </span>
+          {{/if}}
+          <div class="dropdown dropdown-end">
+            <label tabindex="0" class="btn btn-ghost btn-sm gap-1.5 normal-case font-medium">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span class="max-w-[120px] truncate text-xs">{{authUser}}</span>
+            </label>
+            <ul tabindex="0" class="dropdown-content menu p-2 shadow-soft bg-base-100 rounded-xl w-48 border border-base-300 z-50 mt-1 text-sm">
+              <li class="menu-title px-2 py-1 text-xs text-base-content/50">Signed in as <strong class="text-base-content">{{authUser}}</strong></li>
+              <li>
+                <form method="POST" action="{{basePath}}/logout" class="p-0">
+                  <button type="submit" class="w-full text-left flex items-center gap-2 px-3 py-2 text-error hover:bg-error/10 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Sign out
+                  </button>
+                </form>
+              </li>
+            </ul>
+          </div>
+        {{/if}}
+      {{/if}}
+
       <button id="theme-toggle" type="button" class="btn btn-square btn-ghost btn-sm" aria-label="Toggle dark mode" title="Toggle dark mode">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />

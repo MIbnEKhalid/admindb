@@ -289,12 +289,31 @@ interface OrderingConstraint {
   before?: { column: string; orEqual: boolean };
 }
 
+/** Numeric range constraints on a column derived from a CHECK. */
+interface NumericConstraint {
+  min?: number;
+  max?: number;
+}
+
 /** CHECK-derived facts the generator can honor so generated rows actually insert. */
 interface CheckInfo {
+  /** column -> allowed values (from `Scope IN ('read-only', 'read-write')` or `Scope = 'a' OR Scope = 'b'`) */
+  columnAllowed: Map<string, string[]>;
+  /** column -> numeric range bounds (from `ExpiresInDays > 0 AND ExpiresInDays <= 365`) */
+  columnRange: Map<string, NumericConstraint>;
   /** column -> key -> allowed values (from `Permissions ->> 'scope' IN (...)`) */
   jsonAllowed: Map<string, Map<string, string[]>>;
   /** column -> ordering relative to another column */
   ordering: Map<string, OrderingConstraint>;
+}
+
+function findInMap<T>(map: Map<string, T>, colName: string): T | undefined {
+  if (map.has(colName)) return map.get(colName);
+  const lower = colName.toLowerCase();
+  for (const [k, v] of map.entries()) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return undefined;
 }
 
 /** Extract balanced `CHECK(...)` bodies from a CREATE TABLE statement. */
@@ -321,9 +340,13 @@ function extractCheckExprs(sql: string): string[] {
         }
         continue;
       }
-      if (ch === '"') {
+      if (ch === '"' || ch === '`' || ch === '[') {
+        const close = ch === '[' ? ']' : ch;
         i += 1;
-        while (i < sql.length && sql[i] !== '"') i += 1;
+        while (i < sql.length && sql[i] !== close) {
+          if (sql[i] === close && sql[i + 1] === close) i += 2;
+          else i += 1;
+        }
         i += 1;
         continue;
       }
@@ -340,12 +363,20 @@ function extractCheckExprs(sql: string): string[] {
 }
 
 /**
- * Parse a table's CHECK constraints for two common, seed-relevant shapes:
+ * Parse a table's CHECK constraints for seed-relevant shapes:
+ *  - column value whitelists: `"Scope" IN ('read-only','write')` or `Scope IN (...)`
+ *  - column equality OR chains: `"Scope" = 'read-only' OR "Scope" = 'write'`
+ *  - numeric bounds: `"ExpiresInDays" > 0 AND "ExpiresInDays" <= 365`
  *  - JSON value whitelists: `("Permissions" ->> 'scope') IN ('read-only','write')`
- *  - column ordering: `("ExpiresAt" > "CreatedAt")`
+ *  - column ordering: `("ExpiresAt" > "CreatedAt")` or `(ExpiresAt > CreatedAt)`
  */
 function parseChecks(sql: string | null): CheckInfo {
-  const info: CheckInfo = { jsonAllowed: new Map(), ordering: new Map() };
+  const info: CheckInfo = {
+    columnAllowed: new Map(),
+    columnRange: new Map(),
+    jsonAllowed: new Map(),
+    ordering: new Map(),
+  };
   if (!sql) return info;
 
   const setAfter = (col: string, other: string, orEqual: boolean) => {
@@ -358,30 +389,122 @@ function parseChecks(sql: string | null): CheckInfo {
     c.before = { column: other, orEqual };
     info.ordering.set(col, c);
   };
+  const setColumnAllowed = (col: string, vals: string[]) => {
+    if (!col || !vals.length) return;
+    const existing = findInMap(info.columnAllowed, col);
+    if (existing) {
+      for (const v of vals) {
+        if (!existing.includes(v)) existing.push(v);
+      }
+    } else {
+      info.columnAllowed.set(col, [...vals]);
+    }
+  };
 
   for (const expr of extractCheckExprs(sql)) {
-    // JSON whitelists: ("col" ->> 'key') IN (...) / json_extract("col", '$.key') IN (...)
-    // (the inner group wraps `('key')`, so allow optional `)` before IN)
-    const jw = /"([^"]+)"\s*(?:->>|->)\s*'([^']+)'\s*\)*\s*IN\s*\(([^)]*)\)/g;
-    const jw2 = /json_extract\s*\(\s*"([^"]+)"\s*,\s*'(?:\$\??|\.)?\.?([^']+)'\s*\)\s*\)*\s*IN\s*\(([^)]*)\)/g;
+    // 1. JSON whitelists: ("col" ->> 'key') IN (...) / json_extract("col", '$.key') IN (...)
+    const jw = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(?:->>|->)\s*'([^']+)'\s*\)*\s*IN\s*\(([^)]*)\)/gi;
+    const jw2 = /json_extract\s*\(\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*,\s*'(?:\$\??|\.)?\.?([^']+)'\s*\)\s*\)*\s*IN\s*\(([^)]*)\)/gi;
     for (const re of [jw, jw2]) {
       let m: RegExpExecArray | null;
       while ((m = re.exec(expr))) {
-        const values = (m[3].match(/'([^']*)'/g) ?? []).map((s) => s.replace(/^'|'$/g, ''));
-        if (!values.length) continue;
-        const byCol = info.jsonAllowed.get(m[1]) ?? new Map<string, string[]>();
-        byCol.set(m[2], values);
-        info.jsonAllowed.set(m[1], byCol);
+        const col = m[1] || m[2] || m[3] || m[4];
+        const key = m[5];
+        const inContent = m[6];
+        const strValues = (inContent.match(/'(?:[^']|'')*'/g) ?? []).map((s) => s.slice(1, -1).replace(/''/g, "'"));
+        const numValues = !strValues.length ? (inContent.match(/-?\b\d+(?:\.\d+)?\b/g) ?? []) : [];
+        const values = strValues.length ? strValues : numValues;
+        if (!values.length || !col || !key) continue;
+        const byCol = findInMap(info.jsonAllowed, col) ?? new Map<string, string[]>();
+        byCol.set(key, values);
+        info.jsonAllowed.set(col, byCol);
       }
     }
 
-    // Column ordering: "A" > "B", "A" >= "B", "B" < "A", …
-    const ord = /"([^"]+)"\s*(>=|<=|>|<)\s*"([^"]+)"/g;
+    // 2. Direct column whitelists: "col" IN ('a', 'b') / col IN ('a', 'b') / lower(col) IN ('a', 'b')
+    const colIn = /(?:^|[^(->>\w])(?:\(\s*)?(?:(?:lower|upper|trim|coalesce)\s*\(\s*)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*,\s*[^)]+)?\s*\)?\s*\)?\s*IN\s*\(([^)]*)\)/gi;
+    let mColIn: RegExpExecArray | null;
+    while ((mColIn = colIn.exec(expr))) {
+      const col = mColIn[1] || mColIn[2] || mColIn[3] || mColIn[4];
+      const inContent = mColIn[5];
+      if (!col || ['json_extract', 'strftime', 'datetime', 'date', 'length', 'typeof'].includes(col.toLowerCase())) continue;
+      const matchPos = mColIn.index;
+      const preceding = expr.slice(Math.max(0, matchPos - 5), matchPos);
+      if (preceding.includes('->') || preceding.includes('extract')) continue;
+
+      const strValues = (inContent.match(/'(?:[^']|'')*'/g) ?? []).map((s) => s.slice(1, -1).replace(/''/g, "'"));
+      const numValues = !strValues.length ? (inContent.match(/-?\b\d+(?:\.\d+)?\b/g) ?? []) : [];
+      const values = strValues.length ? strValues : numValues;
+      if (values.length) setColumnAllowed(col, values);
+    }
+
+    // 3. Direct column equality OR chains: "Scope" = 'read-only' OR "Scope" = 'read-write'
+    const eqOr = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*=\s*'((?:[^']|'')*)'/gi;
+    let mEq: RegExpExecArray | null;
+    const eqByCol = new Map<string, string[]>();
+    while ((mEq = eqOr.exec(expr))) {
+      const col = mEq[1] || mEq[2] || mEq[3] || mEq[4];
+      const val = mEq[5].replace(/''/g, "'");
+      if (col && !['json_extract', 'lower', 'upper', 'trim', 'strftime', 'datetime'].includes(col.toLowerCase())) {
+        const cur = eqByCol.get(col) ?? [];
+        if (!cur.includes(val)) cur.push(val);
+        eqByCol.set(col, cur);
+      }
+    }
+    for (const [col, vals] of eqByCol.entries()) {
+      if (vals.length > 0) setColumnAllowed(col, vals);
+    }
+
+    // 4. Numeric range constraints: col >= N / col > N / col <= N / col < N
+    const numCmp1 = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(>=|>|<=|<)\s*(-?\d+(?:\.\d+)?)/g;
+    let mNum1: RegExpExecArray | null;
+    while ((mNum1 = numCmp1.exec(expr))) {
+      const col = mNum1[1] || mNum1[2] || mNum1[3] || mNum1[4];
+      const op = mNum1[5];
+      const val = Number(mNum1[6]);
+      if (col && Number.isFinite(val) && !['json_extract', 'length', 'strftime', 'datetime'].includes(col.toLowerCase())) {
+        const cur = findInMap(info.columnRange, col) ?? {};
+        if (op === '>=' || op === '>') {
+          const minVal = op === '>' ? val + 1 : val;
+          cur.min = cur.min != null ? Math.max(cur.min, minVal) : minVal;
+        } else {
+          const maxVal = op === '<' ? val - 1 : val;
+          cur.max = cur.max != null ? Math.min(cur.max, maxVal) : maxVal;
+        }
+        info.columnRange.set(col, cur);
+      }
+    }
+
+    // N <= col / N < col / N >= col / N > col
+    const numCmp2 = /(-?\d+(?:\.\d+)?)\s*(>=|>|<=|<)\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))/g;
+    let mNum2: RegExpExecArray | null;
+    while ((mNum2 = numCmp2.exec(expr))) {
+      const val = Number(mNum2[1]);
+      const op = mNum2[2];
+      const col = mNum2[3] || mNum2[4] || mNum2[5] || mNum2[6];
+      if (col && Number.isFinite(val) && !['json_extract', 'length', 'strftime', 'datetime'].includes(col.toLowerCase())) {
+        const cur = findInMap(info.columnRange, col) ?? {};
+        if (op === '<=' || op === '<') {
+          const minVal = op === '<' ? val + 1 : val;
+          cur.min = cur.min != null ? Math.max(cur.min, minVal) : minVal;
+        } else {
+          const maxVal = op === '>' ? val - 1 : val;
+          cur.max = cur.max != null ? Math.min(cur.max, maxVal) : maxVal;
+        }
+        info.columnRange.set(col, cur);
+      }
+    }
+
+    // 5. Column ordering: "A" > "B", A > B, "UpdatedAt" >= "CreatedAt", etc.
+    const ord = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(>=|<=|>|<)\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))/g;
     let m2: RegExpExecArray | null;
     while ((m2 = ord.exec(expr))) {
-      const a = m2[1];
-      const op = m2[2];
-      const b = m2[3];
+      const a = m2[1] || m2[2] || m2[3] || m2[4];
+      const op = m2[5];
+      const b = m2[6] || m2[7] || m2[8] || m2[9];
+      if (!a || !b || /^\d+$/.test(a) || /^\d+$/.test(b)) continue;
+      if (['json_extract', 'strftime', 'datetime', 'date', 'length'].includes(a.toLowerCase())) continue;
+      if (['json_extract', 'strftime', 'datetime', 'date', 'length'].includes(b.toLowerCase())) continue;
       if (op === '>' || op === '>=') {
         setAfter(a, b, op === '>=');
         setBefore(b, a, op === '>=');
@@ -663,7 +786,7 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
     if (defaultPlan.strategy !== 'fk' && !col.pk && isJsonColumn(col, jsonIndexKeys.has(col.name))) {
       const keys = jsonIndexKeys.get(col.name);
       const useKeys = keys && keys.length ? keys : ['scope', 'enabled', 'allowedApps'];
-      const allowed = checkInfo.jsonAllowed.get(col.name);
+      const allowed = findInMap(checkInfo.jsonAllowed, col.name);
       const jsonValues: Record<string, string[]> = {};
       if (allowed) for (const k of useKeys) {
         const vals = allowed.get(k);
@@ -674,6 +797,23 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
         jsonKeys: useKeys,
         ...(Object.keys(jsonValues).length ? { jsonValues } : {}),
       };
+    }
+
+    // Direct column CHECK constraint allowed values (e.g. Scope IN ('read-only', 'read-write', 'admin') or Scope = 'a' OR Scope = 'b')
+    const colAllowed = findInMap(checkInfo.columnAllowed, col.name);
+    if (colAllowed && colAllowed.length > 0 && defaultPlan.strategy !== 'fk' && !col.pk) {
+      if (colAllowed.length === 1) {
+        defaultPlan = { strategy: 'fixed', value: colAllowed[0] };
+      } else {
+        defaultPlan = { strategy: 'list', values: [...colAllowed] };
+      }
+    }
+
+    // Direct column CHECK numeric range bounds (e.g. ExpiresInDays > 0 AND ExpiresInDays <= 365)
+    const colRange = findInMap(checkInfo.columnRange, col.name);
+    if (colRange && (defaultPlan.strategy === 'int' || defaultPlan.strategy === 'decimal')) {
+      if (colRange.min != null) defaultPlan.min = colRange.min;
+      if (colRange.max != null) defaultPlan.max = colRange.max;
     }
 
     // The detected default must always be a strategy the column actually
@@ -1017,6 +1157,13 @@ export async function generateRows(
     const cfg = configs.find((c) => c.name === col.name);
     const raw = plan[col.name];
     const p = raw && raw.strategy ? raw : (cfg?.defaultPlan ?? { strategy: 'skip' });
+
+    if (p.strategy === 'list' && (!p.values || !p.values.length)) {
+      const allowed = findInMap(checkInfo.columnAllowed, col.name);
+      if (allowed && allowed.length) {
+        p.values = [...allowed];
+      }
+    }
 
     if (!cfg || !cfg.strategies.some((s) => s.id === p.strategy)) {
       throw new Error(`Unsupported generator strategy "${p.strategy}" for column "${col.name}".`);

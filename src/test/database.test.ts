@@ -440,3 +440,77 @@ test('updateRows applies many row updates atomically and rolls back on failure',
     cleanup();
   }
 });
+
+test('modifyColumn changes column type and constraints while preserving data and indexes', async () => {
+  const { db, cleanup } = openDb();
+  try {
+    await db.execResult('CREATE TABLE items (id INTEGER PRIMARY KEY, title TEXT, price TEXT, status TEXT DEFAULT "active")');
+    await db.execResult('CREATE INDEX idx_items_title ON items (title)');
+    await db.insertRows('items', [
+      [{ column: 'title', value: 'Book' }, { column: 'price', value: '19.99' }, { column: 'status', value: 'active' }],
+      [{ column: 'title', value: 'Pen' }, { column: 'price', value: '2.50' }, { column: 'status', value: 'archived' }],
+    ]);
+
+    // Modify price from TEXT to REAL and add NOT NULL constraint
+    const modRes = await db.modifyColumn('items', 'price', {
+      name: 'price',
+      type: 'REAL',
+      notNull: true,
+      defaultValue: '0.0',
+    });
+    assert.equal(modRes.success, true);
+
+    const schema = await db.getSchema('items');
+    const priceCol = schema.data?.columns.find((c) => c.name === 'price');
+    assert.equal(priceCol?.type, 'REAL');
+    assert.equal(priceCol?.notnull, 1);
+
+    // Verify data was preserved
+    const all = await db.getAllRows('items');
+    const rows = (all.data ?? []) as Record<string, unknown>[];
+    assert.equal(rows.length, 2);
+    assert.equal(rows.find((r) => r.title === 'Book')?.price, 19.99);
+
+    // Verify index was preserved
+    const idx = schema.data?.indexes.find((i) => i.name === 'idx_items_title');
+    assert.ok(idx);
+  } finally {
+    cleanup();
+  }
+});
+
+test('supports row identification and bulk operations on tables without primary keys', async () => {
+  const { db, cleanup } = openDb();
+  try {
+    await db.execResult('CREATE TABLE logs (message TEXT, level TEXT)');
+    await db.insertRows('logs', [
+      [{ column: 'message', value: 'boot' }, { column: 'level', value: 'info' }],
+      [{ column: 'message', value: 'warn' }, { column: 'level', value: 'warning' }],
+      [{ column: 'message', value: 'crash' }, { column: 'level', value: 'error' }],
+    ]);
+
+    const page = await db.getRows('logs', { page: 1, limit: 10 });
+    assert.equal(page.success, true);
+    const rows = page.data ?? [];
+    assert.equal(rows.length, 3);
+    assert.ok(rows[0]._rowid_ !== undefined);
+
+    // Bulk update using _rowid_
+    const row1Id = rows[0]._rowid_;
+    const upRes = await db.updateRows('logs', [
+      { fields: [{ column: 'message', value: 'booted successfully' }], where: [{ column: '_rowid_', value: row1Id }] },
+    ]);
+    assert.equal(upRes.success, true);
+
+    // Bulk delete using _rowid_
+    const row2Id = rows[1]._rowid_;
+    const delRes = await db.deleteRows('logs', [[{ column: '_rowid_', value: row2Id }]]);
+    assert.equal(delRes.success, true);
+    assert.equal(delRes.data?.deleted, 1);
+
+    const remaining = await db.getAllRows('logs');
+    assert.equal(remaining.data?.length, 2);
+  } finally {
+    cleanup();
+  }
+});

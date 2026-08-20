@@ -96,8 +96,14 @@ function buildUpdateFields(
 }
 
 function pkWhere(info: TableInfoData, encodedId: string): { column: string; value: unknown }[] | null {
-  if (!info.primaryKey.length) return null;
   const vals = decodePk(encodedId);
+  if (!info.primaryKey.length) {
+    if (vals.length === 1 && vals[0] !== '') {
+      const num = Number(vals[0]);
+      return [{ column: '_rowid_', value: Number.isFinite(num) ? num : vals[0] }];
+    }
+    return null;
+  }
   if (vals.length !== info.primaryKey.length) return null;
   const typeMap = new Map(info.columns.map((c) => [c.name, c.type]));
   return info.primaryKey.map((col, i) => ({ column: col, value: coerceFormValue(vals[i], typeMap.get(col)!) }));
@@ -130,7 +136,6 @@ function parseSeedRequest(body: unknown): { count: number; plan: Record<string, 
  * no usable primary key or when none of the ids resolve.
  */
 function resolvePkRows(info: TableInfoData, ids: unknown): WhereClause[][] | null {
-  if (!info.primaryKey.length) return null;
   const list = Array.isArray(ids) ? ids : ids == null ? [] : [ids];
   const out: WhereClause[][] = [];
   for (const id of list) {
@@ -548,9 +553,6 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   router.post('/api/tables/:table/rows/bulk-update', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    if (!info.primaryKey.length) {
-      return fail(res, `Table "${req.params.table}" has no primary key, so inline edits cannot be applied.`, 400);
-    }
     const updates = Array.isArray(req.body?.updates) ? (req.body.updates as unknown[]) : [];
     if (!updates.length) return fail(res, 'No changes to apply.', 400);
     if (updates.length > MAX_BULK_ROWS) return fail(res, `Select at most ${MAX_BULK_ROWS} rows at a time.`, 400);
@@ -687,33 +689,57 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   router.post('/api/tables/:table/columns', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    const col = (req.body?.column ?? null) as unknown;
+    const col = (req.body?.column ?? req.body ?? null) as unknown;
     if (!col || typeof col !== 'object') return fail(res, 'Column definition is required.');
-    let sql: string;
+    const colDef = col as ColumnDef;
+    let sql: string | undefined;
     try {
-      sql = generateAddColumn(req.params.table, col as ColumnDef);
-    } catch (err) {
-      return fail(res, errorMessage(err));
+      sql = generateAddColumn(req.params.table, { ...colDef, unique: false });
+    } catch {
+      /* ignore preview sql error if table recreation is needed */
     }
-    const r = await db.addColumn(req.params.table, col as ColumnDef);
+    const r = await db.addColumn(req.params.table, colDef);
     if (!r.success) return fail(res, r.error ?? 'Failed to add column.', 400);
-    ok(res, { message: `Column "${String((col as ColumnDef).name)}" added.`, sql }, 201);
+    ok(res, { message: `Column "${String(colDef.name)}" added.`, sql }, 201);
   }),
   );
 
   router.put('/api/tables/:table/columns/:column', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    const newName = String(req.body?.name ?? '').trim();
-    let sql: string;
-    try {
-      sql = generateRenameColumn(req.params.table, req.params.column, newName);
-    } catch (err) {
-      return fail(res, errorMessage(err));
+    const oldCol = req.params.column;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const col = (body.column ?? body) as ColumnDef;
+    const newName = String(col.name ?? body.name ?? oldCol).trim();
+
+    // If only renaming and no type/constraint modifications were passed:
+    const isOnlyRename = col.type === undefined && col.notNull === undefined && col.unique === undefined && col.primaryKey === undefined && col.defaultValue === undefined && col.foreignKey === undefined;
+
+    if (isOnlyRename && newName !== oldCol) {
+      let sql: string;
+      try {
+        sql = generateRenameColumn(req.params.table, oldCol, newName);
+      } catch (err) {
+        return fail(res, errorMessage(err));
+      }
+      const r = await db.renameColumn(req.params.table, oldCol, newName);
+      if (!r.success) return fail(res, r.error ?? 'Failed to rename column.', 400);
+      return ok(res, { message: `Column renamed to "${newName}".`, sql });
     }
-    const r = await db.renameColumn(req.params.table, req.params.column, newName);
-    if (!r.success) return fail(res, r.error ?? 'Failed to rename column.', 400);
-    ok(res, { message: `Column renamed to "${newName}".`, sql });
+
+    const colDef: ColumnDef = {
+      name: newName,
+      type: col.type || 'TEXT',
+      notNull: !!col.notNull,
+      unique: !!col.unique,
+      primaryKey: !!col.primaryKey,
+      defaultValue: col.defaultValue !== undefined ? (col.defaultValue === null ? null : String(col.defaultValue)) : undefined,
+      foreignKey: col.foreignKey || null,
+    };
+
+    const r = await db.modifyColumn(req.params.table, oldCol, colDef);
+    if (!r.success) return fail(res, r.error ?? 'Failed to modify column.', 400);
+    ok(res, { message: `Column "${oldCol}" updated.`, column: colDef });
   }),
   );
 

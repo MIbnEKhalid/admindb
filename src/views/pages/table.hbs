@@ -140,11 +140,9 @@
         <table class="table table-sm table-pin-rows">
           <thead>
             <tr class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50">
-              {{#if hasPk}}
-                <th class="w-10 text-center font-semibold">
-                  <input type="checkbox" id="select-all-rows" class="checkbox checkbox-primary checkbox-xs" title="Select all rows on this page" />
-                </th>
-              {{/if}}
+              <th class="w-10 text-center font-semibold">
+                <input type="checkbox" id="select-all-rows" class="checkbox checkbox-primary checkbox-xs" title="Select all rows on this page" />
+              </th>
               {{#each colHeaders}}
                 <th class="whitespace-nowrap font-semibold">
                   <a href="{{this.href}}" class="sort-link {{#if this.active}}active{{/if}}" title="Sort by {{this.name}}">
@@ -165,13 +163,11 @@
           <tbody>
             {{#each rows}}
               <tr class="group hover:bg-primary/[0.04]" data-table="{{../table}}" data-pk="{{this.pkEncoded}}">
-                {{#if ../hasPk}}
-                  <td class="w-10 text-center align-middle">
-                    {{#if this.pkEncoded}}
-                      <input type="checkbox" class="row-checkbox checkbox checkbox-primary checkbox-xs" value="{{this.pkEncoded}}" aria-label="Select this row" />
-                    {{/if}}
-                  </td>
-                {{/if}}
+                <td class="w-10 text-center align-middle">
+                  {{#if this.pkEncoded}}
+                    <input type="checkbox" class="row-checkbox checkbox checkbox-primary checkbox-xs" value="{{this.pkEncoded}}" aria-label="Select this row" />
+                  {{/if}}
+                </td>
                 {{#each this.cells}}
                   <td class="max-w-xs align-middle cell-editable {{#unless ../../readonly}}js-inline-cell{{/unless}}"
                       data-col="{{this.name}}" data-null="{{this.isNull}}" data-value="{{this.display}}">

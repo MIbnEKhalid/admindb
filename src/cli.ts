@@ -6,6 +6,7 @@ import { loadConfig } from './config';
 import { createLogger } from './logger';
 import { DbManager } from './db/manager';
 import { parseArgs, helpText, versionText } from './args';
+import { DEFAULT_PASSWORD_HASH } from './auth';
 
 /**
  * Standalone CLI / server entry point. Run `npm start` (or `npx admindb`).
@@ -42,6 +43,11 @@ if (args.version) {
 }
 
 // Merge CLI flags over environment variables.
+const authEnabled = args.auth !== undefined ? args.auth : env.auth;
+const authUsername = args.authUsername ?? env.authUsername ?? 'admin';
+const authPassword = args.authPassword ?? env.authPassword;
+const authSecret = args.authSecret ?? env.authSecret;
+
 const config = {
   host: args.host ?? env.host,
   port: args.port ?? env.port,
@@ -51,6 +57,14 @@ const config = {
   basePath: (args.basePath ?? env.basePath).replace(/\/+$/, ''),
   logLevel: args.logLevel ?? env.logLevel,
   readonly: args.readonly || env.readonly,
+  auth: authEnabled
+    ? {
+        enabled: true,
+        username: authUsername,
+        password: authPassword,
+        secret: authSecret,
+      }
+    : false,
 };
 
 const logger = createLogger(config.logLevel, 'admindb');
@@ -91,13 +105,28 @@ const router = useManager
       readonly: config.readonly,
       allowBrowse,
       browseRoot,
+      auth: config.auth,
     })
-  : createRouter({ dbPath: explicitFile, basePath: config.basePath, logger, readonly: config.readonly });
+  : createRouter({
+      dbPath: explicitFile,
+      basePath: config.basePath,
+      logger,
+      readonly: config.readonly,
+      auth: config.auth,
+    });
 app.use(config.basePath || '/', router);
 
 const server = app.listen(config.port, config.host, () => {
   const url = `http://${config.host}:${config.port}${config.basePath}/`;
   logger.info(`AdminDB listening on ${url}`);
+  if (authEnabled) {
+    logger.info(`Authentication enabled — User: ${authUsername}`);
+    if (authUsername === 'admin' && (!authPassword || authPassword === 'admin' || authPassword === DEFAULT_PASSWORD_HASH)) {
+      logger.warn('Default password in use (admin). Generate a secure hash with "npm run generatehash" and set ADMINDB_PASSWORD or -P <hash>.');
+    }
+  } else {
+    logger.warn('Authentication is DISABLED (--no-auth). Anyone with network access can view and modify databases.');
+  }
   if (useManager) {
     const sources = [
       managerDir ? `dir:${managerDir}` : null,
@@ -118,9 +147,6 @@ const server = app.listen(config.port, config.host, () => {
   }
   if (config.readonly) {
     logger.info('Read-only mode enabled — all writes are disabled.');
-  }
-  if (config.host === '0.0.0.0') {
-    logger.warn('Listening on 0.0.0.0 — this admin tool has NO authentication and exposes filesystem access. Do not expose it to untrusted networks.');
   }
 });
 
