@@ -73,7 +73,7 @@ admindb
 AdminDB features a clean, colorized CLI startup banner and streamlined, low-noise runtime logging:
 
 ```text
-  ⚡ AdminDB v2.1.0
+  ⚡ AdminDB v2.1.1
 
   ➜  Local:    http://localhost:45531/
   ➜  Network:  http://192.168.1.15:45531/
