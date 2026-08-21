@@ -1,4 +1,6 @@
+{{!-- Page: Visual Table Designer & Creator · URL: /designer --}}
 <div class="space-y-6">
+
   <!-- Header -->
   <div>
     <p class="text-sm font-semibold uppercase tracking-wider text-primary">Designer</p>
@@ -21,7 +23,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-200 px-5 py-4">
           <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/45">Columns</h2>
           <button id="add-column" type="button" class="btn btn-outline btn-sm gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+            {{{icon "plus" class="h-4 w-4"}}}
             Add column
           </button>
         </div>
@@ -30,14 +32,15 @@
         <div class="flex flex-wrap gap-2 border-t border-base-200 px-5 py-4">
           {{#unless readonly}}
             <button id="create-table" type="button" class="btn btn-primary gap-1.5">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+              {{{icon "check" class="h-4 w-4"}}}
               Create table
             </button>
           {{else}}
             <span class="text-sm font-medium text-warning">Read-only — table creation is disabled.</span>
           {{/unless}}
+
           <button id="copy-sql" type="button" class="btn btn-outline gap-1.5" title="Copy the preview SQL">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" /></svg>
+            {{{icon "copy" class="h-4 w-4"}}}
             Copy SQL
           </button>
         </div>
@@ -50,7 +53,7 @@
         <div class="flex items-center justify-between border-b border-base-200 bg-base-200/40 px-4 py-3">
           <h2 class="flex items-center gap-2 text-sm font-semibold text-base-content/60">
             <span class="grid h-5 w-5 place-items-center rounded-md bg-primary/10 text-primary">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              {{{icon "query" class="h-3.5 w-3.5"}}}
             </span>
             SQL preview
           </h2>
@@ -70,9 +73,9 @@
           <li class="flex items-center justify-between gap-2"><span class="font-mono">TEXT</span><span class="text-base-content/40">Free-form text</span></li>
           <li class="flex items-center justify-between gap-2"><span class="font-mono">INTEGER</span><span class="text-base-content/40">Whole numbers</span></li>
           <li class="flex items-center justify-between gap-2"><span class="font-mono">REAL</span><span class="text-base-content/40">Decimal numbers</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">BLOB</span><span class="text-base-content/40">Binary data</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">BLOB / BYTEA</span><span class="text-base-content/40">Binary data</span></li>
           <li class="flex items-center justify-between gap-2"><span class="font-mono">BOOLEAN</span><span class="text-base-content/40">Stored as 0/1</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">DATE</span><span class="text-base-content/40">Datetime + now default</span></li>
+          <li class="flex items-center justify-between gap-2"><span class="font-mono">TIMESTAMP</span><span class="text-base-content/40">Datetime + auto default</span></li>
         </ul>
       </div>
     </aside>

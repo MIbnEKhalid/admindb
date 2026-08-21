@@ -140,3 +140,48 @@ test('DbManager read-only mode blocks create/remove and opens read-only dbs', as
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('DbManager supports per-database readonly selection and mode toggling', async () => {
+  const root = tempRoot();
+  const logger = createLogger('error');
+  let mgr: DbManager | undefined;
+  try {
+    mgr = new DbManager({ dir: path.join(root, 'data') }, logger);
+    const id1 = mgr.create('writable_db');
+    assert.equal(mgr.isDbReadOnly(id1), false);
+    const db1 = mgr.open(id1);
+    assert.equal(db1.isReadOnly, false);
+
+    // Toggle to readonly
+    mgr.setReadonly(id1, true);
+    assert.equal(mgr.isDbReadOnly(id1), true);
+    const db1Ro = mgr.open(id1);
+    assert.equal(db1Ro.isReadOnly, true);
+
+    // Register a file directly as readonly
+    const ext = path.join(root, 'readonly_ext.db');
+    new SqliteDatabase(ext, logger).close();
+    const id2 = mgr.openFile(ext, true);
+    assert.equal(mgr.isDbReadOnly(id2), true);
+    const db2 = mgr.open(id2);
+    assert.equal(db2.isReadOnly, true);
+
+    // Register a postgres connection as readonly
+    const id3 = mgr.addConnection('ro_pg', 'postgresql://localhost/ro_db', true);
+    assert.equal(mgr.isDbReadOnly(id3), true);
+    const db3 = mgr.open(id3);
+    assert.equal(db3.isReadOnly, true);
+
+    const list = mgr.list();
+    const map = new Map(list.map((e) => [e.id, e.readonly]));
+    assert.equal(map.get(id1), true);
+    assert.equal(map.get(id2), true);
+    assert.equal(map.get(id3), true);
+  } finally {
+    try {
+      mgr?.closeAll();
+    } catch { /* ignore */ }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+

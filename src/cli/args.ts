@@ -2,12 +2,12 @@
  * Command-line argument parsing for the standalone `admindb` server.
  *
  * The CLI supports flags to pick the port/host, open a single database file,
- * manage a folder of databases, and more. Every flag has a matching
- * environment variable; flags always win over the environment.
+ * manage a folder of databases, or pass a JSON config file with multiple connections.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel } from '../utils/logger';
+import { parseConfigFile } from './config';
 
 const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
@@ -20,6 +20,12 @@ export interface CliArgs {
   port?: number;
   /** A single database file to open directly (`--open`/`--db`/`--file`/`--db-path`). */
   dbPath?: string;
+  /** PostgreSQL or database connection string (`--connection`/`--conn`/`--pg`). */
+  connection?: string;
+  /** Database connections map (from JSON config file). */
+  connections?: Record<string, string>;
+  /** Path to a JSON configuration file (`--config`, `-C`). */
+  configPath?: string;
   /** Directory of database files to manage (`--dir`/`--folder`/`--db-dir`, `-d`). */
   dbDir?: string;
   /** Explicit database file paths (`--files`/`--db-files`). */
@@ -44,24 +50,26 @@ export interface CliArgs {
 
 export function helpText(): string {
   return [
-    'AdminDB — browser-based SQLite administration tool.',
+    'AdminDB — browser-based SQLite & PostgreSQL administration tool.',
     '',
     'Usage:',
-    '  admindb [options] [path]',
+    '  admindb [options] [path|connection_url|config.json]',
     '',
     'Starts a local server and opens a web UI where you can browse, select and',
-    'manage SQLite databases (.db / .sqlite / .sqlite3).',
+    'manage SQLite databases (.db / .sqlite / .sqlite3) and PostgreSQL databases.',
     '',
     'With no path or options it runs in "manager" mode: the landing page lets',
     'you browse the filesystem and open any database file, or create new ones.',
     '',
     'Arguments:',
-    '  path                           Path to a database file (opens it directly) or to a',
-    '                                 folder of databases (lists them). Default: current directory.',
+    '  path                           Path to a database file, PostgreSQL connection URL, or',
+    '                                 JSON configuration file containing database credentials.',
     '',
     'Options & Environment Variables:',
+    '  -C, --config <file.json>       Load database credentials & settings from a JSON file',
     '  -p, --port <port>              Port to listen on (default: 3000) [PORT / ADMINDB_PORT]',
     '  -H, --host <host>              Host/interface to bind (default: 0.0.0.0) [HOST / ADMINDB_HOST]',
+    '  -c, --connection, --pg <uri>   Open a PostgreSQL database directly [DATABASE_URL / ADMINDB_CONNECTION]',
     '  -o, --open, --db-path <file>   Open a single database file directly [DB_PATH / ADMINDB_DB_PATH]',
     '  -d, --dir, --db-dir <dir>      Folder of database files to manage [DB_DIR / ADMINDB_DB_DIR]',
     '      --files, --db-files <list> Comma-separated database file paths [DB_FILES / ADMINDB_DB_FILES]',
@@ -78,15 +86,11 @@ export function helpText(): string {
     '  -v, --version                  Show version',
     '',
     'Examples:',
-    '  admindb                                      # manager UI with default auth (admin/admin)',
+    '  admindb name.postgres.json                   # load database connections from a JSON file',
+    '  admindb postgresql://user:pass@host:5432/db  # open a PostgreSQL database directly',
+    '  admindb ./data/app.db                        # open a SQLite database file',
     '  admindb --no-auth                            # run with authentication turned off',
-    '  admindb -u dev -P secret123                  # run with custom credentials',
-    '  admindb -p 8080                              # run on port 8080',
-    '  admindb ./data/app.db                        # open a single database file',
-    '  admindb --open ~/notes.sqlite                # open a file directly',
-    '  admindb -d ./dbs                             # manage a folder of databases',
-    '  admindb --files a.db,b.db -r                 # open two files read-only',
-    '  admindb --serverless                         # run in serverless read-only mode',
+    '  admindb -C ./connections.json                # run with JSON connections config',
     '',
     'See docs/EXAMPLES.md for full configuration reference and deployment recipes.',
   ].join('\n');
@@ -134,9 +138,6 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
 
   const invalid = (error: string): { args: CliArgs; error?: string } => ({ args, error });
 
-  // Read the value for the current flag token; supports `--flag=value` and
-  // `--flag value`. Leaves `i` pointing at the value token so the loop can
-  // advance past it.
   const takeValue = (flag: string): string | undefined => {
     const eq = argv[i].indexOf('=');
     if (eq !== -1) return argv[i].slice(eq + 1);
@@ -150,6 +151,32 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       args.help = true;
     } else if (tok === '-v' || tok === '--version') {
       args.version = true;
+    } else if (isFlag(tok, '-C', '--config', '--json')) {
+      const v = takeValue('--config');
+      if (v === undefined) return invalid('Missing value for --config.');
+      args.configPath = v;
+      try {
+        const fileConf = parseConfigFile(v);
+        if (fileConf) {
+          if (fileConf.connections) args.connections = fileConf.connections;
+          if (fileConf.connection) args.connection = fileConf.connection;
+          if (fileConf.port !== undefined) args.port = fileConf.port;
+          if (fileConf.host !== undefined) args.host = fileConf.host;
+          if (fileConf.basePath !== undefined) args.basePath = fileConf.basePath;
+          if (fileConf.readonly !== undefined) args.readonly = fileConf.readonly;
+          if (fileConf.serverless !== undefined) args.serverless = fileConf.serverless;
+          if (fileConf.logLevel !== undefined) args.logLevel = fileConf.logLevel;
+          if (typeof fileConf.auth === 'boolean') args.auth = fileConf.auth;
+          else if (fileConf.auth && typeof fileConf.auth === 'object') {
+            args.auth = true;
+            if (fileConf.auth.username) args.authUsername = fileConf.auth.username;
+            if (fileConf.auth.password) args.authPassword = fileConf.auth.password;
+            if (fileConf.auth.secret) args.authSecret = fileConf.auth.secret;
+          }
+        }
+      } catch (err) {
+        return invalid((err as Error).message);
+      }
     } else if (isFlag(tok, '-p', '--port')) {
       const v = takeValue('--port');
       if (v === undefined) return invalid('Missing value for --port.');
@@ -160,10 +187,18 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       const v = takeValue('--host');
       if (v === undefined) return invalid('Missing value for --host.');
       args.host = v;
+    } else if (isFlag(tok, '-c', '--connection', '--conn', '--pg')) {
+      const v = takeValue('--connection');
+      if (v === undefined) return invalid('Missing value for --connection.');
+      args.connection = v;
+      args.dbPath = v;
     } else if (isFlag(tok, '-o', '--open', '--db', '-f', '--file', '--db-path', '--path')) {
       const v = takeValue('--open');
       if (v === undefined) return invalid('Missing value for --open / --db-path.');
       args.dbPath = v;
+      if (v.startsWith('postgres://') || v.startsWith('postgresql://')) {
+        args.connection = v;
+      }
     } else if (isFlag(tok, '-d', '--dir', '--folder', '--db-dir')) {
       const v = takeValue('--dir');
       if (v === undefined) return invalid('Missing value for --dir / --db-dir.');
@@ -220,11 +255,46 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
   }
   const p = positional[0];
   if (p) {
-    const abs = path.resolve(p);
-    try {
-      if (statSync(abs).isDirectory()) args.dbDir = p;
-      else args.dbPath = p;
-    } catch {
+    if (p.startsWith('postgres://') || p.startsWith('postgresql://')) {
+      args.connection = p;
+      args.dbPath = p;
+    } else if (p.endsWith('.json') || existsSync(p)) {
+      try {
+        const isJson = p.endsWith('.json');
+        if (isJson || (statSync(p).isFile() && p.includes('.json'))) {
+          args.configPath = p;
+          const fileConf = parseConfigFile(p);
+          if (fileConf) {
+            if (fileConf.connections) args.connections = fileConf.connections;
+            if (fileConf.connection) args.connection = fileConf.connection;
+            if (fileConf.port !== undefined && args.port === undefined) args.port = fileConf.port;
+            if (fileConf.host !== undefined && args.host === undefined) args.host = fileConf.host;
+            if (fileConf.basePath !== undefined && args.basePath === undefined) args.basePath = fileConf.basePath;
+            if (fileConf.readonly !== undefined) args.readonly = fileConf.readonly;
+            if (fileConf.serverless !== undefined) args.serverless = fileConf.serverless;
+            if (fileConf.logLevel !== undefined && args.logLevel === undefined) args.logLevel = fileConf.logLevel;
+            if (args.auth === undefined) {
+              if (typeof fileConf.auth === 'boolean') args.auth = fileConf.auth;
+              else if (fileConf.auth && typeof fileConf.auth === 'object') {
+                args.auth = true;
+                if (fileConf.auth.username && !args.authUsername) args.authUsername = fileConf.auth.username;
+                if (fileConf.auth.password && !args.authPassword) args.authPassword = fileConf.auth.password;
+                if (fileConf.auth.secret && !args.authSecret) args.authSecret = fileConf.auth.secret;
+              }
+            }
+          }
+        } else if (statSync(p).isDirectory()) {
+          args.dbDir = p;
+        } else {
+          args.dbPath = p;
+        }
+      } catch (err) {
+        if (p.endsWith('.json')) {
+          return invalid((err as Error).message);
+        }
+        args.dbPath = p;
+      }
+    } else {
       args.dbPath = p;
     }
   }

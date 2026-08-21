@@ -123,8 +123,14 @@ export function decodePk(encoded: string): string[] {
 
 /** Normalize a single cell for JSON / display (BLOB → 0x-hex string, undefined → null). */
 export function normalizeCell(value: unknown): unknown {
-  if (value instanceof Uint8Array) {
+  if (value instanceof Uint8Array || Buffer.isBuffer(value)) {
     return `0x${Buffer.from(value).toString('hex')}`;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value);
   }
   if (value === undefined) return null;
   return value;
@@ -138,40 +144,67 @@ export function normalizeRow(row: Record<string, unknown>): Record<string, unkno
 }
 
 /**
- * Coerce a raw form value into a value suitable for SQLite binding.
+ * Coerce a raw form value into a value suitable for SQLite or Postgres binding.
  * - empty string / null / undefined  → null ("not set")
  * - `0` stays valid
- * - BOOLEAN → 1/0
- * - INTEGER/REAL → number when numeric
- * - BLOB → Buffer (0x-hex or raw text)
+ * - BOOLEAN → 1/0 (SQLite) or boolean (PostgreSQL)
+ * - INTEGER/REAL/BIGINT/NUMERIC → number when numeric
+ * - BLOB / BYTEA → Buffer (0x-hex, \x-hex, or raw text)
  */
-export function coerceFormValue(raw: unknown, columnType: string): unknown {
+export function coerceFormValue(raw: unknown, columnType: string, dialect: 'sqlite' | 'postgres' = 'sqlite'): unknown {
   const type = (columnType || '').toUpperCase();
   if (raw === undefined || raw === null) return null;
 
-  if (type === 'BOOLEAN') {
+  if (type === 'BOOLEAN' || type === 'BOOL') {
     const s = String(raw).trim().toLowerCase();
     if (s === '') return null;
-    return s === 'true' || s === '1' || s === 'on' || s === 'yes' || s === 'checked' ? 1 : 0;
+    const boolVal = s === 'true' || s === '1' || s === 'on' || s === 'yes' || s === 'checked';
+    return dialect === 'postgres' ? boolVal : (boolVal ? 1 : 0);
   }
 
-  if (type.startsWith('INTEGER') || type === 'REAL') {
+  if (
+    type.startsWith('INT') ||
+    type === 'REAL' ||
+    type === 'NUMERIC' ||
+    type.startsWith('DECIMAL') ||
+    type === 'FLOAT' ||
+    type === 'DOUBLE' ||
+    type.startsWith('BIGINT') ||
+    type.startsWith('SMALLINT') ||
+    type.startsWith('SERIAL')
+  ) {
     const s = String(raw).trim();
     if (s === '') return null;
     const n = Number(s);
     return Number.isFinite(n) ? n : s;
   }
 
-  if (type === 'BLOB') {
+  if (type === 'BLOB' || type === 'BYTEA') {
     const s = String(raw);
     if (/^0x[0-9a-f]*$/i.test(s)) return Buffer.from(s.slice(2), 'hex');
+    if (/^\\x[0-9a-f]*$/i.test(s)) return Buffer.from(s.slice(2), 'hex');
     return Buffer.from(s, 'utf8');
+  }
+
+  if (type === 'JSON' || type === 'JSONB') {
+    const s = String(raw).trim();
+    if (s === '') return null;
+    return s;
+  }
+
+  if (type.endsWith('[]') || type.startsWith('_') || type.includes('ARRAY')) {
+    if (Array.isArray(raw)) return raw;
+    const s = String(raw).trim();
+    if (s === '') return null;
+    return s;
   }
 
   const s = String(raw);
   if (s === '') return null;
   return s;
 }
+
+
 
 /** Format byte size to human readable string (e.g. 1.2 MB). */
 export function formatBytes(bytes: number): string {

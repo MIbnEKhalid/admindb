@@ -1,4 +1,4 @@
-import type { SqliteDatabase } from './database';
+import type { IDatabase } from './types';
 import { generateInsert } from '../sql/generator';
 
 export interface DumpResult {
@@ -12,12 +12,17 @@ export interface DumpResult {
  * followed by one INSERT statement per row. BLOB values are exported as
  * X'…' literals so they round-trip as real blobs.
  */
-export async function generateSqlDump(db: SqliteDatabase): Promise<DumpResult> {
+export async function generateSqlDump(db: IDatabase): Promise<DumpResult> {
   const out: string[] = [];
-  out.push('PRAGMA foreign_keys=OFF;');
-  out.push('BEGIN TRANSACTION;');
+  if (db.dialect === 'sqlite') {
+    out.push('PRAGMA foreign_keys=OFF;');
+    out.push('BEGIN TRANSACTION;');
+  } else {
+    out.push('BEGIN;');
+  }
 
   const tables = await db.listTables();
+
   if (!tables.success) return { success: false, error: tables.error ?? 'Failed to list tables.' };
 
   for (const t of tables.data ?? []) {

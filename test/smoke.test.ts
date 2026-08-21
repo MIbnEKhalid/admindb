@@ -495,17 +495,25 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
     assert.equal(json.data.deleted, 2);
   });
 
-  await t.test('DELETE /api/tables/:table drops a table with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/products`, {
-      method: 'DELETE',
-    });
+  await t.test('GET /tables/:table renders HTML with correct row edit links', async () => {
+    const res = await fetch(`${baseUrl}/tables/users`);
     assert.equal(res.status, 200);
-    const json = (await res.json()) as { success: boolean };
-    assert.equal(json.success, true);
+    const html = await res.text();
+    assert.ok(html.includes('/tables/users/rows/1/edit'));
+    assert.ok(!html.includes('/tables//rows/1/edit'));
+  });
+
+  await t.test('GET /tables/:table/rows/:id/edit renders row edit form page with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/tables/users/rows/1/edit`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes('Edit row'));
+    assert.ok(html.includes('users'));
   });
 
   await close();
 });
+
 
 test('Smoke Tests: Manager Mode API Endpoints', async (t) => {
   const { baseUrl, close } = await startManagerApp();

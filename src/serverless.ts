@@ -64,10 +64,18 @@ export function isServerlessEnvironment(env: NodeJS.ProcessEnv = process.env): b
 export function createServerlessHandler(
   options: AppOptions = {}
 ): (req: IncomingMessage, res: ServerResponse) => void {
+  const rawTarget = options.connection || options.dbPath || '';
+  const isPg =
+    Boolean(options.pgOptions) ||
+    (typeof rawTarget === 'string' && (rawTarget.startsWith('postgres://') || rawTarget.startsWith('postgresql://'))) ||
+    options.db?.dialect === 'postgres';
+
+  const defaultReadonly = isPg ? false : true;
+
   const app = createRouter({
     ...options,
     serverless: options.serverless ?? true,
-    readonly: options.readonly ?? true,
+    readonly: options.readonly ?? defaultReadonly,
   });
 
   return (req: IncomingMessage, res: ServerResponse) => {
@@ -86,7 +94,8 @@ export interface LambdaProxyResult {
 /**
  * Creates an AWS Lambda handler for API Gateway (REST v1 and HTTP v2 payloads).
  *
- * In serverless mode, all write operations and database mutations are strictly disabled.
+ * In serverless mode, SQLite databases are read-only, while remote PostgreSQL
+ * connections are editable unless configured otherwise.
  *
  * Example (AWS Lambda `index.ts`):
  * ```ts
@@ -95,11 +104,20 @@ export interface LambdaProxyResult {
  * ```
  */
 export function createLambdaHandler(options: AppOptions = {}) {
+  const rawTarget = options.connection || options.dbPath || '';
+  const isPg =
+    Boolean(options.pgOptions) ||
+    (typeof rawTarget === 'string' && (rawTarget.startsWith('postgres://') || rawTarget.startsWith('postgresql://'))) ||
+    options.db?.dialect === 'postgres';
+
+  const defaultReadonly = isPg ? false : true;
+
   const app = createRouter({
     ...options,
     serverless: options.serverless ?? true,
-    readonly: options.readonly ?? true,
+    readonly: options.readonly ?? defaultReadonly,
   });
+
 
   return async (event: any, _context?: any): Promise<LambdaProxyResult> => {
     return new Promise<LambdaProxyResult>((resolve) => {

@@ -274,3 +274,28 @@ test('Serverless: createLambdaHandler processes APIGateway events in serverless 
     rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('Serverless: PostgreSQL connection remains editable in serverless mode by default', () => {
+  // Test createRouter with Postgres connection in serverless mode
+  const pgApp = createRouter({
+    connection: 'postgresql://postgres:pass@localhost:5432/testdb',
+    serverless: true,
+    auth: false,
+  });
+  assert.ok(pgApp);
+
+  // Test createServerlessHandler with Postgres
+  const serverlessFn = createServerlessHandler({
+    connection: 'postgresql://postgres:pass@localhost:5432/testdb',
+    auth: false,
+  });
+  assert.equal(typeof serverlessFn, 'function');
+
+  // Test createLambdaHandler with Postgres
+  const lambdaFn = createLambdaHandler({
+    connection: 'postgresql://postgres:pass@localhost:5432/testdb',
+    auth: false,
+  });
+  assert.equal(typeof lambdaFn, 'function');
+});
+

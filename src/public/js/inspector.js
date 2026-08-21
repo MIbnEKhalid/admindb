@@ -30,8 +30,9 @@
   }
 
   function isHexBlob(str) {
-    return typeof str === 'string' && /^0x[0-9a-f]{4,}$/i.test(str.trim());
+    return typeof str === 'string' && (/^0x[0-9a-f]{4,}$/i.test(str.trim()) || /^\\x[0-9a-f]{4,}$/i.test(str.trim()));
   }
+
 
   // ---- JSON Tree Renderer --------------------------------------------------
 

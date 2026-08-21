@@ -4,7 +4,32 @@
   const cfgEl = document.getElementById('schema-config');
   if (!cfgEl) return;
   const cfg = JSON.parse(cfgEl.textContent);
-  const DESIGNER_TYPES = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'VARCHAR(255)', 'BIGINT', 'DECIMAL(10,2)', 'DATE', 'DATETIME', 'JSON'];
+  const DESIGNER_TYPES = [
+    'TEXT',
+    'VARCHAR(255)',
+    'INTEGER',
+    'BIGINT',
+    'SMALLINT',
+    'SERIAL',
+    'BIGSERIAL',
+    'REAL',
+    'DECIMAL(10,2)',
+    'NUMERIC',
+    'BOOLEAN',
+    'DATE',
+    'DATETIME',
+    'TIMESTAMP',
+    'TIMESTAMPTZ',
+    'TIME',
+    'INTERVAL',
+    'JSON',
+    'JSONB',
+    'UUID',
+    'BYTEA',
+    'BLOB',
+    'INET',
+  ];
+
   const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
   const t = encodeURIComponent(cfg.table);
 

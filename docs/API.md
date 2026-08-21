@@ -2,7 +2,9 @@
 
 Every route is under `basePath` and returns the consistent shape
 `{ success, data?, error? }`. In multi-db mode, every route is scoped under the
-database, e.g. `/api/app.db/tables`.
+database identifier, e.g. `/api/app.db/tables` or `/api/prod_pg/tables`.
+
+AdminDB supports both **SQLite** and **PostgreSQL** database backends seamlessly.
 
 ## Tables & rows
 
@@ -15,9 +17,9 @@ database, e.g. `/api/app.db/tables`.
 | GET    | `/api/tables/:table/rows/count?f=`       | Filtered row count               |
 | GET    | `/api/tables/:table/row/:id`             | Single row by (encoded) PK       |
 | GET    | `/api/tables/:table/rows/:id/references` | Rows in other tables whose foreign keys reference this row |
-| GET    | `/api/tables/:table/row/:id/blob/:column` | Stream binary BLOB with MIME detection (add `?download=1` to force download) |
-| GET    | `/api/tables/:table/row/:id/blob/:column/meta` | Inspect BLOB metadata, MIME sniffing & 3-column hex dump |
-| PUT    | `/api/tables/:table/row/:id/blob/:column` | Update BLOB binary value (`{ data: base64/hex, format?: 'base64'|'hex'|'text' }`) |
+| GET    | `/api/tables/:table/row/:id/blob/:column` | Stream binary BLOB / BYTEA with MIME detection (add `?download=1` to force download) |
+| GET    | `/api/tables/:table/row/:id/blob/:column/meta` | Inspect BLOB / BYTEA metadata, MIME sniffing & 3-column hex dump |
+| PUT    | `/api/tables/:table/row/:id/blob/:column` | Update binary value (`{ data: base64/hex, format?: 'base64'|'hex'|'text' }`) |
 | POST   | `/api/tables/:table/rows`                | Insert row (or batch of rows with `{ rows: [...] }`) |
 | POST   | `/api/tables/:table/rows/generate`       | Generate INSERT SQL (no execute) |
 | POST   | `/api/tables/:table/rows/import`         | Import CSV (`{ csv }`, header row must match columns) |
@@ -42,7 +44,8 @@ database, e.g. `/api/app.db/tables`.
 | POST   | `/api/tables`                        | Create table                     |
 | POST   | `/api/tables/generate`               | Generate CREATE SQL (no execute) |
 | GET    | `/api/tables/:table/schema`          | Full schema (constraints, indexes, FK refs) |
-| GET    | `/api/tables/:table/ddl`             | Get formatted SQLite `CREATE TABLE` and `INDEX` DDL |
+| GET    | `/api/tables/:table/ddl`             | Get formatted `CREATE TABLE` and `INDEX` DDL |
+
 | POST   | `/api/tables/:table/rename`          | Rename the table                 |
 | POST   | `/api/tables/:table/columns`         | Add a column                     |
 | PUT    | `/api/tables/:table/columns/:column` | Modify/rename a column           |
@@ -65,13 +68,15 @@ database, e.g. `/api/app.db/tables`.
 
 These endpoints manage database files and power the filesystem browser:
 
-| Method | Path                  | Purpose                                     |
-| ------ | --------------------- | ------------------------------------------- |
-| GET    | `/api/databases`      | List managed databases                      |
-| POST   | `/api/databases`      | Create a new database (`{ name }`)          |
-| DELETE | `/api/databases/:id`  | Delete a database                           |
-| GET    | `/api/fs/list?path=`  | List subfolders + SQLite files under a path (file browser) |
-| POST   | `/api/databases/open` | Open/register an existing database file by path (`{ path }`) |
+| Method | Path                            | Purpose                                     |
+| ------ | ------------------------------- | ------------------------------------------- |
+| GET    | `/api/databases`                | List managed databases                      |
+| POST   | `/api/databases`                | Create a new SQLite database (`{ name }`)   |
+| POST   | `/api/databases/connect-postgres` | Connect a PostgreSQL database (`{ name?, connectionString }`) |
+| DELETE | `/api/databases/:id`            | Delete SQLite database file or disconnect PostgreSQL connection |
+| GET    | `/api/fs/list?path=`            | List subfolders + SQLite files under a path (file browser) |
+| POST   | `/api/databases/open`           | Open/register an existing database file by path (`{ path }`) |
+
 
 ## Authentication & Sessions
 

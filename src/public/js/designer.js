@@ -2,7 +2,32 @@
  * and preview the generated CREATE TABLE live. Create executes; Copy copies. */
 (function () {
   'use strict';
-  const DESIGNER_TYPES = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'];
+  const DESIGNER_TYPES = [
+    'TEXT',
+    'VARCHAR(255)',
+    'INTEGER',
+    'BIGINT',
+    'SMALLINT',
+    'SERIAL',
+    'BIGSERIAL',
+    'REAL',
+    'DECIMAL(10,2)',
+    'NUMERIC',
+    'BOOLEAN',
+    'DATE',
+    'DATETIME',
+    'TIMESTAMP',
+    'TIMESTAMPTZ',
+    'TIME',
+    'INTERVAL',
+    'JSON',
+    'JSONB',
+    'UUID',
+    'BYTEA',
+    'BLOB',
+    'INET',
+  ];
+
   const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 
   const columnsEl = document.getElementById('columns');

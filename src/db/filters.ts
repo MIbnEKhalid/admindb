@@ -125,3 +125,31 @@ export function buildFilterClause(
   }
   return { where: conds.length ? ` WHERE ${conds.join(' AND ')}` : '', params };
 }
+
+/**
+ * Replace SQLite-style `?` placeholders with PostgreSQL-style `$1, $2, ...`
+ * placeholders while safely preserving single-quoted string literals.
+ */
+export function convertPlaceholdersToPostgres(sql: string, startIdx = 1): string {
+  let idx = startIdx;
+  let inString = false;
+  let result = '';
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'") {
+      if (inString && sql[i + 1] === "'") {
+        result += "''";
+        i++;
+        continue;
+      }
+      inString = !inString;
+      result += ch;
+    } else if (ch === '?' && !inString) {
+      result += `$${idx++}`;
+    } else {
+      result += ch;
+    }
+  }
+  return result;
+}
+

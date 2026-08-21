@@ -2645,25 +2645,16 @@ input.tab:checked + .tab-content,
     --btn-color: var(--fallback-p);
   }
 
+  .btn-info {
+    --btn-color: var(--fallback-in);
+  }
+
   .btn-error {
     --btn-color: var(--fallback-er);
   }
 }
 
 @supports (color: color-mix(in oklab, black, black)) {
-  .btn-active {
-    background-color: color-mix(
-          in oklab,
-          oklch(var(--btn-color, var(--b3)) / var(--tw-bg-opacity, 1)) 90%,
-          black
-        );
-    border-color: color-mix(
-          in oklab,
-          oklch(var(--btn-color, var(--b3)) / var(--tw-border-opacity, 1)) 90%,
-          black
-        );
-  }
-
   .btn-outline.btn-primary.btn-active {
     background-color: color-mix(in oklab, var(--fallback-p,oklch(var(--p)/1)) 90%, black);
     border-color: color-mix(in oklab, var(--fallback-p,oklch(var(--p)/1)) 90%, black);
@@ -2723,9 +2714,19 @@ input.tab:checked + .tab-content,
     --btn-color: var(--p);
   }
 
+  .btn-info {
+    --btn-color: var(--in);
+  }
+
   .btn-error {
     --btn-color: var(--er);
   }
+}
+
+.btn-info {
+  --tw-text-opacity: 1;
+  color: var(--fallback-inc,oklch(var(--inc)/var(--tw-text-opacity)));
+  outline-color: var(--fallback-in,oklch(var(--in)/1));
 }
 
 .btn-error {
@@ -2772,12 +2773,6 @@ input.tab:checked + .tab-content,
 .btn-ghost.btn-active {
   border-color: transparent;
   background-color: var(--fallback-bc,oklch(var(--bc)/0.2));
-}
-
-.btn-link.btn-active {
-  border-color: transparent;
-  background-color: transparent;
-  text-decoration-line: underline;
 }
 
 .btn-outline {
@@ -4196,49 +4191,6 @@ input.tab:checked + .tab-content,
   opacity: 0.3;
   --togglehandleborder: 0 0 0 3px var(--fallback-bc,oklch(var(--bc)/1)) inset,
       var(--handleoffsetcalculator) 0 0 3px var(--fallback-bc,oklch(var(--bc)/1)) inset;
-}
-
-.glass,
-  .glass.btn-active {
-  border: none;
-  -webkit-backdrop-filter: blur(var(--glass-blur, 40px));
-          backdrop-filter: blur(var(--glass-blur, 40px));
-  background-color: transparent;
-  background-image: linear-gradient(
-        135deg,
-        rgb(255 255 255 / var(--glass-opacity, 30%)) 0%,
-        rgb(0 0 0 / 0%) 100%
-      ),
-      linear-gradient(
-        var(--glass-reflex-degree, 100deg),
-        rgb(255 255 255 / var(--glass-reflex-opacity, 10%)) 25%,
-        rgb(0 0 0 / 0%) 25%
-      );
-  box-shadow: 0 0 0 1px rgb(255 255 255 / var(--glass-border-opacity, 10%)) inset,
-      0 0 0 2px rgb(0 0 0 / 5%);
-  text-shadow: 0 1px rgb(0 0 0 / var(--glass-text-shadow-opacity, 5%));
-}
-
-@media (hover: hover) {
-  .glass.btn-active {
-    border: none;
-    -webkit-backdrop-filter: blur(var(--glass-blur, 40px));
-            backdrop-filter: blur(var(--glass-blur, 40px));
-    background-color: transparent;
-    background-image: linear-gradient(
-          135deg,
-          rgb(255 255 255 / var(--glass-opacity, 30%)) 0%,
-          rgb(0 0 0 / 0%) 100%
-        ),
-        linear-gradient(
-          var(--glass-reflex-degree, 100deg),
-          rgb(255 255 255 / var(--glass-reflex-opacity, 10%)) 25%,
-          rgb(0 0 0 / 0%) 25%
-        );
-    box-shadow: 0 0 0 1px rgb(255 255 255 / var(--glass-border-opacity, 10%)) inset,
-        0 0 0 2px rgb(0 0 0 / 5%);
-    text-shadow: 0 1px rgb(0 0 0 / var(--glass-text-shadow-opacity, 5%));
-  }
 }
 
 .artboard.phone {
@@ -5697,6 +5649,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   height: 3.5rem;
 }
 
+.h-2 {
+  height: 0.5rem;
+}
+
 .h-2\.5 {
   height: 0.625rem;
 }
@@ -5797,6 +5753,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   min-height: 220px;
 }
 
+.min-h-\[32px\] {
+  min-height: 32px;
+}
+
 .min-h-\[350px\] {
   min-height: 350px;
 }
@@ -5835,6 +5795,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .w-14 {
   width: 3.5rem;
+}
+
+.w-2 {
+  width: 0.5rem;
 }
 
 .w-2\.5 {
@@ -5949,8 +5913,8 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   max-width: 180px;
 }
 
-.max-w-\[220px\] {
-  max-width: 220px;
+.max-w-\[260px\] {
+  max-width: 260px;
 }
 
 .max-w-\[26rem\] {
@@ -6033,6 +5997,16 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .animate-ping {
   animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: .5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .cursor-pointer {
@@ -6242,6 +6216,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   align-self: flex-start;
 }
 
+.self-center {
+  align-self: center;
+}
+
 .overflow-auto {
   overflow: auto;
 }
@@ -6367,6 +6345,14 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   border-color: var(--fallback-b3,oklch(var(--b3)/0.8));
 }
 
+.border-emerald-500\/30 {
+  border-color: rgb(16 185 129 / 0.3);
+}
+
+.border-emerald-500\/40 {
+  border-color: rgb(16 185 129 / 0.4);
+}
+
 .border-error\/20 {
   border-color: var(--fallback-er,oklch(var(--er)/0.2));
 }
@@ -6385,6 +6371,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .border-info\/20 {
   border-color: var(--fallback-in,oklch(var(--in)/0.2));
+}
+
+.border-info\/30 {
+  border-color: var(--fallback-in,oklch(var(--in)/0.3));
 }
 
 .border-info\/40 {
@@ -6483,6 +6473,27 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   background-color: rgb(0 0 0 / 0.7);
 }
 
+.bg-emerald-500 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));
+}
+
+.bg-emerald-500\/10 {
+  background-color: rgb(16 185 129 / 0.1);
+}
+
+.bg-emerald-500\/15 {
+  background-color: rgb(16 185 129 / 0.15);
+}
+
+.bg-emerald-500\/20 {
+  background-color: rgb(16 185 129 / 0.2);
+}
+
+.bg-emerald-500\/\[0\.02\] {
+  background-color: rgb(16 185 129 / 0.02);
+}
+
 .bg-error\/10 {
   background-color: var(--fallback-er,oklch(var(--er)/0.1));
 }
@@ -6499,12 +6510,25 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   background-color: var(--fallback-er,oklch(var(--er)/0.04));
 }
 
+.bg-info {
+  --tw-bg-opacity: 1;
+  background-color: var(--fallback-in,oklch(var(--in)/var(--tw-bg-opacity, 1)));
+}
+
 .bg-info\/10 {
   background-color: var(--fallback-in,oklch(var(--in)/0.1));
 }
 
+.bg-info\/15 {
+  background-color: var(--fallback-in,oklch(var(--in)/0.15));
+}
+
 .bg-info\/20 {
   background-color: var(--fallback-in,oklch(var(--in)/0.2));
+}
+
+.bg-info\/\[0\.02\] {
+  background-color: var(--fallback-in,oklch(var(--in)/0.02));
 }
 
 .bg-neutral {
@@ -6787,6 +6811,14 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   padding-right: 0.75rem;
 }
 
+.pt-0\.5 {
+  padding-top: 0.125rem;
+}
+
+.pt-1 {
+  padding-top: 0.25rem;
+}
+
 .pt-1\.5 {
   padding-top: 0.375rem;
 }
@@ -6817,6 +6849,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .font-mono {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-sans {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 .\!text-\[11px\] {
@@ -6890,6 +6926,11 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   line-height: 1.25rem;
 }
 
+.text-xl {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
 .text-xs {
   font-size: 0.75rem;
   line-height: 1rem;
@@ -6921,6 +6962,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .normal-case {
   text-transform: none;
+}
+
+.italic {
+  font-style: italic;
 }
 
 .tabular-nums {
@@ -7014,6 +7059,21 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   color: var(--fallback-bc,oklch(var(--bc)/0.85));
 }
 
+.text-emerald-400 {
+  --tw-text-opacity: 1;
+  color: rgb(52 211 153 / var(--tw-text-opacity, 1));
+}
+
+.text-emerald-500 {
+  --tw-text-opacity: 1;
+  color: rgb(16 185 129 / var(--tw-text-opacity, 1));
+}
+
+.text-emerald-600 {
+  --tw-text-opacity: 1;
+  color: rgb(5 150 105 / var(--tw-text-opacity, 1));
+}
+
 .text-error {
   --tw-text-opacity: 1;
   color: var(--fallback-er,oklch(var(--er)/var(--tw-text-opacity, 1)));
@@ -7070,10 +7130,6 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 .text-success {
   --tw-text-opacity: 1;
   color: var(--fallback-su,oklch(var(--su)/var(--tw-text-opacity, 1)));
-}
-
-.text-success\/80 {
-  color: var(--fallback-su,oklch(var(--su)/0.8));
 }
 
 .text-warning {
@@ -7276,6 +7332,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   background-color: var(--fallback-er,oklch(var(--er)/0.1));
 }
 
+.hover\:bg-primary\/10:hover {
+  background-color: var(--fallback-p,oklch(var(--p)/0.1));
+}
+
 .hover\:bg-primary\/\[0\.04\]:hover {
   background-color: var(--fallback-p,oklch(var(--p)/0.04));
 }
@@ -7303,6 +7363,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   color: var(--fallback-p,oklch(var(--p)/var(--tw-text-opacity, 1)));
 }
 
+.hover\:opacity-80:hover {
+  opacity: 0.8;
+}
+
 .hover\:shadow-md:hover {
   --tw-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --tw-shadow-colored: 0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);
@@ -7326,6 +7390,14 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 .group[open] .group-open\:rotate-180 {
   --tw-rotate: 180deg;
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
+.group:hover .group-hover\:bg-emerald-500\/20 {
+  background-color: rgb(16 185 129 / 0.2);
+}
+
+.group:hover .group-hover\:bg-info\/20 {
+  background-color: var(--fallback-in,oklch(var(--in)/0.2));
 }
 
 .group:hover .group-hover\:bg-primary\/20 {
@@ -7359,6 +7431,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
   .sm\:\!w-96 {
     width: 24rem !important;
+  }
+
+  .sm\:w-auto {
+    width: auto;
   }
 
   .sm\:grid-cols-12 {
@@ -7431,6 +7507,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
     grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 
+  .lg\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .lg\:grid-cols-\[1fr_380px\] {
     grid-template-columns: 1fr 380px;
   }
@@ -7463,6 +7543,13 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 @media (min-width: 1536px) {
   .\32xl\:grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .dark\:text-emerald-400 {
+    --tw-text-opacity: 1;
+    color: rgb(52 211 153 / var(--tw-text-opacity, 1));
   }
 }
 

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { ColumnInfo, ForeignKeyInfo } from '../db/database';
+import type { ColumnInfo, ForeignKeyInfo } from '../db/index';
 import { coerceFormValue } from '../utils/common';
 import {
   CITIES,
@@ -226,15 +226,19 @@ export function strategiesFor(col: ColumnInfo, fk: ForeignKeyInfo | null): Strat
 
 export function fallbackPlanFor(col: ColumnInfo): ColumnPlan {
   const type = (col.type || '').toUpperCase();
-  if (type === 'BOOLEAN') return { strategy: 'bool' };
-  if (type.startsWith('INTEGER')) return { strategy: 'int', min: 1, max: 1000 };
-  if (type === 'REAL' || type.includes('DECIMAL')) return { strategy: 'decimal', min: 1, max: 1000, precision: 2 };
+  if (type === 'BOOLEAN' || type === 'BOOL') return { strategy: 'bool' };
+  if (type === 'UUID') return { strategy: 'uuid' };
+  if (type === 'JSON' || type === 'JSONB') return { strategy: 'json' };
+  if (type.startsWith('INT') || type === 'BIGINT' || type === 'SMALLINT' || type === 'SERIAL' || type === 'BIGSERIAL') return { strategy: 'int', min: 1, max: 1000 };
+  if (type === 'REAL' || type.includes('DECIMAL') || type === 'NUMERIC' || type.includes('FLOAT') || type.includes('DOUBLE')) return { strategy: 'decimal', min: 1, max: 1000, precision: 2 };
   if (type === 'DATE') return { strategy: 'date', from: '2020-01-01', to: '2026-12-31' };
-  if (type === 'DATETIME' || type === 'TIMESTAMP') return { strategy: 'datetime', from: '2024-01-01T00:00:00', to: '2026-12-31T23:59:59' };
+  if (type.includes('TIMESTAMP') || type === 'DATETIME') return { strategy: 'datetime', from: '2024-01-01T00:00:00', to: '2026-12-31T23:59:59' };
   if (type === 'TIME') return { strategy: 'time' };
-  if (type === 'BLOB') return { strategy: 'bytes', minLen: 8, maxLen: 32 };
+  if (type === 'BLOB' || type === 'BYTEA') return { strategy: 'bytes', minLen: 8, maxLen: 32 };
+  if (type === 'INET') return { strategy: 'ip' };
   return { strategy: 'words', minLen: 1, maxLen: 4 };
 }
+
 
 /** Dispatch table for simple strategy generators. */
 const BASIC_STRATEGIES: Record<string, (p: ColumnPlan, rowIndex: number) => unknown> = {

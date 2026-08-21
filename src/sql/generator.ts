@@ -4,7 +4,31 @@
  * mutating operation share these functions.
  */
 
-export const DESIGNER_TYPES = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'] as const;
+export const DESIGNER_TYPES = [
+  'TEXT',
+  'VARCHAR(255)',
+  'INTEGER',
+  'BIGINT',
+  'SMALLINT',
+  'SERIAL',
+  'BIGSERIAL',
+  'REAL',
+  'DECIMAL(10,2)',
+  'NUMERIC',
+  'BOOLEAN',
+  'DATE',
+  'DATETIME',
+  'TIMESTAMP',
+  'TIMESTAMPTZ',
+  'TIME',
+  'INTERVAL',
+  'JSON',
+  'JSONB',
+  'UUID',
+  'BYTEA',
+  'BLOB',
+  'INET',
+] as const;
 
 export type DesignerColumnType = (typeof DESIGNER_TYPES)[number];
 
@@ -54,7 +78,7 @@ export interface MappedType {
 }
 
 /**
- * Map a designer-friendly or custom SQL type to a real SQLite column type.
+ * Map a designer-friendly or custom SQL type to a real database column type.
  * DATE-style types map to a datetime column with a current-timestamp default.
  */
 export function mapColumnType(type: string): MappedType {
@@ -63,15 +87,21 @@ export function mapColumnType(type: string): MappedType {
   switch (t) {
     case 'INTEGER':
     case 'INT':
-    case 'BIGINT':
-    case 'SMALLINT':
     case 'TINYINT':
       return { sqlType: 'INTEGER' };
+    case 'BIGINT':
+    case 'SMALLINT':
+    case 'SERIAL':
+    case 'BIGSERIAL':
+    case 'SMALLSERIAL':
+      return { sqlType: t };
+
     case 'TEXT':
     case 'VARCHAR':
     case 'CHAR':
     case 'CLOB':
     case 'STRING':
+    case 'CITEXT':
       return { sqlType: 'TEXT' };
     case 'REAL':
     case 'FLOAT':
@@ -79,26 +109,50 @@ export function mapColumnType(type: string): MappedType {
     case 'DECIMAL':
     case 'NUMERIC':
     case 'NUMBER':
+    case 'MONEY':
       return { sqlType: 'REAL' };
     case 'BLOB':
     case 'BINARY':
     case 'VARBINARY':
       return { sqlType: 'BLOB' };
+    case 'BYTEA':
+      return { sqlType: 'BYTEA' };
     case 'BOOLEAN':
     case 'BOOL':
       return { sqlType: 'INTEGER' };
     case 'DATE':
       return { sqlType: 'DATETIME', defaultAuto: 'CURRENT_TIMESTAMP' };
     case 'DATETIME':
-    case 'TIMESTAMP':
       return { sqlType: 'DATETIME' };
+    case 'TIMESTAMP':
+    case 'TIMESTAMPTZ':
+    case 'TIMESTAMP WITHOUT TIME ZONE':
+    case 'TIMESTAMP WITH TIME ZONE':
+      return { sqlType: t };
+    case 'TIME':
+    case 'TIMETZ':
+    case 'TIME WITHOUT TIME ZONE':
+    case 'TIME WITH TIME ZONE':
+      return { sqlType: t };
+    case 'INTERVAL':
+    case 'JSON':
+    case 'JSONB':
+    case 'UUID':
+    case 'INET':
+    case 'CIDR':
+    case 'MACADDR':
+    case 'SERIAL':
+    case 'BIGSERIAL':
+    case 'SMALLSERIAL':
+      return { sqlType: t };
     default:
-      if (/^[A-Za-z0-9_(),\s]+$/.test(t)) {
+      if (/^[A-Za-z0-9_(),\s\[\]]+$/.test(t)) {
         return { sqlType: t };
       }
       throw new Error(`Unsupported column type: "${type}". Supported types include: ${DESIGNER_TYPES.join(', ')} or standard SQL types.`);
   }
 }
+
 
 function validateIdentifier(kind: string, name: string): void {
   const label = kind.charAt(0).toUpperCase() + kind.slice(1);

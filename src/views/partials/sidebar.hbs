@@ -1,10 +1,19 @@
+{{!-- Partial: Left Navigation Sidebar --}}
 <aside class="flex h-full min-h-full w-72 flex-col bg-neutral text-neutral-content">
+
   <div class="flex items-center gap-2.5 px-5 pb-4 pt-5">
-    <div>
-      <div class="text-base font-bold leading-tight">AdminDB <span style="font-size: x-small">{{#if version}}
-          v{{version}}{{/if}}</span></div>
-      <div class="text-[11px] text-neutral-content/50">{{#if databasesMode}}Database manager{{else}}Database:
-        {{dbId}}{{/if}}</div>
+    <div class="w-full">
+      <div class="flex items-center justify-between">
+        <div class="text-base font-bold leading-tight">AdminDB <span style="font-size: x-small">{{#if version}}v{{version}}{{/if}}</span></div>
+        {{#unless databasesMode}}
+          {{#if isPostgres}}
+            <span class="rounded bg-info/20 px-1.5 py-0.5 text-[10px] font-bold text-info">PostgreSQL</span>
+          {{else}}
+            <span class="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">SQLite</span>
+          {{/if}}
+        {{/unless}}
+      </div>
+      <div class="mt-0.5 text-[11px] text-neutral-content/50 truncate">{{#if databasesMode}}Database manager{{else}}{{dbId}}{{/if}}</div>
     </div>
   </div>
 
@@ -13,7 +22,7 @@
     <ul class="space-y-0.5">
       <li>
         <a href="{{basePath}}/" class="side-link active">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
+          {{{icon "database" class="h-4 w-4"}}}
           Databases
         </a>
       </li>
@@ -22,7 +31,9 @@
   {{else}}
   <div class="px-4 pb-2">
     <label class="relative block">
-      <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+      <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-content/40">
+        {{{icon "search" class="h-4 w-4"}}}
+      </span>
       <input id="table-search" type="search" placeholder="Filter tables…" autocomplete="off"
         class="w-full rounded-lg border border-white/10 bg-white/[0.06] py-2 pl-9 pr-3 text-sm text-neutral-content outline-none transition placeholder:text-neutral-content/40 focus:border-primary/70 focus:ring-4 focus:ring-primary/20" />
     </label>
@@ -33,27 +44,27 @@
       {{#if databasesUrl}}
       <li>
         <a href="{{databasesUrl}}" class="side-link">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
+          {{{icon "database" class="h-4 w-4"}}}
           Databases
         </a>
       </li>
       {{/if}}
       <li>
         <a href="{{basePath}}/" class="side-link {{#if (eq currentPath '/')}}active{{/if}}">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+          {{{icon "home" class="h-4 w-4"}}}
           Home
         </a>
       </li>
       <li>
         <a href="{{basePath}}/query" class="side-link {{#if (startsWith currentPath '/query')}}active{{/if}}">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+          {{{icon "query" class="h-4 w-4"}}}
           Query editor
         </a>
       </li>
       {{#unless readonly}}
       <li>
         <a href="{{basePath}}/designer" class="side-link {{#if (startsWith currentPath '/designer')}}active{{/if}}">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+          {{{icon "plus" class="h-4 w-4"}}}
           New table
         </a>
       </li>
@@ -70,7 +81,7 @@
       <li class="table-item" data-name="{{this}}">
         <a href="{{../basePath}}/tables/{{this}}" class="side-link {{#if (eq ../currentTable this)}}active{{/if}}">
           <span class="table-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            {{{icon "table" class="h-4 w-4"}}}
           </span>
           <span class="truncate">{{this}}</span>
         </a>
@@ -87,7 +98,7 @@
       <li>
         <a href="{{../basePath}}/tables/{{this}}" class="side-link {{#if (eq ../currentTable this)}}active{{/if}}">
           <span class="table-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            {{{icon "book" class="h-4 w-4"}}}
           </span>
           <span class="truncate">{{this}}</span>
         </a>
@@ -99,13 +110,16 @@
   {{/if}}
 
   <div class="border-t border-white/10 px-5 py-3">
-    <div class="text-[11px] font-medium uppercase tracking-wider text-neutral-content/40">{{#if databasesMode}}Directory{{else}}Database{{/if}}</div>
-    <div class="mt-0.5 truncate font-mono text-[11px] text-neutral-content/60" title="{{dbPath}}">{{dbPath}}</div>
-    {{#if readonly}}
-    <div class="mt-2 inline-flex items-center gap-1 rounded-md bg-warning/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-warning">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-      {{#if serverless}}Serverless [Read-only]{{else}}Read-only{{/if}}
+    <div class="flex items-center justify-between">
+      <div class="text-[11px] font-medium uppercase tracking-wider text-neutral-content/40">{{#if databasesMode}}Directory{{else}}Engine: {{dialectName}}{{/if}}</div>
+      {{#unless databasesMode}}
+        {{#if readonly}}
+          <span class="rounded bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warning">Read-only</span>
+        {{else}}
+          <span class="rounded bg-success/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">Writable</span>
+        {{/if}}
+      {{/unless}}
     </div>
-    {{/if}}
+    <div class="mt-0.5 truncate font-mono text-[11px] text-neutral-content/60" title="{{dbPath}}">{{dbPath}}</div>
   </div>
 </aside>

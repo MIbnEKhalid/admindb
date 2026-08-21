@@ -1,4 +1,4 @@
-import type { ColumnInfo, ForeignKeyInfo, SqliteDatabase, TableInfoData, WhereClause } from '../db/database';
+import type { ColumnInfo, ForeignKeyInfo, IDatabase, TableInfoData, WhereClause } from '../db/index';
 import { quoteIdentifier, sqlValue } from '../sql/generator';
 import {
   SKIP,
@@ -10,7 +10,7 @@ import { findInMap, parseChecks, type OrderingConstraint } from './detector';
 import { generateOne } from './strategies';
 
 /** Distinct non-null values of a foreign key's referenced column. */
-async function sampleFkValues(db: SqliteDatabase, fk: ForeignKeyInfo | null): Promise<unknown[]> {
+async function sampleFkValues(db: IDatabase, fk: ForeignKeyInfo | null): Promise<unknown[]> {
   if (!fk) return [];
   try {
     const ref = await db.getTableInfo(fk.table);
@@ -25,6 +25,7 @@ async function sampleFkValues(db: SqliteDatabase, fk: ForeignKeyInfo | null): Pr
     return [];
   }
 }
+
 
 function stringifyKey(v: unknown): string {
   if (v instanceof Uint8Array || Buffer.isBuffer(v)) return `buf:${Buffer.from(v).toString('hex')}`;
@@ -99,12 +100,13 @@ function applyOrdering(fields: WhereClause[], ordering: Map<string, OrderingCons
  * Generate `count` rows for a table with structured previews.
  */
 export async function generateRows(
-  db: SqliteDatabase,
+  db: IDatabase,
   info: TableInfoData,
   configs: ColumnGeneratorConfig[],
   count: number,
   plan: Record<string, ColumnPlan> = {},
 ): Promise<GenerateResult> {
+
   const fkByColumn = new Map<string, ForeignKeyInfo>();
   for (const fk of info.foreignKeys) fkByColumn.set(fk.from, fk);
 

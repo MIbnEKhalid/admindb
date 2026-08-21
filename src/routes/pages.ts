@@ -1,5 +1,5 @@
 import type { Router, Request, Response, NextFunction } from 'express';
-import type { SqliteDatabase, TableInfoData } from '../db/database';
+import type { IDatabase, TableInfoData } from '../db/index';
 import type { Logger } from '../utils/logger';
 import { generateSqlDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
@@ -8,9 +8,10 @@ import { sniffMimeType, isJsonString } from '../utils/datatype';
 import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/index';
 
 interface PageContext {
-  db: SqliteDatabase;
+  db: IDatabase;
   logger: Logger;
 }
+
 
 interface DisplayCell {
   name: string;
@@ -44,7 +45,7 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
         const v = normalizeCell(raw);
         const isNull = v == null;
         const typeUpper = (c.type || '').toUpperCase();
-        const isBlob = typeUpper.includes('BLOB') || Buffer.isBuffer(raw) || raw instanceof Uint8Array || (typeof v === 'string' && /^0x[0-9a-f]{8,}$/i.test(v));
+        const isBlob = typeUpper.includes('BLOB') || typeUpper.includes('BYTEA') || Buffer.isBuffer(raw) || raw instanceof Uint8Array || (typeof v === 'string' && (/^0x[0-9a-f]{8,}$/i.test(v) || /^\\x[0-9a-f]{8,}$/i.test(v)));
         let isJson = false;
         let isImage = false;
         let isUrl = false;
@@ -61,6 +62,8 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
             if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
               buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
             } else if (typeof v === 'string' && /^0x[0-9a-f]*$/i.test(v)) {
+              buf = Buffer.from(v.slice(2), 'hex');
+            } else if (typeof v === 'string' && /^\\x[0-9a-f]*$/i.test(v)) {
               buf = Buffer.from(v.slice(2), 'hex');
             } else {
               buf = Buffer.from(str, 'utf8');
@@ -83,6 +86,7 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
             }
           }
         }
+
 
         return {
           name: c.name,

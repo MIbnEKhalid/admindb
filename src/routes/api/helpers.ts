@@ -1,12 +1,12 @@
 import type { Request, Response } from 'express';
-import type { SqliteDatabase, TableInfoData, WhereClause, SQLInputValue } from '../../db/database';
+import type { IDatabase, TableInfoData, WhereClause, SQLInputValue } from '../../db/index';
 import type { Logger } from '../../utils/logger';
 import { coerceFormValue, decodePk, errorMessage } from '../../utils/common';
 import { sanitizeColumnPlan, MAX_SEED_ROWS, type ColumnPlan } from '../../data/index';
 import { quoteIdentifier } from '../../sql/generator';
 
 export interface ApiContext {
-  db: SqliteDatabase;
+  db: IDatabase;
   logger: Logger;
 }
 
@@ -28,11 +28,12 @@ export function wrap(fn: (req: Request, res: Response) => unknown) {
   };
 }
 
-export async function requireTable(db: SqliteDatabase, table: string): Promise<TableInfoData | null> {
+export async function requireTable(db: IDatabase, table: string): Promise<TableInfoData | null> {
   const info = await db.getTableInfo(table);
   if (!info.success || !info.data || info.data.columns.length === 0) return null;
   return info.data;
 }
+
 
 export function buildFields(
   info: TableInfoData,
@@ -107,7 +108,7 @@ export function resolvePkRows(info: TableInfoData, ids: unknown): WhereClause[][
 }
 
 export async function computeBulkImpact(
-  db: SqliteDatabase,
+  db: IDatabase,
   info: TableInfoData,
   wheres: WhereClause[][],
 ): Promise<{ references: { table: string; from: string; to: string; count: number }[]; total: number }> {
@@ -120,8 +121,8 @@ export async function computeBulkImpact(
   const referencing = refInfoR.data ?? [];
   if (!rows.length || !referencing.length) return { references: [], total: 0 };
 
-  const queries = referencing.flatMap((item) =>
-    item.refs.map(async (ref) => {
+  const queries = referencing.flatMap((item: { table: string; refs: { from: string; to: string }[] }) =>
+    item.refs.map(async (ref: { from: string; to: string }) => {
       const targetCol = ref.to || info.primaryKey[0];
       if (!targetCol) return null;
       const values = Array.from(new Set(rows.map((r) => r[targetCol]).filter((v) => v != null)));
@@ -140,6 +141,7 @@ export async function computeBulkImpact(
   );
 
   const results = (await Promise.all(queries)).filter((r): r is { table: string; from: string; to: string; count: number } => r !== null);
-  const total = results.reduce((acc, r) => acc + r.count, 0);
+  const total = results.reduce((acc: number, r: { count: number }) => acc + r.count, 0);
   return { references: results, total };
 }
+

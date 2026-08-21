@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { SqliteDatabase } from './database';
+import { PostgresDatabase } from './postgres';
+import type { IDatabase } from './types';
+
 import { createLogger, type Logger } from '../utils/logger';
 import { errorMessage } from '../utils/common';
 
@@ -9,43 +12,49 @@ const DB_EXTENSIONS = ['.db', '.sqlite', '.sqlite3'];
 export interface DbManagerOptions {
   /** Directory of database files. Scanned for known extensions; new DBs are created here. */
   dir?: string;
-  /** Explicit database file paths (absolute or relative). Any extension accepted. */
+  /** Explicit database file paths or connection strings. */
   files?: string[];
+  /** Named database connections map (e.g. { "mydb": "postgresql://...", "name1": "postgresql://..." }). */
+  connections?: Record<string, string>;
   /** Open every managed database read-only (no writes, no create/delete of files). */
   readonly?: boolean;
 }
 
 export interface DatabaseEntry {
-  /** Stable, URL-safe id (usually the file name, deduped on collision). */
+  /** Stable, URL-safe id (usually the file name or connection name, deduped on collision). */
   id: string;
-  /** File name for display. */
+  /** Name for display. */
   name: string;
-  /** Absolute path on disk. */
+  /** Path on disk or sanitized connection URI. */
   path: string;
+  /** Database dialect (sqlite or postgres). */
+  dialect: 'sqlite' | 'postgres';
   size: number;
   modified: string;
+  /** Whether this specific database is opened in read-only mode. */
+  readonly: boolean;
 }
 
 /**
- * Manages multiple SQLite database files.
+ * Manages multiple SQLite database files and PostgreSQL database connections.
  *
- * Databases come from up to two sources:
- * - a `dir` — every file with a known extension is scanned in,
- * - an explicit `files[]` array — specific file locations anywhere on disk.
- *
- * New databases created through `create()` land in `dir` (or the working
- * directory when no dir is configured). Each database gets a stable id (the
- * file name, or a deduped `name__2.ext` when names collide across sources).
+ * Databases come from three sources:
+ * - a `connections` map — named PostgreSQL or SQLite connection strings (e.g. from JSON config),
+ * - a `dir` — every SQLite file with a known extension is scanned in,
+ * - an explicit `files[]` array — specific file locations or connection strings.
  */
 export class DbManager {
   private logger: Logger;
   private dir?: string;
   private createDir: string;
   private readonly readonlyMode: boolean;
-  private files: string[] = []; // absolute paths, registry order
-  private idByPath = new Map<string, string>(); // absPath -> id
-  private pathById = new Map<string, string>(); // id -> absPath
-  private openDbs = new Map<string, SqliteDatabase>(); // id -> db
+  private files: string[] = []; // targets (paths or URIs), registry order
+  private idByPath = new Map<string, string>(); // target -> id
+  private pathById = new Map<string, string>(); // id -> target
+  private nameById = new Map<string, string>(); // id -> display name
+  private readonlyById = new Map<string, boolean>(); // id -> readonly override
+  private openDbs = new Map<string, IDatabase>(); // id -> db
+
 
   constructor(options: DbManagerOptions | string, logger?: Logger) {
     const opts = typeof options === 'string' ? { dir: options } : (options ?? {});
@@ -54,6 +63,10 @@ export class DbManager {
     this.createDir = this.dir ?? process.cwd();
     this.readonlyMode = !!opts.readonly;
     if (this.dir) mkdirSync(this.dir, { recursive: true });
+
+    if (opts.connections) {
+      this.registerConnections(opts.connections);
+    }
     this.registerDirFiles();
     this.registerExplicitFiles(opts.files ?? []);
   }
@@ -72,6 +85,15 @@ export class DbManager {
     return DB_EXTENSIONS.some((ext) => lower.endsWith(ext));
   }
 
+  private registerConnections(conns: Record<string, string>): void {
+    for (const [name, target] of Object.entries(conns ?? {})) {
+      if (!name || !target) continue;
+      const cleanTarget = String(target).trim();
+      if (!cleanTarget) continue;
+      this.addNamedTarget(name.trim(), cleanTarget);
+    }
+  }
+
   private registerDirFiles(): void {
     if (!this.dir) return;
     let names: string[] = [];
@@ -87,13 +109,40 @@ export class DbManager {
 
   private registerExplicitFiles(files: string[]): void {
     for (const f of files ?? []) {
-      const abs = path.resolve(String(f ?? ''));
+      const raw = String(f ?? '').trim();
+      if (!raw) continue;
+      const isPg = raw.startsWith('postgres://') || raw.startsWith('postgresql://');
+      if (isPg) {
+        let name = 'postgres';
+        try {
+          const u = new URL(raw);
+          name = u.pathname.replace(/^\//, '') || 'postgres';
+        } catch {
+          name = 'postgres';
+        }
+        this.addNamedTarget(name, raw);
+        continue;
+      }
+      const abs = path.resolve(raw);
       if (!existsSync(abs)) {
         this.logger.warn(`Skipping missing database file: ${f}`);
         continue;
       }
       this.addFile(abs);
     }
+  }
+
+  private addNamedTarget(name: string, target: string): void {
+    let id = name;
+    let n = 2;
+    while (this.pathById.has(id)) {
+      id = `${name}__${n}`;
+      n += 1;
+    }
+    this.files.push(target);
+    this.idByPath.set(target, id);
+    this.pathById.set(id, target);
+    this.nameById.set(id, name);
   }
 
   private addFile(abs: string): void {
@@ -110,35 +159,112 @@ export class DbManager {
     this.files.push(abs);
     this.idByPath.set(abs, id);
     this.pathById.set(id, abs);
+    this.nameById.set(id, base);
   }
 
   /** List all managed databases (metadata only — does not open them). */
   list(): DatabaseEntry[] {
-    return this.files.map((p) => {
-      let size = 0;
-      let modified = '';
-      try {
-        const st = statSync(p);
-        size = st.size;
-        modified = st.mtime.toISOString();
-      } catch {
-        /* ignore */
+    const entries: DatabaseEntry[] = [];
+    const seen = new Set<string>();
+
+    for (const [id, target] of this.pathById.entries()) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+
+      const isPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
+      if (isPg) {
+        let sanitized = target;
+        try {
+          const u = new URL(target);
+          if (u.password) u.password = '****';
+          sanitized = u.toString();
+        } catch {
+          sanitized = target.replace(/:([^:@]+)@/, ':****@');
+        }
+        entries.push({
+          id,
+          name: this.nameById.get(id) ?? id,
+          path: sanitized,
+          dialect: 'postgres',
+          size: 0,
+          modified: 'Connected',
+          readonly: this.isDbReadOnly(id),
+        });
+      } else {
+        let size = 0;
+        let modified = '';
+        try {
+          const st = statSync(target);
+          size = st.size;
+          modified = st.mtime.toISOString();
+        } catch {
+          /* ignore */
+        }
+        entries.push({
+          id,
+          name: this.nameById.get(id) ?? path.basename(target),
+          path: target,
+          dialect: 'sqlite',
+          size,
+          modified,
+          readonly: this.isDbReadOnly(id),
+        });
       }
-      return { id: this.idByPath.get(p) ?? path.basename(p), name: path.basename(p), path: p, size, modified };
-    });
+    }
+    return entries;
   }
 
   has(id: string): boolean {
     return this.pathById.has(id);
   }
 
-  /** Open (and cache) a database by id; creates the file if it is new. */
-  open(id: string): SqliteDatabase {
-    const abs = this.pathById.get(id);
-    if (!abs) throw new Error(`Database "${id}" is not registered.`);
+  /** True if global manager is in readonly mode or this database is explicitly marked read-only. */
+  isDbReadOnly(id: string): boolean {
+    return this.readonlyMode || (this.readonlyById.get(id) ?? false);
+  }
+
+  /** Set or toggle read-only mode for a specific database id. */
+  setReadonly(id: string, readonly: boolean): void {
+    if (this.readonlyMode && !readonly) {
+      throw new Error('Manager is in global read-only mode — databases cannot be made writable.');
+    }
+    const current = this.readonlyById.get(id);
+    if (current === readonly) return;
+    this.readonlyById.set(id, readonly);
+    // Close existing connection instance so it is re-opened with new readonly mode on next use
+    const db = this.openDbs.get(id);
+    if (db) {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+      this.openDbs.delete(id);
+    }
+  }
+
+  /** Open (and cache) a database by id; creates the file if it is new SQLite database. */
+  open(id: string, readonlyOverride?: boolean): IDatabase {
+    const target = this.pathById.get(id);
+    if (!target) throw new Error(`Database "${id}" is not registered.`);
+    const isRo = this.readonlyMode || (readonlyOverride !== undefined ? readonlyOverride : (this.readonlyById.get(id) ?? false));
     let db = this.openDbs.get(id);
+    if (db && db.isReadOnly !== isRo) {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+      this.openDbs.delete(id);
+      db = undefined;
+    }
     if (!db) {
-      db = new SqliteDatabase(abs, this.logger.child(`db:${id}`), { readonly: this.readonlyMode });
+      const isPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
+      if (isPg) {
+        db = new PostgresDatabase(target, this.logger.child(`db:${id}`), { readonly: isRo });
+      } else {
+        db = new SqliteDatabase(target, this.logger.child(`db:${id}`), { readonly: isRo });
+      }
       this.openDbs.set(id, db);
     }
     return db;
@@ -149,30 +275,36 @@ export class DbManager {
    * Used by the "Open an existing database" file browser. Validates that the
    * file is a readable SQLite database before keeping it registered.
    */
-  openFile(absPath: string): string {
+  openFile(absPath: string, readonly?: boolean): string {
     const abs = path.resolve(String(absPath ?? '').trim());
     if (!abs) throw new Error('Database path is required.');
     if (!existsSync(abs) || !statSync(abs).isFile()) {
       throw new Error(`Not a file: ${abs}`);
     }
     const existing = this.idByPath.get(abs);
-    if (existing) return existing;
+    if (existing) {
+      if (readonly !== undefined) this.setReadonly(existing, readonly);
+      return existing;
+    }
     this.addFile(abs);
     const id = this.idByPath.get(abs);
     if (!id) throw new Error('Failed to register database file.');
+    if (readonly !== undefined) this.readonlyById.set(id, readonly);
     try {
       this.open(id); // throws if the file is not a readable SQLite database
     } catch (err) {
       // Roll the registration back so a bad file doesn't linger in the list.
       this.pathById.delete(id);
       this.idByPath.delete(abs);
+      this.nameById.delete(id);
+      this.readonlyById.delete(id);
       this.files = this.files.filter((p) => p !== abs);
       throw err;
     }
     return id;
   }
 
-  get(id: string): SqliteDatabase | undefined {
+  get(id: string): IDatabase | undefined {
     return this.openDbs.get(id);
   }
 
@@ -187,7 +319,7 @@ export class DbManager {
     }
   }
 
-  /** Create a new (empty) database. Returns its id. */
+  /** Create a new (empty) SQLite database. Returns its id. */
   create(name: string): string {
     if (this.readonlyMode) throw new Error('Read-only mode — creating databases is disabled.');
     const fileName = sanitizeFileName(name);
@@ -200,11 +332,32 @@ export class DbManager {
     return id;
   }
 
+  /** Dynamically register a named PostgreSQL or SQLite connection string. Returns its id. */
+  addConnection(name: string, connectionString: string, readonly?: boolean): string {
+    if (this.readonlyMode) throw new Error('Read-only mode — adding connections is disabled.');
+    const raw = String(connectionString ?? '').trim();
+    if (!raw) throw new Error('Connection string is required.');
+    let cleanName = String(name ?? '').trim();
+    if (!cleanName) {
+      try {
+        const u = new URL(raw);
+        cleanName = u.pathname.replace(/^\//, '') || 'postgres';
+      } catch {
+        cleanName = 'postgres';
+      }
+    }
+    this.addNamedTarget(cleanName, raw);
+    const id = this.idByPath.get(raw);
+    if (!id) throw new Error('Failed to register connection.');
+    if (readonly !== undefined) this.readonlyById.set(id, readonly);
+    return id;
+  }
+
   /** Close and delete a database file (including WAL/SHM sidecars). */
   remove(id: string): void {
     if (this.readonlyMode) throw new Error('Read-only mode — deleting databases is disabled.');
-    const abs = this.pathById.get(id);
-    if (!abs) return;
+    const target = this.pathById.get(id);
+    if (!target) return;
     const db = this.openDbs.get(id);
     if (db) {
       try {
@@ -215,13 +368,20 @@ export class DbManager {
       this.openDbs.delete(id);
     }
     this.pathById.delete(id);
-    this.idByPath.delete(abs);
-    this.files = this.files.filter((p) => p !== abs);
-    for (const suffix of ['', '-wal', '-shm']) {
-      try {
-        unlinkSync(abs + suffix);
-      } catch {
-        /* ignore */
+    this.idByPath.delete(target);
+    this.nameById.delete(id);
+    this.readonlyById.delete(id);
+    this.files = this.files.filter((p) => p !== target);
+
+
+    const isPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
+    if (!isPg) {
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          unlinkSync(target + suffix);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }

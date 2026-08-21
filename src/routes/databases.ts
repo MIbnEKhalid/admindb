@@ -42,12 +42,15 @@ async function getDatabaseRows(manager: DbManager): Promise<DatabaseRow[]> {
   return Promise.all(
     entries.map(async (e) => ({
       ...e,
-      sizeLabel: formatBytes(e.size),
-      modifiedLabel: e.modified ? formatDate(e.modified) : '—',
+      isPostgres: e.dialect === 'postgres',
+      isSqlite: e.dialect === 'sqlite',
+      sizeLabel: e.dialect === 'postgres' ? 'Remote' : formatBytes(e.size),
+      modifiedLabel: e.dialect === 'postgres' ? 'Connected' : (e.modified ? formatDate(e.modified) : '—'),
       tables: await manager.countTables(e.id),
     })),
   );
 }
+
 
 export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): void {
   const { manager } = ctx;
@@ -150,13 +153,59 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     if (browseRoot && !isPathWithinRoot(browseRoot, abs)) {
       return res.status(403).json({ success: false, error: `Cannot open a database outside the allowed folder: ${browseRoot}` });
     }
+    const isRo = req.body?.readonly !== undefined ? Boolean(req.body.readonly) : undefined;
     let id: string;
     try {
-      id = manager.openFile(p);
+      id = manager.openFile(p, isRo);
     } catch (err) {
       return res.status(400).json({ success: false, error: errorMessage(err) });
     }
     res.json({ success: true, data: { id, message: `Opened "${id}".` } });
+  }));
+
+  router.post('/api/databases/connect-postgres', wrap(async (req, res) => {
+    if (ctx.readonly) return res.status(403).json({ success: false, error: 'Read-only mode — adding connections is disabled.' });
+    const name = String(req.body?.name ?? '').trim();
+    const connectionString = String(req.body?.connectionString ?? req.body?.connection ?? '').trim();
+    const isRo = Boolean(req.body?.readonly);
+    if (!connectionString) {
+      return res.status(400).json({ success: false, error: 'PostgreSQL connection string is required (e.g. postgresql://user:password@localhost:5432/dbname).' });
+    }
+    if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
+      return res.status(400).json({ success: false, error: 'Invalid connection protocol. Connection string must start with postgres:// or postgresql://' });
+    }
+    let id: string;
+    try {
+      id = manager.addConnection(name, connectionString, isRo);
+      // Verify the connection works
+      const db = manager.open(id);
+      await db.listTables();
+    } catch (err) {
+      if (id!) {
+        manager.remove(id);
+      }
+      return res.status(400).json({ success: false, error: `Failed to connect to PostgreSQL: ${errorMessage(err)}` });
+    }
+    res.status(201).json({ success: true, data: { id, message: `Connected to PostgreSQL database "${id}".` } });
+  }));
+
+  router.post('/api/databases/:id/mode', wrap(async (req, res) => {
+    if (ctx.readonly && req.body?.readonly === false) {
+      return res.status(403).json({ success: false, error: 'Server is in global read-only mode.' });
+    }
+    const id = String(req.params.id);
+    if (!manager.has(id)) return res.status(404).json({ success: false, error: `Database "${id}" does not exist.` });
+    const targetRo = Boolean(req.body?.readonly);
+    manager.setReadonly(id, targetRo);
+    if (ctx.invalidate) ctx.invalidate(id);
+    res.json({
+      success: true,
+      data: {
+        id,
+        readonly: targetRo,
+        message: `Database "${id}" mode set to ${targetRo ? 'Read-only' : 'Writable'}.`,
+      },
+    });
   }));
 
   router.post('/api/databases', wrap(async (req, res) => {
@@ -178,6 +227,8 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     if (!manager.has(id)) return res.status(404).json({ success: false, error: `Database "${id}" does not exist.` });
     if (ctx.invalidate) ctx.invalidate(id);
     manager.remove(id);
-    res.json({ success: true, data: { message: `Database "${id}" deleted.` } });
+    res.json({ success: true, data: { message: `Database "${id}" removed.` } });
   }));
 }
+
+

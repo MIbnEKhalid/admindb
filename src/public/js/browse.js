@@ -110,11 +110,20 @@
     return c ? { min: c.value ?? null, max: c.max ?? null } : { min: null, max: null };
   }
 
-  function toDateInputValue(v, dateOnly) {
-    const m = String(v).match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  function toDateInputValue(v, dateOnly, timeOnly) {
+    if (v == null || v === '') return '';
+    const s = String(v);
+    if (dateOnly) {
+      const dm = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      return dm ? dm[1] : '';
+    }
+    if (timeOnly) {
+      const tm = s.match(/(\d{2}:\d{2}(?::\d{2})?)/);
+      return tm ? tm[1] : '';
+    }
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
     if (!m) return '';
-    if (dateOnly) return m[1];
-    return m[1] + 'T' + (m[2] ? m[2] + ':' + m[3] : '00:00');
+    return m[1] + 'T' + (m[2] ? m[2] + ':' + m[3] + (m[4] ? ':' + m[4] : '') : '00:00:00');
   }
 
   function addOption(sel, value, label) {
@@ -135,9 +144,12 @@
 
     const fk = fkFor(col.name);
     const type = (col.type || '').toUpperCase();
-    const isBool = type === 'BOOLEAN';
-    const isNum = type.startsWith('INTEGER') || type === 'REAL';
-    const isDate = type === 'DATE' || type === 'DATETIME';
+    const isBool = type === 'BOOLEAN' || type === 'BOOL';
+    const isNum = type.startsWith('INT') || type === 'REAL' || type === 'NUMERIC' || type.startsWith('DECIMAL') || type === 'FLOAT' || type === 'DOUBLE' || type.startsWith('BIGINT') || type.startsWith('SMALLINT') || type.startsWith('SERIAL') || type === 'MONEY';
+    const isDateOnly = type === 'DATE';
+    const isTimeOnly = type === 'TIME' || type === 'TIMETZ' || type.startsWith('TIME ') || type.startsWith('TIME(');
+    const isTimestamp = type === 'DATETIME' || type.includes('TIMESTAMP');
+    const isDate = isDateOnly || isTimeOnly || isTimestamp;
     const existing = cfg.filters[col.name];
     const conds = filterCondArray(existing);
     const legacy = legacyString(existing);
@@ -184,10 +196,12 @@
       const lo = document.createElement('input');
       const hi = document.createElement('input');
       if (isDate) {
-        lo.type = hi.type = type === 'DATE' ? 'date' : 'datetime-local';
+        lo.type = hi.type = isDateOnly ? 'date' : (isTimeOnly ? 'time' : 'datetime-local');
+        if (isTimeOnly || isTimestamp) lo.step = hi.step = '1';
       } else {
         lo.type = hi.type = 'number';
-        lo.step = hi.step = type === 'REAL' ? 'any' : '1';
+        const isInteger = type.startsWith('INTEGER') || type === 'INT' || type.startsWith('BIGINT') || type.startsWith('SMALLINT') || type.startsWith('SERIAL');
+        lo.step = hi.step = isInteger ? '1' : 'any';
       }
       lo.className = 'filter-input field-input !py-1.5 !text-[13px]';
       hi.className = 'filter-input field-input !py-1.5 !text-[13px]';
@@ -200,13 +214,14 @@
       const bt = condBetween(conds);
       const minV = condVal(conds, 'gte') ?? condVal(conds, 'gt') ?? bt.min;
       const maxV = condVal(conds, 'lte') ?? condVal(conds, 'lt') ?? bt.max;
-      if (minV != null) lo.value = isDate ? toDateInputValue(minV, type === 'DATE') : String(minV);
-      if (maxV != null) hi.value = isDate ? toDateInputValue(maxV, type === 'DATE') : String(maxV);
+      if (minV != null) lo.value = isDate ? toDateInputValue(minV, isDateOnly, isTimeOnly) : String(minV);
+      if (maxV != null) hi.value = isDate ? toDateInputValue(maxV, isDateOnly, isTimeOnly) : String(maxV);
       row.appendChild(lo);
       row.appendChild(hi);
       wrap.appendChild(row);
       return wrap;
     }
+
 
     // Text / BLOB / anything else — legacy operator syntax.
     const input = document.createElement('input');
@@ -406,10 +421,19 @@
     if (!c) return null;
     const fk = fkFor(col);
     const type = (c.type || '').toUpperCase();
-    const isBool = type === 'BOOLEAN';
-    const isDate = type === 'DATE' || type === 'DATETIME';
-    const isNum = type.startsWith('INTEGER') || type === 'REAL';
-    const isBlob = type === 'BLOB';
+    const isBool = type === 'BOOLEAN' || type === 'BOOL';
+    const isDateOnly = type === 'DATE';
+    const isTimeOnly = type === 'TIME' || type === 'TIMETZ' || type.startsWith('TIME ') || type.startsWith('TIME(');
+    const isTimestamp = type === 'DATETIME' || type.includes('TIMESTAMP');
+    const isDate = isDateOnly || isTimeOnly || isTimestamp;
+    const isNum = type.startsWith('INT') || type === 'REAL' || type === 'NUMERIC' || type.startsWith('DECIMAL') || type === 'FLOAT' || type === 'DOUBLE' || type.startsWith('BIGINT') || type.startsWith('SMALLINT') || type.startsWith('SERIAL') || type === 'MONEY';
+    const isBlob = type === 'BLOB' || type === 'BYTEA' || type === 'BINARY';
+    const isUuid = type === 'UUID';
+    const isJson = type.includes('JSON');
+    const isArray = type.endsWith('[]') || type.startsWith('_') || type.includes('ARRAY');
+    const isInterval = type === 'INTERVAL';
+    const isGeometry = type === 'POINT' || type === 'GEOMETRY' || type === 'BOX' || type === 'CIRCLE' || type === 'POLYGON';
+    const isBit = type === 'BIT' || type === 'VARBIT' || type.startsWith('BIT(') || type.startsWith('VARBIT(');
     const value = currentCellValue(td);
     const nullish = value === null || value === '';
 
@@ -429,24 +453,63 @@
       });
     } else if (isDate) {
       el = document.createElement('input');
-      el.type = type === 'DATE' ? 'date' : 'datetime-local';
-      el.className = 'field-input !w-64 !py-1.5 !text-[13px] js-inline-ctrl';
-      if (!nullish) el.value = toDateInputValue(String(value), type === 'DATE');
+      el.type = isDateOnly ? 'date' : (isTimeOnly ? 'time' : 'datetime-local');
+      if (isTimeOnly || isTimestamp) el.step = '1';
+      el.className = 'field-input !w-64 !py-1.5 !text-[13px] js-inline-ctrl font-mono';
+      if (!nullish) el.value = toDateInputValue(String(value), isDateOnly, isTimeOnly);
+      setTimeout(() => {
+        if (typeof el.showPicker === 'function') {
+          try { el.showPicker(); } catch (e) {}
+        }
+      }, 50);
     } else if (isNum) {
       el = document.createElement('input');
       el.type = 'number';
-      el.step = type === 'REAL' ? 'any' : '1';
-      el.className = 'field-input !w-48 !py-1.5 !text-[13px] js-inline-ctrl';
+      const isInteger = type.startsWith('INTEGER') || type === 'INT' || type.startsWith('BIGINT') || type.startsWith('SMALLINT') || type.startsWith('SERIAL');
+      el.step = isInteger ? '1' : 'any';
+      el.className = 'field-input !w-48 !py-1.5 !text-[13px] js-inline-ctrl font-mono';
+      if (!nullish) el.value = String(value);
+    } else if (isUuid) {
+      el = document.createElement('input');
+      el.type = 'text';
+      el.className = 'field-input font-mono !w-64 !py-1.5 !text-[12px] js-inline-ctrl';
+      el.placeholder = '00000000-0000-0000-0000-000000000000';
+      if (!nullish) el.value = String(value);
+    } else if (isArray) {
+      el = document.createElement('input');
+      el.type = 'text';
+      el.className = 'field-input font-mono !w-64 !py-1.5 !text-[12px] js-inline-ctrl';
+      el.placeholder = '{item1, item2}';
+      if (!nullish) el.value = String(value);
+    } else if (isInterval) {
+      el = document.createElement('input');
+      el.type = 'text';
+      el.className = 'field-input font-mono !w-64 !py-1.5 !text-[12px] js-inline-ctrl';
+      el.placeholder = "e.g. '1 day'";
+      if (!nullish) el.value = String(value);
+    } else if (isGeometry) {
+      el = document.createElement('input');
+      el.type = 'text';
+      el.className = 'field-input font-mono !w-64 !py-1.5 !text-[12px] js-inline-ctrl';
+      el.placeholder = "(x, y)";
+      if (!nullish) el.value = String(value);
+    } else if (isBit) {
+      el = document.createElement('input');
+      el.type = 'text';
+      el.className = 'field-input font-mono !w-64 !py-1.5 !text-[12px] js-inline-ctrl';
+      el.placeholder = "101010";
       if (!nullish) el.value = String(value);
     } else {
       el = document.createElement('input');
       el.type = 'text';
       el.className = 'field-input !w-64 !py-1.5 !text-[13px] js-inline-ctrl';
-      el.placeholder = isBlob ? '0x… hex or text' : '';
+      el.placeholder = isBlob ? (type === 'BYTEA' ? '\\x… or 0x… hex' : '0x… hex or text') : (isJson ? '{"key":"value"}' : '');
       if (!nullish) el.value = String(value);
     }
     return el;
   }
+
+
 
   function restoreCell(td) {
     renderCellValue(td, td._origNull ? null : td._origValue);

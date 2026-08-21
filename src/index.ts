@@ -15,6 +15,12 @@ export { createLogger, type Logger, type LogLevel } from './utils/logger';
 export { c, supportsColor } from './utils/colors';
 export {
   SqliteDatabase,
+  PostgresDatabase,
+  type IDatabase,
+  type DatabaseDialect,
+  type PostgresOptions,
+  type MutationResult,
+  type QueryOptions,
   type Result,
   type TableInfoData,
   type ColumnInfo,
@@ -29,6 +35,7 @@ export {
   type FilterValue,
   type SQLInputValue,
 } from './db/index';
+
 export { DbManager, type DbManagerOptions, type DatabaseEntry } from './db/manager';
 export {
   type ColumnDef,

@@ -1,77 +1,85 @@
+{{!-- Page: Multi-Database Manager Landing · URL: /databases (or / in manager mode) --}}
 <div class="space-y-6">
+
   <!-- Header -->
   <div>
     <p class="text-sm font-semibold uppercase tracking-wider text-primary">Manager</p>
     <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Databases</h1>
-    <p class="mt-1.5 text-sm text-base-content/55">Open a database to browse and edit it, or create a new one.</p>
+    <p class="mt-1.5 text-sm text-base-content/55">Connect to PostgreSQL databases, create SQLite files, or open existing local databases with configurable read/write access.</p>
   </div>
 
-  <!-- New database -->
-  <div class="app-card p-5">
-    <div class="flex flex-wrap items-end gap-3">
-      <div class="w-full max-w-sm">
-        <label class="field-label" for="new-db-name">New database name</label>
-        <input id="new-db-name" class="field-input font-mono" placeholder="e.g. analytics" autocomplete="off" spellcheck="false" />
+  <!-- Connect & Create Actions Grid -->
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <!-- Connect PostgreSQL Database -->
+    <div class="app-card p-5 border border-info/30 bg-info/[0.02]">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-info">
+          {{{icon "database" class="h-4 w-4"}}}
+          Connect PostgreSQL
+        </h2>
+        <span class="rounded bg-info/15 px-2 py-0.5 text-[10px] font-bold text-info">Remote / Local</span>
       </div>
-      {{#unless readonly}}
-        <button id="create-db" type="button" class="btn btn-primary btn-sm mb-0.5 gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
-          Create
-        </button>
-      {{else}}
-        <span class="mb-1 text-sm font-medium text-warning">Read-only — creating databases is disabled.</span>
-      {{/unless}}
+      <div class="space-y-3">
+        <div>
+          <label class="field-label" for="pg-conn-name">Connection Name <span class="text-base-content/40">(optional)</span></label>
+          <input id="pg-conn-name" class="field-input font-mono text-xs" placeholder="e.g. prod_postgres" autocomplete="off" spellcheck="false" />
+        </div>
+        <div>
+          <label class="field-label" for="pg-conn-uri">Connection URI <span class="chip chip-type">required</span></label>
+          <input id="pg-conn-uri" class="field-input font-mono text-xs" placeholder="postgresql://user:password@localhost:5432/mydb" autocomplete="off" spellcheck="false" />
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer pt-0.5">
+            <input type="checkbox" id="pg-conn-readonly" class="checkbox checkbox-xs checkbox-primary rounded" />
+            <span class="text-xs font-medium text-base-content/75">Open as Read-only (block writes & schema changes)</span>
+          </label>
+        </div>
+        <div class="pt-1">
+          {{#unless readonly}}
+            <button id="connect-pg" type="button" class="btn btn-info btn-sm gap-1.5 w-full sm:w-auto">
+              {{{icon "plus" class="h-4 w-4"}}}
+              Connect PostgreSQL
+            </button>
+          {{else}}
+            <span class="text-xs font-medium text-warning">Read-only mode — connecting databases is disabled.</span>
+          {{/unless}}
+        </div>
+      </div>
+      <p class="mt-3 text-[11px] text-base-content/45 leading-relaxed">
+        Credentials are encrypted in-memory and sanitized in the UI. Passwords are never sent to the client.
+      </p>
     </div>
-    <p class="mt-2 text-xs text-base-content/40">
-      New databases are created in <code class="font-mono">{{dbDir}}</code>. Files already there are picked up
-      automatically, and any explicitly configured database paths appear here too.
-    </p>
-  </div>
 
-  <!-- Open an existing database file -->
-  {{#if allowBrowse}}
-    <div class="app-card p-5">
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/45">Open an existing database</h2>
-        <span class="text-xs text-base-content/40">.db · .sqlite · .sqlite3</span>
+    <!-- Create SQLite Database -->
+    <div class="app-card p-5 border border-emerald-500/30 bg-emerald-500/[0.02]">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+          {{{icon "plus" class="h-4 w-4"}}}
+          Create SQLite Database
+        </h2>
+        <span class="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">File-based</span>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <input id="fs-path" class="field-input font-mono sm:!w-96" placeholder="Absolute path to a folder, e.g. C:\data" autocomplete="off" spellcheck="false" />
-        <button id="fs-go" type="button" class="btn btn-outline btn-sm gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          Go
-        </button>
-        <button id="fs-up" type="button" class="btn btn-ghost btn-sm gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h13M3 10l4-4m-4 4l4 4" /></svg>
-          Up
-        </button>
+      <div class="space-y-3">
+        <div>
+          <label class="field-label" for="new-db-name">Database Name <span class="chip chip-type">required</span></label>
+          <input id="new-db-name" class="field-input font-mono text-xs" placeholder="e.g. analytics" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="pt-1">
+          {{#unless readonly}}
+            <button id="create-db" type="button" class="btn btn-primary btn-sm gap-1.5 w-full sm:w-auto">
+              {{{icon "plus" class="h-4 w-4"}}}
+              Create SQLite DB
+            </button>
+          {{else}}
+            <span class="text-xs font-medium text-warning">Read-only — creating databases is disabled.</span>
+          {{/unless}}
+        </div>
       </div>
-      <div class="mt-3 overflow-hidden rounded-xl border border-base-300">
-        <div id="fs-current" class="border-b border-base-200 bg-base-200/50 px-3 py-2 font-mono text-xs text-base-content/60"></div>
-        <div id="fs-listing" class="max-h-80 divide-y divide-base-200/70 overflow-auto"></div>
-      </div>
-      <p class="mt-2.5 text-xs text-base-content/45">
-        Browse the filesystem to select an existing database; opening it adds it to the list above so you can
-        switch between databases freely.
-        {{#if browseRoot}}
-          <span class="font-medium text-base-content/60">Browsing is limited to <code class="font-mono">{{browseRoot}}</code>.</span>
-        {{/if}}
-        {{#if authEnabled}}
-          <span class="font-medium text-success/80">Protected by AdminDB authentication.</span>
-        {{else}}
-          <span class="font-medium text-warning">Authentication is disabled — ensure access is restricted in untrusted networks.</span>
-        {{/if}}
+      <p class="mt-3 text-[11px] text-base-content/45 leading-relaxed">
+        Files are saved to <code class="font-mono">{{dbDir}}</code>. Any <code class="font-mono">.db</code> file dropped there is auto-discovered.
       </p>
     </div>
-  {{else}}
-    <div class="app-card p-5">
-      <p class="text-sm text-base-content/60">
-        <b class="text-base-content/80">File browsing is disabled.</b>
-        This server was started with specific database files, so the filesystem browser is turned off — use the
-        list of available databases below.
-      </p>
-    </div>
-  {{/if}}
+  </div>
 
   <!-- List -->
   <div>
@@ -87,9 +95,10 @@
             <thead>
               <tr class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50">
                 <th class="font-semibold">Name</th>
+                <th class="font-semibold">Mode</th>
                 <th class="text-right font-semibold">Tables</th>
                 <th class="text-right font-semibold">Size</th>
-                <th class="font-semibold">Modified</th>
+                <th class="font-semibold">Status / Modified</th>
                 <th class="text-right font-semibold">Actions</th>
               </tr>
             </thead>
@@ -98,31 +107,76 @@
                 <tr class="group hover:bg-primary/[0.04]">
                   <td>
                     <a href="{{../basePath}}/{{this.id}}" class="inline-flex items-center gap-2.5">
-                      <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
+                      <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg {{#if this.isPostgres}}bg-info/10 text-info group-hover:bg-info/20{{else}}bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/20{{/if}} transition-colors">
+                        {{{icon "database" class="h-4 w-4"}}}
                       </span>
                       <span class="min-w-0">
-                        <span class="block truncate font-mono text-[13.5px] font-semibold">{{this.name}}</span>
-                        <span class="block max-w-[220px] truncate text-[11px] text-base-content/40" title="{{this.path}}">{{this.path}}</span>
+                        <div class="flex items-center gap-1.5">
+                          <span class="truncate font-mono text-[13.5px] font-semibold">{{this.name}}</span>
+                          {{#if this.isPostgres}}
+                            <span class="rounded bg-info/15 px-1.5 py-0.2 text-[10px] font-bold text-info">PostgreSQL</span>
+                          {{else}}
+                            <span class="rounded bg-emerald-500/15 px-1.5 py-0.2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">SQLite</span>
+                          {{/if}}
+                        </div>
+                        <span class="block max-w-[260px] truncate font-mono text-[11px] text-base-content/40" title="{{this.path}}">{{this.path}}</span>
                       </span>
                     </a>
+                  </td>
+                  <td class="align-middle">
+                    {{#if ../readonly}}
+                      <span class="rounded bg-warning/20 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Read-only</span>
+                    {{else}}
+                      <button type="button" class="js-toggle-db-mode rounded px-2 py-0.5 text-[10px] font-bold uppercase transition hover:opacity-80 {{#if this.readonly}}bg-warning/20 text-warning{{else}}bg-success/20 text-success{{/if}}"
+                        data-id="{{this.id}}" data-readonly="{{#if this.readonly}}true{{else}}false{{/if}}" title="Click to toggle between Writable and Read-only">
+                        {{#if this.readonly}}Read-only{{else}}Writable{{/if}} ⇄
+                      </button>
+                    {{/if}}
                   </td>
                   <td class="text-right tabular-nums text-base-content/60">{{this.tables}}</td>
                   <td class="text-right tabular-nums text-base-content/60">{{this.sizeLabel}}</td>
                   <td class="text-[13px] text-base-content/55">{{this.modifiedLabel}}</td>
                   <td class="whitespace-nowrap text-right">
-                      <div class="row-actions">
-                        <a href="{{../basePath}}/{{this.id}}" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                    <div class="row-actions">
+                      <div class="join">
+                        <a href="{{../basePath}}/{{this.id}}" class="btn btn-ghost btn-xs join-item gap-1 text-base-content/70 hover:text-primary">
+                          {{{icon "arrowRight" class="h-3.5 w-3.5"}}}
                           Open
                         </a>
-                        {{#unless ../readonly}}
-                          <button type="button" class="btn btn-ghost btn-xs gap-1 text-error js-delete-db" data-id="{{this.id}}">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        <div class="dropdown dropdown-end">
+                          <label tabindex="0" role="button" class="btn btn-ghost btn-xs join-item px-1 text-base-content/60 hover:text-base-content" title="Open options">
+                            {{{icon "chevronDown" class="h-3 w-3"}}}
+                          </label>
+                          <ul tabindex="0" class="dropdown-content menu z-50 w-44 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-lift text-xs">
+                            <li>
+                              <a href="{{../basePath}}/{{this.id}}?readonly=0" class="flex items-center gap-1.5 text-success">
+                                {{{icon "check" class="h-3.5 w-3.5"}}}
+                                Open Writable
+                              </a>
+                            </li>
+                            <li>
+                              <a href="{{../basePath}}/{{this.id}}?readonly=1" class="flex items-center gap-1.5 text-warning">
+                                {{{icon "lock" class="h-3.5 w-3.5"}}}
+                                Open Read-only
+                              </a>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                      {{#unless ../readonly}}
+                        {{#if this.isPostgres}}
+                          <button type="button" class="btn btn-ghost btn-xs gap-1 text-warning js-disconnect-db" data-id="{{this.id}}" data-name="{{this.name}}" title="Disconnect this database from the manager list">
+                            {{{icon "logout" class="h-3.5 w-3.5"}}}
+                            Disconnect
+                          </button>
+                        {{else}}
+                          <button type="button" class="btn btn-ghost btn-xs gap-1 text-error js-delete-db" data-id="{{this.id}}" title="Delete database file from disk">
+                            {{{icon "trash" class="h-3.5 w-3.5"}}}
                             Delete
                           </button>
-                        {{/unless}}
-                      </div>
+                        {{/if}}
+                      {{/unless}}
+                    </div>
                   </td>
                 </tr>
               {{/each}}
@@ -132,16 +186,51 @@
       </div>
     {{else}}
       <div class="empty-state">
-        <span class="empty-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2M4 7c0 1.1.9 2 2 2h12a2 2 0 002-2" /></svg>
-        </span>
+        <span class="empty-icon">{{{icon "database" class="h-7 w-7"}}}</span>
         <p class="text-sm font-medium text-base-content/70">No databases yet</p>
         <p class="max-w-sm text-sm text-base-content/45">
-          Create one above, or drop <code class="font-mono">.db</code> files into
-          <code class="font-mono">{{dbDir}}</code> and refresh.
+          Connect a PostgreSQL database or create a new SQLite database above to get started.
         </p>
       </div>
     {{/if}}
   </div>
+
+  <!-- Open an existing database file -->
+  {{#if allowBrowse}}
+    <div class="app-card p-5">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/45">Open an existing SQLite file</h2>
+        <span class="text-xs text-base-content/40">.db · .sqlite · .sqlite3</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <input id="fs-path" class="field-input font-mono sm:!w-96" placeholder="Absolute path to a folder, e.g. C:\data" autocomplete="off" spellcheck="false" />
+        <button id="fs-go" type="button" class="btn btn-outline btn-sm gap-1.5">
+          {{{icon "search" class="h-4 w-4"}}}
+          Go
+        </button>
+        <button id="fs-up" type="button" class="btn btn-ghost btn-sm gap-1.5">
+          {{{icon "arrowUp" class="h-4 w-4"}}}
+          Up
+        </button>
+      </div>
+      <div class="mt-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="fs-readonly" class="checkbox checkbox-xs checkbox-primary rounded" />
+          <span class="text-xs font-medium text-base-content/70">Open selected file in Read-only mode</span>
+        </label>
+      </div>
+      <div class="mt-3 overflow-hidden rounded-xl border border-base-300">
+        <div id="fs-current" class="border-b border-base-200 bg-base-200/50 px-3 py-2 font-mono text-xs text-base-content/60"></div>
+        <div id="fs-listing" class="max-h-80 divide-y divide-base-200/70 overflow-auto"></div>
+      </div>
+      <p class="mt-2.5 text-xs text-base-content/45">
+        Browse the filesystem to select an existing database; opening it adds it to the list above.
+        {{#if browseRoot}}
+          <span class="font-medium text-base-content/60">Browsing is limited to <code class="font-mono">{{browseRoot}}</code>.</span>
+        {{/if}}
+      </p>
+    </div>
+  {{/if}}
+
 </div>
 <script src="{{basePath}}/js/databases.js" defer></script>

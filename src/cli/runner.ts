@@ -36,13 +36,19 @@ export function runCli(): void {
   const serverless = args.serverless !== undefined ? args.serverless : env.serverless;
   const readonly = serverless || args.readonly || env.readonly;
 
+  const connections = args.connections ?? env.connections;
+  const hasConnections = Boolean(connections && Object.keys(connections).length > 0);
+
   const config = {
     host: args.host ?? env.host,
     port: args.port ?? env.port,
     dbPath: args.dbPath ?? env.dbPath,
+    connection: args.connection ?? env.connection,
+    connections,
     dbDir: args.dbDir ?? env.dbDir,
     dbFiles: args.dbFiles ?? env.dbFiles,
     basePath: (args.basePath ?? env.basePath).replace(/\/+$/, ''),
+
     logLevel: args.logLevel ?? env.logLevel,
     readonly,
     serverless,
@@ -61,34 +67,31 @@ export function runCli(): void {
   app.disable('x-powered-by');
 
   // Mode selection:
-  //  - A specific single file was requested (`--open`, a file path argument, or
-  //    DB_PATH) and no folder/files were configured → single-database mode.
-  //  - Otherwise → manager mode with a landing page where you can browse the
-  //    filesystem and open database files, or create new ones.
+  //  - Multiple database connections from JSON config -> Manager mode.
+  //  - A specific single file / connection without multiple connections -> single-database mode.
+  //  - Otherwise -> manager mode.
   const hasDir = Boolean(config.dbDir);
   const hasFiles = Boolean(config.dbFiles && config.dbFiles.length > 0);
   const explicitFile =
+    args.connection ??
+    config.connection ??
     args.dbPath ??
     (process.env.ADMINDB_DB_PATH || process.env.ADMINDB_PATH || process.env.DB_PATH ? config.dbPath : undefined);
-  const singleFileOnly = Boolean(explicitFile) && !hasDir && !hasFiles;
+  const isPg = Boolean(explicitFile && (explicitFile.startsWith('postgres://') || explicitFile.startsWith('postgresql://')));
+  const singleFileOnly = !hasConnections && (Boolean(explicitFile) || isPg) && !hasDir && !hasFiles;
   const useManager = !singleFileOnly;
 
   const managerFiles = [...(config.dbFiles ?? [])];
-  if (useManager && explicitFile) managerFiles.push(explicitFile);
+  if (useManager && explicitFile && !hasConnections) managerFiles.push(explicitFile);
 
-  // File-browser policy for manager mode:
-  //  - a folder was requested → browsing is allowed but limited to that folder;
-  //  - specific files were requested (no folder) → browsing is disabled entirely;
-  //  - nothing requested → browsing is allowed (free); the folder defaults to the
-  //    current directory so new/created databases land there.
-  const managerDir = hasDir ? config.dbDir : hasFiles || explicitFile ? undefined : process.cwd();
-  const allowBrowse = useManager && (hasDir || (!hasFiles && !explicitFile));
+  const managerDir = hasDir ? config.dbDir : hasFiles || explicitFile || hasConnections ? undefined : process.cwd();
+  const allowBrowse = useManager && (hasDir || (!hasFiles && !explicitFile && !hasConnections));
   const browseRoot = hasDir ? path.resolve(config.dbDir!) : undefined;
 
   const router = useManager
     ? createRouter({
         manager: new DbManager(
-          { dir: managerDir, files: managerFiles, readonly: config.readonly },
+          { dir: managerDir, files: managerFiles, connections, readonly: config.readonly },
           logger,
         ),
         basePath: config.basePath,
@@ -101,6 +104,7 @@ export function runCli(): void {
       })
     : createRouter({
         dbPath: explicitFile,
+        connection: explicitFile,
         basePath: config.basePath,
         logger,
         readonly: config.readonly,
@@ -153,10 +157,23 @@ export function runCli(): void {
         : config.readonly
         ? 'Manager [Read-Only]'
         : 'Manager';
-      const target = managerDir ? managerDir : managerFiles.length ? `[${managerFiles.join(', ')}]` : '';
-      console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}${target ? c.dim(` (${target})`) : ''}`);
+      console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}`);
+      if (args.configPath) {
+        const count = Object.keys(connections ?? {}).length;
+        console.log(`  ${c.green('➜')}  ${c.bold('Config:')}   ${c.cyan(args.configPath)}${count ? ` (${count} connection(s))` : ''}`);
+      }
+      if (hasConnections) {
+        for (const [name, target] of Object.entries(connections!)) {
+          const sanitized = target.replace(/:([^@]+)@/, ':****@');
+          const isTargetPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
+          const engine = isTargetPg ? 'PostgreSQL' : 'SQLite';
+          console.log(`     ${c.dim('•')} ${c.bold(name)}: ${c.cyan(engine)} ${c.dim(sanitized)}`);
+        }
+      } else if (managerDir) {
+        console.log(`  ${c.green('➜')}  ${c.bold('Directory:')}${c.dim(` ${managerDir}`)}`);
+      }
       if (!allowBrowse) {
-        console.log(`  ${c.green('➜')}  ${c.bold('Browse:')}   ${c.dim('Disabled (configured files only)')}`);
+        console.log(`  ${c.green('➜')}  ${c.bold('Browse:')}   ${c.dim('Disabled (configured databases only)')}`);
       } else if (browseRoot) {
         console.log(`  ${c.green('➜')}  ${c.bold('Browse:')}   ${c.dim(`Limited to ${browseRoot}`)}`);
       }
@@ -167,7 +184,17 @@ export function runCli(): void {
         ? 'Single DB [Read-Only]'
         : 'Single DB';
       console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}`);
-      console.log(`  ${c.green('➜')}  ${c.bold('Database:')} ${explicitFile}`);
+      if (args.configPath) {
+        console.log(`  ${c.green('➜')}  ${c.bold('Config:')}   ${c.cyan(args.configPath)}`);
+      }
+      if (isPg) {
+        const sanitized = explicitFile?.replace(/:([^@]+)@/, ':****@');
+        console.log(`  ${c.green('➜')}  ${c.bold('Engine:')}   ${c.cyan('PostgreSQL')}`);
+        console.log(`  ${c.green('➜')}  ${c.bold('Database:')} ${sanitized}`);
+      } else {
+        console.log(`  ${c.green('➜')}  ${c.bold('Engine:')}   ${c.cyan('SQLite')}`);
+        console.log(`  ${c.green('➜')}  ${c.bold('Database:')} ${explicitFile}`);
+      }
     }
 
     // Auth Status

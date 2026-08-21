@@ -1,9 +1,11 @@
+{{!-- Page: Mock & Seed Data Generator · URL: /tables/:table/seed --}}
 <div class="space-y-6">
+
   <!-- Header -->
   <div class="flex flex-wrap items-center justify-between gap-4 border-b border-base-200 pb-5">
     <div class="flex items-center gap-3">
       <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        {{{icon "arrowLeft" class="h-5 w-5"}}}
       </a>
       <div>
         <div class="flex flex-wrap items-center gap-2">
@@ -18,9 +20,9 @@
       <!-- Presets dropdown -->
       <div class="dropdown dropdown-end">
         <button tabindex="0" type="button" class="btn btn-outline btn-sm gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+          {{{icon "seed" class="h-4 w-4"}}}
           Presets
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+          {{{icon "chevronDown" class="h-3.5 w-3.5 opacity-60"}}}
         </button>
         <ul tabindex="0" class="dropdown-content z-20 menu p-2 shadow-lg bg-base-100 rounded-xl w-56 border border-base-200 text-xs">
           <li><button type="button" id="preset-realistic" class="py-2">✨ Realistic Mock Data</button></li>
@@ -34,18 +36,18 @@
       </div>
 
       <button id="seed-preview" type="button" class="btn btn-outline btn-sm gap-1.5">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+        {{{icon "inspect" class="h-4 w-4 text-primary"}}}
         Preview Data
       </button>
 
       {{#unless readonly}}
         <button id="seed-insert" type="button" class="btn btn-primary btn-sm gap-1.5 shadow-sm">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          {{{icon "plus" class="h-4 w-4"}}}
           Insert Rows
         </button>
       {{else}}
         <span class="inline-flex items-center gap-1.5 text-xs font-medium text-warning bg-warning/10 px-2.5 py-1.5 rounded-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          {{{icon "lock" class="h-4 w-4"}}}
           Read-only database
         </span>
       {{/unless}}
@@ -78,7 +80,7 @@
         </label>
         <div class="relative">
           <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-base-content/40">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            {{{icon "search" class="h-4 w-4"}}}
           </span>
           <input id="seed-search" type="text" placeholder="Search column by name or type..." class="field-input pl-9 text-xs" />
         </div>
@@ -90,7 +92,7 @@
           <label class="cursor-pointer flex items-center gap-2 text-xs font-medium text-base-content/80 hover:text-base-content transition-colors">
             <input id="seed-truncate" type="checkbox" class="checkbox checkbox-xs checkbox-error rounded" />
             <span class="flex items-center gap-1 text-error/90">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              {{{icon "trash" class="h-3.5 w-3.5"}}}
               Clear table before inserting (DELETE all rows)
             </span>
           </label>
@@ -109,15 +111,15 @@
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         <button id="seed-refresh-samples" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/60" title="Refresh live sample previews">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          {{{icon "refresh" class="h-3.5 w-3.5"}}}
           Refresh Samples
         </button>
         <button id="seed-apply-all" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/60">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+          {{{icon "duplicate" class="h-3.5 w-3.5"}}}
           Apply strategy to all…
         </button>
         <button id="seed-reset" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/60">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          {{{icon "refresh" class="h-3.5 w-3.5"}}}
           Reset Defaults
         </button>
       </div>
@@ -139,11 +141,11 @@
       <div class="flex items-center gap-3">
         <div class="tabs tabs-boxed bg-base-300/40 p-0.5 rounded-lg">
           <button id="tab-table-view" type="button" class="tab tab-sm tab-active font-medium gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            {{{icon "table" class="h-3.5 w-3.5"}}}
             Table Preview
           </button>
           <button id="tab-sql-view" type="button" class="tab tab-sm font-medium gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+            {{{icon "sql" class="h-3.5 w-3.5"}}}
             SQL Statements
           </button>
         </div>
@@ -152,19 +154,19 @@
 
       <div class="flex flex-wrap items-center gap-1.5">
         <button id="seed-export-csv" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          {{{icon "export" class="h-3.5 w-3.5"}}}
           Export CSV
         </button>
         <button id="seed-export-json" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          {{{icon "export" class="h-3.5 w-3.5"}}}
           Export JSON
         </button>
         <button id="seed-copy-sql" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-2m-4-7h3a2 2 0 012 2v9a2 2 0 01-2 2h-3" /></svg>
+          {{{icon "copy" class="h-3.5 w-3.5"}}}
           Copy SQL
         </button>
         <button id="seed-download-sql" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          {{{icon "export" class="h-3.5 w-3.5"}}}
           Download .sql
         </button>
       </div>
@@ -206,7 +208,7 @@
   <div class="modal-box app-card max-w-md border border-error/30">
     <div class="flex items-center gap-3 text-error">
       <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-error/10">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        {{{icon "warning" class="h-6 w-6"}}}
       </span>
       <div>
         <h3 class="text-base font-bold text-base-content">Clear table before inserting?</h3>

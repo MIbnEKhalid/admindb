@@ -15,7 +15,10 @@ import {
 import { errorMessage } from '../utils/common';
 import type {
   ColumnInfo,
+  DatabaseDialect,
   DbOpenOptions,
+  IDatabase,
+  MutationResult,
   ReferencingTableInfo,
   Result,
   RowFilters,
@@ -39,11 +42,13 @@ export * from './filters';
  * Every call returns a consistent `{ success, data?, error? }` shape and
  * performs one-time, idempotent schema initialization.
  */
-export class SqliteDatabase {
+export class SqliteDatabase implements IDatabase {
   private db: Database.Database;
   private logger: Logger;
   readonly path: string;
   readonly isReadOnly: boolean;
+  readonly dialect: DatabaseDialect = 'sqlite';
+
 
   constructor(dbPath: string, logger: Logger, options: DbOpenOptions = {}) {
     this.path = dbPath;

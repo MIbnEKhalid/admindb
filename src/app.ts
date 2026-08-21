@@ -2,6 +2,8 @@ import express from 'express';
 import path from 'node:path';
 import { engine } from 'express-handlebars';
 import { SqliteDatabase } from './db/database';
+import { PostgresDatabase } from './db/postgres';
+import type { IDatabase, PostgresOptions } from './db/types';
 import { DbManager } from './db/manager';
 import { createLogger, type Logger, type LogLevel } from './utils/logger';
 import { registerPages } from './routes/pages';
@@ -9,7 +11,9 @@ import { registerApi } from './routes/api/index';
 import { registerDatabasesRoutes } from './routes/databases';
 import { getPackageVersion } from './cli/args';
 import { errorMessage } from './utils/common';
+import { renderIcon } from './utils/icons';
 import { isServerlessEnvironment } from './serverless';
+
 import {
   resolveAuthConfig,
   createAuthMiddleware,
@@ -21,14 +25,18 @@ import {
 const APP_VERSION = getPackageVersion();
 
 export interface AppOptions {
-  /** Path to the SQLite file (single-db mode). Defaults to `admindb.db`. */
+  /** Path to the SQLite file (single-db mode) or connection string. Defaults to `admindb.db`. */
   dbPath?: string;
+  /** PostgreSQL or database connection string (e.g. `postgresql://user:pass@host:5432/db`). */
+  connection?: string;
+  /** Explicit PostgreSQL connection options. */
+  pgOptions?: PostgresOptions;
   /** URL prefix used by templates/static assets (e.g. `/admin`). Defaults to `''`. */
   basePath?: string;
   logger?: Logger;
   logLevel?: LogLevel;
   /** Provide an existing database instance (single-db embedding). */
-  db?: SqliteDatabase;
+  db?: IDatabase;
   /** Enable multi-database mode with a manager over a directory of `.db` files. */
   manager?: DbManager;
   /** Open the database read-only — all write routes are rejected with 403. */
@@ -66,6 +74,7 @@ export interface AppOptions {
   /** Internal: current database id (for locals/display). */
   dbId?: string;
 }
+
 
 /**
  * Build a fully configured, mountable Express app (pages + JSON API + static
@@ -106,11 +115,16 @@ function setupViewEngine(app: express.Express, _logger: Logger): void {
         gt: (a: unknown, b: unknown) => Number(a) > Number(b),
         lt: (a: unknown, b: unknown) => Number(a) < Number(b),
         join: (arr: unknown, sep: string) => (Array.isArray(arr) ? arr.join(String(sep ?? ',')) : String(arr ?? '')),
+        icon: (name: unknown, options?: any) => {
+          const customClass = (options && options.hash && options.hash.class) || undefined;
+          return renderIcon(String(name ?? ''), customClass);
+        },
       },
     }),
   );
   app.set('view engine', 'hbs');
   app.set('views', path.join(__dirname, 'views'));
+
 }
 
 function addErrorHandlers(app: express.Express, logger: Logger): void {
@@ -135,10 +149,33 @@ function addErrorHandlers(app: express.Express, logger: Logger): void {
 /** Single-database app (also used as the per-database app in multi-db mode). */
 function createSingleDbApp(options: AppOptions): express.Express {
   const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
-  const readonly = isServerless || Boolean(options.readonly);
+  const rawTarget = options.connection || options.dbPath || '';
+  const isPg =
+    Boolean(options.pgOptions) ||
+    (typeof rawTarget === 'string' && (rawTarget.startsWith('postgres://') || rawTarget.startsWith('postgresql://'))) ||
+    options.db?.dialect === 'postgres';
+
+  // In serverless environments, SQLite local files are ephemeral/read-only,
+  // whereas PostgreSQL connects to a remote networked database and is fully editable.
+  const readonly = options.readonly !== undefined
+    ? Boolean(options.readonly)
+    : (isServerless && !isPg);
+
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
-  const db = options.db ?? new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly });
+
+  let db: IDatabase;
+  if (options.db) {
+    db = options.db;
+  } else {
+    if (isPg) {
+      const conn = options.pgOptions || rawTarget;
+      db = new PostgresDatabase(conn, logger, { readonly });
+    } else {
+      db = new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly });
+    }
+  }
+
   const databasesUrl = options.databasesUrl;
   const authConfig = resolveAuthConfig(options.auth);
 
@@ -165,7 +202,11 @@ function createSingleDbApp(options: AppOptions): express.Express {
       res.locals.currentPath = req.path;
       res.locals.currentTable = null;
       res.locals.dbPath = db.path;
-      res.locals.dbId = options.dbId ?? null;
+      res.locals.dbId = options.dbId ?? (db.dialect === 'postgres' ? 'PostgreSQL' : (path.basename(db.path) || 'SQLite'));
+      res.locals.dialect = db.dialect;
+      res.locals.isPostgres = db.dialect === 'postgres';
+      res.locals.isSqlite = db.dialect === 'sqlite';
+      res.locals.dialectName = db.dialect === 'postgres' ? 'PostgreSQL' : 'SQLite';
       res.locals.databasesUrl = databasesUrl ?? null;
       res.locals.databasesMode = false;
       res.locals.readonly = db.isReadOnly;
@@ -179,11 +220,13 @@ function createSingleDbApp(options: AppOptions): express.Express {
         res.locals.tables = names.filter((n) => !n.startsWith('_'));
         res.locals.internalTables = names.filter((n) => n.startsWith('_'));
       }
+
       next();
     } catch (err) {
       next(err);
     }
   });
+
 
   registerPages(router, { db, logger });
   registerApi(router, { db, logger });
@@ -263,17 +306,28 @@ function createManagerApp(options: AppOptions): express.Express {
         error: `Database "${dbId}" does not exist.`,
       });
     }
+
+    const rawRo = req.query.readonly;
+    if (rawRo !== undefined) {
+      const explicitRo = rawRo === '1' || rawRo === 'true';
+      if (!readonly || explicitRo) {
+        manager.setReadonly(dbId, explicitRo);
+        subApps.delete(dbId);
+      }
+    }
+
     let sub = subApps.get(dbId);
     if (!sub) {
       const subBase = `${basePath ? basePath : ''}/${encodeURIComponent(dbId)}`;
+      const effectiveRo = readonly || manager.isDbReadOnly(dbId);
       sub = createSingleDbApp({
-        db: manager.open(dbId),
+        db: manager.open(dbId, effectiveRo),
         basePath: subBase,
         logger,
         logLevel: options.logLevel,
         dbId,
         databasesUrl: `${basePath ? basePath : ''}/`,
-        readonly,
+        readonly: effectiveRo,
         serverless: isServerless,
         auth: authConfig,
       });
@@ -281,6 +335,7 @@ function createManagerApp(options: AppOptions): express.Express {
     }
     return sub(req, res, next);
   });
+
 
   addErrorHandlers(app, logger);
   return app;

@@ -42,10 +42,16 @@ test('mapColumnType maps designer and standard SQL types', () => {
   assert.equal(mapColumnType('DATE').sqlType, 'DATETIME');
   assert.equal(mapColumnType('DATE').defaultAuto, 'CURRENT_TIMESTAMP');
   assert.equal(mapColumnType('datetime').sqlType, 'DATETIME');
+  assert.equal(mapColumnType('TIMESTAMP').sqlType, 'TIMESTAMP');
+  assert.equal(mapColumnType('TIMESTAMPTZ').sqlType, 'TIMESTAMPTZ');
   assert.equal(mapColumnType('VARCHAR(255)').sqlType, 'VARCHAR(255)');
-  assert.equal(mapColumnType('BIGINT').sqlType, 'INTEGER');
+  assert.equal(mapColumnType('BIGINT').sqlType, 'BIGINT');
   assert.equal(mapColumnType('DECIMAL(10,2)').sqlType, 'DECIMAL(10,2)');
+  assert.equal(mapColumnType('UUID').sqlType, 'UUID');
+  assert.equal(mapColumnType('JSONB').sqlType, 'JSONB');
+  assert.equal(mapColumnType('BYTEA').sqlType, 'BYTEA');
 });
+
 
 test('mapColumnType rejects unsupported types', () => {
   assert.throws(() => mapColumnType('INVALID; DROP TABLE'), /Unsupported column type/);

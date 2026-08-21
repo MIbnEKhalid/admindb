@@ -1,4 +1,4 @@
-import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfoData } from '../db/database';
+import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfoData } from '../db/index';
 import {
   type ColumnGeneratorConfig,
   type ColumnPlan,
@@ -262,15 +262,20 @@ export function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPl
 
   if (fk) return { strategy: 'fk' };
   if (col.pk) {
-    if (type.startsWith('INTEGER')) return { strategy: 'skip' };
-    if (type === 'TEXT' || type === 'BLOB') return { strategy: 'uuid' };
+    if (type.startsWith('INT') || type === 'SERIAL' || type === 'BIGSERIAL') return { strategy: 'skip' };
+    if (type === 'TEXT' || type === 'BLOB' || type === 'UUID') return { strategy: 'uuid' };
     return { strategy: 'skip' };
   }
-  if (type === 'BOOLEAN') return { strategy: 'bool' };
-  if (type.startsWith('INTEGER') && /(^|_)(is|has|can|should|did)_|_flag$|active|enabled|verified|published|deleted|archived|paid|completed|approved/.test(rawName)) {
+  if (type === 'UUID') return { strategy: 'uuid' };
+  if (type === 'JSON' || type === 'JSONB') return { strategy: 'json' };
+  if (type === 'INET') return { strategy: 'ip' };
+  if (type === 'BOOLEAN' || type === 'BOOL') return { strategy: 'bool' };
+  if (type === 'BYTEA' || type === 'BLOB') return { strategy: 'bytes', minLen: 8, maxLen: 32 };
+  if ((type.startsWith('INT') || type.startsWith('INTEGER')) && /(^|_)(is|has|can|should|did)_|_flag$|active|enabled|verified|published|deleted|archived|paid|completed|approved/.test(rawName)) {
     return { strategy: 'bool' };
   }
   if (type === 'DATE' || /^date|birthdate|dob|birthday/.test(rawName)) {
+
     return name.includes('birth') ? { strategy: 'date', from: '1950-01-01', to: '2000-12-31' } : { strategy: 'date', from: '2020-01-01', to: '2026-12-31' };
   }
   if (type === 'DATETIME' || type === 'TIMESTAMP' || isTimestampName(name)) {
