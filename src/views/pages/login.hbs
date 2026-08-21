@@ -98,8 +98,14 @@
     </div>
 
     <!-- Security & Auth Control Note -->
-    <div class="mt-6 text-center text-xs text-base-content/50">
-      Authentication can be turned off anytime via <code class="font-mono">--no-auth</code> or <code class="font-mono">auth: false</code>.
+    <div class="mt-6 space-y-2 text-center text-xs text-base-content/55">
+      <p class="leading-relaxed">
+        <span class="font-semibold text-base-content/80">Security Notice:</span> Built-in auth provides basic access control. For production, protect your admin routes using your own application authentication, VPN, or reverse proxy.
+      </p>
+      <p class="text-base-content/40">
+        Native authentication can be disabled via <code class="font-mono">--no-auth</code> or <code class="font-mono">auth: false</code>.
+      </p>
     </div>
   </div>
 </div>
+

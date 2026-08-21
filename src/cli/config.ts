@@ -112,7 +112,7 @@ export interface Config {
 
 /** Load configuration from environment variables with sensible defaults. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const portRaw = env.ADMINDB_PORT ?? env.PORT ?? '3000';
+  const portRaw = env.ADMINDB_PORT ?? env.PORT ?? '45531';
   const port = Number.parseInt(portRaw, 10);
   const authDisabled =
     ['0', 'false', 'no', 'off'].includes(String(env.ADMINDB_AUTH ?? '').trim().toLowerCase()) ||
@@ -154,7 +154,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   return {
     host: env.ADMINDB_HOST ?? env.HOST ?? '0.0.0.0',
-    port: Number.isFinite(port) ? port : 3000,
+    port: Number.isFinite(port) ? port : 45531,
     dbPath: dbPathRaw ? String(dbPathRaw) : 'admindb.db',
     connection: connectionRaw ? String(connectionRaw) : undefined,
     connections,

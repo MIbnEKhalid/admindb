@@ -232,5 +232,20 @@
     </div>
   {{/if}}
 
+  <!-- Security Responsibility Notice -->
+  <div class="rounded-xl border border-warning/30 bg-warning/[0.04] p-4 text-xs text-base-content/75 leading-relaxed">
+    <div class="flex items-start gap-2.5">
+      <span class="text-warning shrink-0 mt-0.5">
+        {{{icon "warning" class="h-4 w-4"}}}
+      </span>
+      <div>
+        <span class="font-bold text-warning">Security & Protection Notice:</span>
+        AdminDB's native authentication provides basic single-user password protection. For production environments and internet-facing networks, <strong>it is entirely your responsibility to secure this interface</strong> by placing it behind your web application's own authentication system (e.g., custom Express/Next.js auth middleware, SSO/OAuth, NextAuth), a secure VPN, or an IP-whitelisted reverse proxy with HTTPS.
+      </div>
+    </div>
+  </div>
+
 </div>
 <script src="{{basePath}}/js/databases.js" defer></script>
+
+

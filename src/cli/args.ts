@@ -67,7 +67,7 @@ export function helpText(): string {
     '',
     'Options & Environment Variables:',
     '  -C, --config <file.json>       Load database credentials & settings from a JSON file',
-    '  -p, --port <port>              Port to listen on (default: 3000) [PORT / ADMINDB_PORT]',
+    '  -p, --port <port>              Port to listen on (default: 45531) [PORT / ADMINDB_PORT]',
     '  -H, --host <host>              Host/interface to bind (default: 0.0.0.0) [HOST / ADMINDB_HOST]',
     '  -c, --connection, --pg <uri>   Open a PostgreSQL database directly [DATABASE_URL / ADMINDB_CONNECTION]',
     '  -o, --open, --db-path <file>   Open a single database file directly [DB_PATH / ADMINDB_DB_PATH]',

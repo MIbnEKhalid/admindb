@@ -120,18 +120,34 @@ export function registerPages(router: Router, ctx: PageContext): void {
   // Home / browse overview.
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const tables = await db.listTables();
-      const allNames = (tables.data ?? []).map((t) => t.name);
-      const names = allNames.filter((n) => !n.startsWith('_'));
-      const internalNames = allNames.filter((n) => n.startsWith('_'));
+      const names: string[] = (res.locals.tables as string[]) ?? [];
+      const internalNames: string[] = (res.locals.internalTables as string[]) ?? [];
+
+      let colCountsMap: Record<string, number> = {};
+      if (db.dialect === 'postgres') {
+        const colRes = await db.all(
+          `SELECT table_name, count(*)::int AS cols FROM information_schema.columns WHERE table_schema = 'public' GROUP BY table_name;`,
+        );
+        if (colRes.success && colRes.data) {
+          for (const row of colRes.data as Record<string, unknown>[]) {
+            if (row && typeof row.table_name === 'string') {
+              colCountsMap[row.table_name] = Number(row.cols ?? 0);
+            }
+          }
+        }
+      }
+
 
       const [stats, saved] = await Promise.all([
         Promise.all(names.map(async (name) => {
-          const [c, info] = await Promise.all([db.getRowCount(name), db.getTableInfo(name)]);
+          const countR = await db.getRowCount(name);
+          const cols = colCountsMap[name] !== undefined
+            ? colCountsMap[name]
+            : (await db.getTableInfo(name)).data?.columns.length ?? 0;
           return {
             name,
-            count: c.success ? (c.data as number) : 0,
-            cols: info.success ? (info.data?.columns.length ?? 0) : 0,
+            count: countR.success ? (countR.data as number) : 0,
+            cols,
           };
         })),
         db.listSavedQueries(),
@@ -162,6 +178,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
   });
 
   // Browse a table's rows.
+
   router.get('/tables/:table', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;

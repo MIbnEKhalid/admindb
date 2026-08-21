@@ -46,6 +46,34 @@ export class PostgresDatabase implements IDatabase {
     this.isReadOnly = Boolean(opts.readonly);
     this.schema = opts.schema || 'public';
 
+    let sslConfig = opts.ssl;
+    if (opts.connectionString) {
+      try {
+        const u = new URL(opts.connectionString);
+        const sslMode = (u.searchParams.get('sslmode') || u.searchParams.get('ssl') || '').toLowerCase();
+        const host = u.hostname.toLowerCase();
+        const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
+
+        if (sslMode === 'disable') {
+          sslConfig = false;
+        } else if (sslConfig === undefined) {
+          // Auto-enable SSL for remote/cloud hosts (e.g. Neon, Supabase, Render, Railway, AWS RDS, etc.)
+          // or whenever sslmode is specified or not explicitly local
+          if (sslMode === 'require' || sslMode === 'prefer' || sslMode === 'no-verify' || !isLocal) {
+            sslConfig = { rejectUnauthorized: false };
+          }
+        }
+      } catch {
+        /* ignore URL parse error */
+      }
+    } else if (opts.host && sslConfig === undefined) {
+      const host = opts.host.toLowerCase();
+      const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
+      if (!isLocal) {
+        sslConfig = { rejectUnauthorized: false };
+      }
+    }
+
     const poolConfig: PoolConfig = {
       connectionString: opts.connectionString,
       host: opts.host,
@@ -53,8 +81,11 @@ export class PostgresDatabase implements IDatabase {
       database: opts.database,
       user: opts.user,
       password: opts.password,
-      ssl: opts.ssl,
+      ssl: sslConfig,
       max: opts.max ?? 10,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000,
+      keepAlive: true,
     };
 
     this.path = opts.connectionString
@@ -62,6 +93,8 @@ export class PostgresDatabase implements IDatabase {
       : `${opts.user || 'postgres'}@${opts.host || 'localhost'}:${opts.port || 5432}/${opts.database || 'postgres'}`;
 
     this.pool = new Pool(poolConfig);
+
+
 
     this.pool.on('error', (err) => {
       this.logger.error(`Unexpected PostgreSQL client error: ${errorMessage(err)}`);
@@ -223,100 +256,104 @@ export class PostgresDatabase implements IDatabase {
 
   async getTableInfo(table: string): Promise<Result<TableInfoData>> {
     return this.tryRun(async () => {
-      // 1. Columns
-      const colRes = await this.pool.query<{
-        cid: number;
-        name: string;
-        type: string;
-        udt_name: string;
-        notnull: number;
-        dflt_value: string | null;
-      }>(
-        `SELECT
-           ordinal_position AS cid,
-           column_name AS name,
-           data_type AS type,
-           udt_name,
-           CASE WHEN is_nullable = 'NO' THEN 1 ELSE 0 END AS notnull,
-           column_default AS dflt_value
-         FROM information_schema.columns
-         WHERE table_schema = $1 AND table_name = $2
-         ORDER BY ordinal_position;`,
-        [this.schema, table],
-      );
+      // Execute all 4 metadata queries concurrently in parallel
+      const [colRes, pkRes, fkRes, idxRes] = await Promise.all([
+        // 1. Columns
+        this.pool.query<{
+          cid: number;
+          name: string;
+          type: string;
+          udt_name: string;
+          notnull: number;
+          dflt_value: string | null;
+        }>(
+          `SELECT
+             ordinal_position AS cid,
+             column_name AS name,
+             data_type AS type,
+             udt_name,
+             CASE WHEN is_nullable = 'NO' THEN 1 ELSE 0 END AS notnull,
+             column_default AS dflt_value
+           FROM information_schema.columns
+           WHERE table_schema = $1 AND table_name = $2
+           ORDER BY ordinal_position;`,
+          [this.schema, table],
+        ),
 
-      // 2. Primary Keys
-      const pkRes = await this.pool.query<{ column_name: string }>(
-        `SELECT kcu.column_name
-         FROM information_schema.table_constraints tc
-         JOIN information_schema.key_column_usage kcu
-           ON tc.constraint_name = kcu.constraint_name
-           AND tc.table_schema = kcu.table_schema
-         WHERE tc.constraint_type = 'PRIMARY KEY'
-           AND tc.table_schema = $1
-           AND tc.table_name = $2
-         ORDER BY kcu.ordinal_position;`,
-        [this.schema, table],
-      );
+        // 2. Primary Keys
+        this.pool.query<{ column_name: string }>(
+          `SELECT kcu.column_name
+           FROM information_schema.table_constraints tc
+           JOIN information_schema.key_column_usage kcu
+             ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+           WHERE tc.constraint_type = 'PRIMARY KEY'
+             AND tc.table_schema = $1
+             AND tc.table_name = $2
+           ORDER BY kcu.ordinal_position;`,
+          [this.schema, table],
+        ),
+
+        // 3. Foreign Keys
+        this.pool.query<{
+          id: number;
+          seq: number;
+          table: string;
+          from: string;
+          to: string | null;
+          on_update: string;
+          on_delete: string;
+        }>(
+          `SELECT
+             row_number() OVER () AS id,
+             kcu.position_in_unique_constraint AS seq,
+             ccu.table_name AS table,
+             kcu.column_name AS "from",
+             ccu.column_name AS "to",
+             rc.update_rule AS on_update,
+             rc.delete_rule AS on_delete
+           FROM information_schema.table_constraints AS tc
+           JOIN information_schema.key_column_usage AS kcu
+             ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+           JOIN information_schema.constraint_column_usage AS ccu
+             ON ccu.constraint_name = tc.constraint_name
+             AND ccu.table_schema = tc.table_schema
+           JOIN information_schema.referential_constraints AS rc
+             ON rc.constraint_name = tc.constraint_name
+             AND rc.constraint_schema = tc.table_schema
+           WHERE tc.constraint_type = 'FOREIGN KEY'
+             AND tc.table_schema = $1
+             AND tc.table_name = $2;`,
+          [this.schema, table],
+        ),
+
+        // 4. Indexes
+        this.pool.query<{
+          name: string;
+          unique: boolean;
+          sql: string | null;
+          columns: string[];
+        }>(
+          `SELECT
+             i.relname AS name,
+             ix.indisunique AS unique,
+             pg_get_indexdef(ix.indexrelid) AS sql,
+             ARRAY(
+               SELECT pg_get_indexdef(ix.indexrelid, k + 1, true)
+               FROM generate_subscripts(ix.indkey, 1) as k
+               ORDER BY k
+             ) AS columns
+           FROM pg_index ix
+           JOIN pg_class t ON t.oid = ix.indrelid
+           JOIN pg_class i ON i.oid = ix.indexrelid
+           JOIN pg_namespace n ON n.oid = t.relnamespace
+           WHERE n.nspname = $1 AND t.relname = $2;`,
+          [this.schema, table],
+        ),
+      ]);
+
       const primaryKey = pkRes.rows.map((r) => r.column_name);
-
-      // 3. Foreign Keys
-      const fkRes = await this.pool.query<{
-        id: number;
-        seq: number;
-        table: string;
-        from: string;
-        to: string | null;
-        on_update: string;
-        on_delete: string;
-      }>(
-        `SELECT
-           row_number() OVER () AS id,
-           kcu.position_in_unique_constraint AS seq,
-           ccu.table_name AS table,
-           kcu.column_name AS "from",
-           ccu.column_name AS "to",
-           rc.update_rule AS on_update,
-           rc.delete_rule AS on_delete
-         FROM information_schema.table_constraints AS tc
-         JOIN information_schema.key_column_usage AS kcu
-           ON tc.constraint_name = kcu.constraint_name
-           AND tc.table_schema = kcu.table_schema
-         JOIN information_schema.constraint_column_usage AS ccu
-           ON ccu.constraint_name = tc.constraint_name
-           AND ccu.table_schema = tc.table_schema
-         JOIN information_schema.referential_constraints AS rc
-           ON rc.constraint_name = tc.constraint_name
-           AND rc.constraint_schema = tc.table_schema
-         WHERE tc.constraint_type = 'FOREIGN KEY'
-           AND tc.table_schema = $1
-           AND tc.table_name = $2;`,
-        [this.schema, table],
-      );
-
-      // 4. Indexes
-      const idxRes = await this.pool.query<{
-        name: string;
-        unique: boolean;
-        sql: string | null;
-        columns: string[];
-      }>(
-        `SELECT
-           i.relname AS name,
-           ix.indisunique AS unique,
-           pg_get_indexdef(ix.indexrelid) AS sql,
-           ARRAY(
-             SELECT pg_get_indexdef(ix.indexrelid, k + 1, true)
-             FROM generate_subscripts(ix.indkey, 1) as k
-             ORDER BY k
-           ) AS columns
-         FROM pg_index ix
-         JOIN pg_class t ON t.oid = ix.indrelid
-         JOIN pg_class i ON i.oid = ix.indexrelid
-         JOIN pg_namespace n ON n.oid = t.relnamespace
-         WHERE n.nspname = $1 AND t.relname = $2;`,
-        [this.schema, table],
-      );
 
       const columns: ColumnInfo[] = colRes.rows.map((c) => {
         const isPk = primaryKey.includes(c.name);
@@ -373,40 +410,48 @@ export class PostgresDatabase implements IDatabase {
 
   async getRowCount(table: string, filters?: RowFilters): Promise<Result<number>> {
     return this.tryRun(async () => {
-      const infoR = await this.getTableInfo(table);
-      const cols = infoR.success && infoR.data ? infoR.data.columns.map((c) => c.name) : [];
-      const { where, params } = buildFilterClause(filters, cols);
-      const pgWhere = convertPlaceholdersToPostgres(where);
+      let pgWhere = '';
+      let params: unknown[] = [];
+      if (filters && Object.keys(filters).length > 0) {
+        const { where, params: p } = buildFilterClause(filters, Object.keys(filters));
+        pgWhere = convertPlaceholdersToPostgres(where);
+        params = p as unknown[];
+      }
       const sql = `SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)}${pgWhere}`;
-      const res = await this.pool.query<{ c: string | number }>(sql, params as unknown[]);
+      const res = await this.pool.query<{ c: string | number }>(sql, params);
       return Number(res.rows[0]?.c ?? 0);
     });
   }
 
   async getRows(table: string, opts: QueryOptions = {}): Promise<Result<Record<string, unknown>[]>> {
     return this.tryRun(async () => {
-      const infoR = await this.getTableInfo(table);
-      const cols = infoR.success && infoR.data ? infoR.data.columns : [];
-      const colNames = cols.map((c) => c.name);
-      const orderCol = opts.orderBy || infoR.data?.primaryKey?.[0] || colNames[0];
+      const orderCol = opts.orderBy;
       const orderDir = opts.orderDir === 'desc' ? 'DESC' : 'ASC';
       const limit = opts.limit && opts.limit > 0 ? opts.limit : 200;
       const page = opts.page && opts.page > 0 ? opts.page : 1;
       const offset = (page - 1) * limit;
-      const { where, params } = buildFilterClause(opts.filters, colNames);
 
-      const nextParamIdx = params.length + 1;
-      let sql = `SELECT * FROM ${quoteIdentifier(table)}${convertPlaceholdersToPostgres(where)}`;
+      let pgWhere = '';
+      let filterParams: unknown[] = [];
+      if (opts.filters && Object.keys(opts.filters).length > 0) {
+        const { where, params } = buildFilterClause(opts.filters, Object.keys(opts.filters));
+        pgWhere = convertPlaceholdersToPostgres(where);
+        filterParams = params as unknown[];
+      }
+
+      const nextParamIdx = filterParams.length + 1;
+      let sql = `SELECT * FROM ${quoteIdentifier(table)}${pgWhere}`;
       if (orderCol) {
         sql += ` ORDER BY ${quoteIdentifier(orderCol)} ${orderDir}`;
       }
       sql += ` LIMIT $${nextParamIdx} OFFSET $${nextParamIdx + 1}`;
-      const allParams = [...params, limit, offset];
+      const allParams = [...filterParams, limit, offset];
 
-      const res = await this.pool.query(sql, allParams as unknown[]);
+      const res = await this.pool.query(sql, allParams);
       return res.rows;
     });
   }
+
 
   async getAllRows(table: string): Promise<Result<Record<string, unknown>[]>> {
     return this.tryRun(async () => {

@@ -1,7 +1,4 @@
-/**
- * Common shared utility functions used across AdminDB.
- */
-
+import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 export function errorMessage(err: unknown): string {
@@ -9,14 +6,32 @@ export function errorMessage(err: unknown): string {
   return String(err);
 }
 
+
 /**
  * True when `p` is equal to `root` or lives inside it (both treated as
  * absolute). Used to sandbox the filesystem file-browser to an allowed folder.
+ * Resolves symlinks and rejects null-byte injections.
  */
 export function isPathWithinRoot(root: string, p: string): boolean {
-  const rel = path.relative(path.resolve(root), path.resolve(p));
+  if (!root || !p || typeof root !== 'string' || typeof p !== 'string') return false;
+  if (p.includes('\0') || root.includes('\0')) return false;
+
+  const absRoot = path.resolve(root);
+  const absPath = path.resolve(p);
+
+  let realRoot = absRoot;
+  let realPath = absPath;
+  try {
+    if (existsSync(absRoot)) realRoot = realpathSync(absRoot);
+  } catch {}
+  try {
+    if (existsSync(absPath)) realPath = realpathSync(absPath);
+  } catch {}
+
+  const rel = path.relative(realRoot, realPath);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
+
 
 /** Operators understood by the structured (type-aware) filter conditions. */
 export type FilterOp =

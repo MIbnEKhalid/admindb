@@ -72,11 +72,11 @@ These endpoints manage database files and power the filesystem browser:
 | ------ | ------------------------------- | ------------------------------------------- |
 | GET    | `/api/databases`                | List managed databases                      |
 | POST   | `/api/databases`                | Create a new SQLite database (`{ name }`)   |
-| POST   | `/api/databases/connect-postgres` | Connect a PostgreSQL database (`{ name?, connectionString }`) |
+| POST   | `/api/databases/connect-postgres` | Connect a PostgreSQL database (`{ name?, connectionString, readonly? }`) |
+| POST   | `/api/databases/:id/mode`       | Toggle/set database mode (`{ readonly: boolean }`) |
 | DELETE | `/api/databases/:id`            | Delete SQLite database file or disconnect PostgreSQL connection |
-| GET    | `/api/fs/list?path=`            | List subfolders + SQLite files under a path (file browser) |
-| POST   | `/api/databases/open`           | Open/register an existing database file by path (`{ path }`) |
-
+| GET    | `/api/fs/list?path=`            | List subfolders + SQLite files under a path (sandboxed file browser) |
+| POST   | `/api/databases/open`           | Open/register an existing database file by path (`{ path, readonly? }`) |
 
 ## Authentication & Sessions
 
@@ -101,10 +101,13 @@ npm run generatehash
 
 Paste the generated hash into `ADMINDB_PASSWORD`, CLI `-P`, or `auth.password` option.
 
-### Disabling Native Authentication
+### Disabling Native Authentication & Custom Application Auth
 Pass `auth: false`, CLI `--no-auth`, or `ADMINDB_AUTH=false` to turn off built-in authentication when integrating your own security layer.
 
-> ⚠️ **Notice**: The native authentication system is designed for basic protection. In production environments, place AdminDB behind an authenticated gateway or use custom authentication middleware.
+> [!WARNING]
+> **Security & Responsibility Notice**:
+> AdminDB's built-in authentication is designed for basic access control during local development. For production environments and internet-facing networks, **it is entirely the user's responsibility to protect AdminDB** by placing it behind your own application authentication (e.g. NextAuth, Passport, JWT, SSO/OAuth middleware), a VPN, an IP-allowlist reverse proxy (Nginx, Cloudflare Access), or HTTPS with rate limiting.
+
 
 ## TypeScript API Types & Helpers
 

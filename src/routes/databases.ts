@@ -89,10 +89,23 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     res.json({ success: true, data });
   }));
 
+  const BLOCKED_NAMES = new Set([
+    'node_modules',
+    '.git',
+    '.svn',
+    '.hg',
+    'System Volume Information',
+    '$RECYCLE.BIN',
+    '.env',
+    '.aws',
+    '.ssh',
+  ]);
+
   function listDirectory(abs: string): FsEntry[] {
     const entries: FsEntry[] = [];
     for (const name of readdirSync(abs)) {
       if (name.startsWith('.')) continue;
+      if (BLOCKED_NAMES.has(name) || name.toLowerCase().startsWith('.env')) continue;
       const full = path.join(abs, name);
       let isDir = false;
       let size = 0;
@@ -104,6 +117,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
         continue;
       }
       if (!isDir && !manager.isDbFile(name)) continue;
+      if (browseRoot && !isPathWithinRoot(browseRoot, full)) continue;
       entries.push({ name, path: full, isDir, isDb: !isDir, size });
     }
     entries.sort((a, b) =>
@@ -117,6 +131,9 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
       return res.status(403).json({ success: false, error: 'File browsing is disabled — this server was started with specific database files.' });
     }
     const raw = String(req.query.path ?? '').trim();
+    if (raw.includes('\0')) {
+      return res.status(400).json({ success: false, error: 'Invalid path.' });
+    }
     const base = raw ? path.resolve(raw) : manager.directory;
     if (browseRoot && !isPathWithinRoot(browseRoot, base)) {
       return res.status(403).json({ success: false, error: `Path is outside the allowed folder: ${browseRoot}` });
@@ -148,7 +165,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
       return res.status(403).json({ success: false, error: 'File browsing is disabled — this server was started with specific database files.' });
     }
     const p = String(req.body?.path ?? '').trim();
-    if (!p) return res.status(400).json({ success: false, error: 'Database path is required.' });
+    if (!p || p.includes('\0')) return res.status(400).json({ success: false, error: 'Valid database path is required.' });
     const abs = path.resolve(p);
     if (browseRoot && !isPathWithinRoot(browseRoot, abs)) {
       return res.status(403).json({ success: false, error: `Cannot open a database outside the allowed folder: ${browseRoot}` });
@@ -162,6 +179,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     }
     res.json({ success: true, data: { id, message: `Opened "${id}".` } });
   }));
+
 
   router.post('/api/databases/connect-postgres', wrap(async (req, res) => {
     if (ctx.readonly) return res.status(403).json({ success: false, error: 'Read-only mode — adding connections is disabled.' });

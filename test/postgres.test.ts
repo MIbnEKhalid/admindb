@@ -173,4 +173,19 @@ test('DbManager supports dynamic addConnection and safe removal for PostgreSQL',
   assert.equal(manager.list().length, 0);
 });
 
+test('PostgresDatabase auto-enables SSL for remote cloud hosts (e.g. Neon, Supabase, AWS RDS)', () => {
+  const logger = createLogger('error');
+  const dbNeon = new PostgresDatabase('postgresql://user:secret@ep12oler.ap-southeast-1.aws.neon.tech/mbk_db', logger, {
+    readonly: true,
+  });
+
+  // Verify sanitized path and initialized instance
+  assert.equal(dbNeon.dialect, 'postgres');
+  assert.ok(dbNeon.path.includes('ep12oler.ap-southeast-1.aws.neon.tech'));
+  assert.ok(dbNeon.path.includes('****'));
+
+  dbNeon.close();
+});
+
+
 

@@ -55,6 +55,12 @@ CLI Arguments & Flags (Highest) ➔ JSON Configuration File ➔ Environment Vari
 - JSON configuration files (`name.postgres.json`, `--config config.json`) allow storing passwords securely away from shell history.
 - Namespaced variables (`ADMINDB_*`) and standard short variables (`PORT`, `HOST`, `DATABASE_URL`, `DB_PATH`, etc.) are both fully supported.
 
+> [!WARNING]
+> **Production Security & Protection Notice:**
+> AdminDB's native authentication is designed as a basic convenience layer for single-user local development.
+> In production environments or public-facing deployments, **it is the user's sole responsibility to fully protect AdminDB** using your application's own authentication (e.g. NextAuth, Passport, JWT, SSO/OAuth middleware with `auth: false`), a VPN, an IP-allowlist reverse proxy (Nginx, Cloudflare Access), and HTTPS encryption.
+
+
 ---
 
 ## 📊 Configuration Matrix
@@ -62,7 +68,7 @@ CLI Arguments & Flags (Highest) ➔ JSON Configuration File ➔ Environment Vari
 | Feature | CLI Flag & Aliases | Environment Variable & Aliases | Type | Default | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Config File** | `-C, --config, --json <file.json>` | `ADMINDB_CONFIG` | `string` | — | Path to a JSON configuration file with database credentials |
-| **Port** | `-p, --port <port>` | `PORT`, `ADMINDB_PORT` | `number` | `3000` | HTTP port the server listens on |
+| **Port** | `-p, --port <port>` | `PORT`, `ADMINDB_PORT` | `number` | `45531` | HTTP port the server listens on |
 | **Host** | `-H, --host <host>` | `HOST`, `ADMINDB_HOST` | `string` | `0.0.0.0` | Network interface to bind |
 | **Connection URI** | `-c, --connection, --conn, --pg <uri>` | `DATABASE_URL`, `ADMINDB_CONNECTION`, `PG_CONNECTION` | `string` | — | PostgreSQL connection URI or database target |
 | **Single DB File** | `-o, --open, --db-path, --file <file>` | `DB_PATH`, `ADMINDB_DB_PATH`, `ADMINDB_PATH` | `string` | `admindb.db` | Path to a single SQLite database file |
@@ -89,7 +95,7 @@ Detailed reference for every environment variable supported by AdminDB.
 
 ### 1. `PORT` / `ADMINDB_PORT`
 * **Type:** `number`
-* **Default:** `3000`
+* **Default:** `45531`
 * **Why/When to use it:** Specify the TCP port where the web server should accept connections.
 * **Configuration Examples:**
   ```bash
@@ -302,8 +308,8 @@ app.use('/admin', createRouter({
   basePath: '/admin',
 }));
 
-app.listen(3000, () => {
-  console.log('App running on http://localhost:3000 (Admin: http://localhost:3000/admin)');
+app.listen(45531, () => {
+  console.log('App running on http://localhost:45531 (Admin: http://localhost:45531/admin)');
 });
 ```
 
@@ -322,8 +328,8 @@ app.use('/admin', createRouter({
   basePath: '/admin',
 }));
 
-app.listen(3000, () => {
-  console.log('AdminDB running at http://localhost:3000/admin');
+app.listen(45531, () => {
+  console.log('AdminDB running at http://localhost:45531/admin');
 });
 ```
 
@@ -358,8 +364,8 @@ app.use('/admin', createRouter({
   basePath: '/admin',
 }));
 
-app.listen(3000, () => {
-  console.log('Multi-PostgreSQL Admin running on http://localhost:3000/admin');
+app.listen(45531, () => {
+  console.log('Multi-PostgreSQL Admin running on http://localhost:45531/admin');
 });
 ```
 
@@ -387,7 +393,7 @@ app.use('/admin', createRouter({
   basePath: '/admin',
 }));
 
-app.listen(3000);
+app.listen(45531);
 ```
 
 ---
@@ -411,7 +417,7 @@ app.use('/admin', createRouter({
   },
 }));
 
-app.listen(3000);
+app.listen(45531);
 ```
 
 ---
@@ -437,7 +443,7 @@ app.use('/admin', requireCompanySso, createRouter({
   auth: false, // Turn off built-in login form
 }));
 
-app.listen(3000);
+app.listen(45531);
 ```
 
 ---
@@ -494,7 +500,7 @@ admindb -d ./company_dbs --readonly -p 8080 -u auditor -P "secure_pass_123"
 FROM node:20-alpine
 WORKDIR /app
 RUN npm install -g admindb
-EXPOSE 3000
+EXPOSE 45531
 CMD ["admindb"]
 ```
 
@@ -508,10 +514,10 @@ services:
     command: npx admindb
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "45531:45531"
     environment:
       - HOST=0.0.0.0
-      - PORT=3000
+      - PORT=45531
       - DATABASE_URL=postgresql://postgres:secret@db:5432/mydb
       - BASE_PATH=/admin
       - ADMINDB_USERNAME=admin_ops
@@ -530,7 +536,7 @@ server {
     server_name db.example.com;
 
     location /admin/ {
-        proxy_pass http://127.0.0.1:3000/admin/;
+        proxy_pass http://127.0.0.1:45531/admin/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -541,7 +547,7 @@ server {
 
 Command:
 ```bash
-BASE_PATH=/admin HOST=127.0.0.1 PORT=3000 DB_DIR=/var/databases admindb
+BASE_PATH=/admin HOST=127.0.0.1 PORT=45531 DB_DIR=/var/databases admindb
 ```
 
 ---

@@ -32,7 +32,7 @@ No installation required:
 npx admindb
 ```
 
-By default, AdminDB opens in **Manager Mode** on `http://localhost:3000`, allowing you to browse the filesystem, create new SQLite databases, or open existing `.db` / `.sqlite` / `.sqlite3` files.
+By default, AdminDB opens in **Manager Mode** on `http://localhost:45531`, allowing you to browse the filesystem, create new SQLite databases, or open existing `.db` / `.sqlite` / `.sqlite3` files.
 
 ### 1. Load database connections securely from a JSON file:
 
@@ -75,8 +75,8 @@ AdminDB features a clean, colorized CLI startup banner and streamlined, low-nois
 ```text
   ⚡ AdminDB v1.2.1
 
-  ➜  Local:    http://localhost:3000/
-  ➜  Network:  http://192.168.1.15:3000/
+  ➜  Local:    http://localhost:45531/
+  ➜  Network:  http://192.168.1.15:45531/
   ➜  Mode:     Manager
   ➜  Config:   name.postgres.json (2 connection(s))
      • prod: PostgreSQL postgresql://postgres:****@localhost:5432/prod_db
@@ -172,8 +172,8 @@ app.use('/admin-pg', createRouter({
   basePath: '/admin-pg',
 }));
 
-app.listen(3000, () => {
-  console.log('App running on http://localhost:3000 (Admin: http://localhost:3000/admin)');
+app.listen(45531, () => {
+  console.log('App running on http://localhost:45531 (Admin: http://localhost:45531/admin)');
 });
 ```
 
@@ -189,7 +189,7 @@ Every setting can be configured via **CLI flags**, **Environment Variables**, or
 | Setting | CLI Flag & Aliases | Environment Variable & Aliases | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | **Config File** | `-C, --config <file.json>` | `ADMINDB_CONFIG` | — | Path to a JSON configuration file containing database credentials & settings |
-| **Port** | `-p, --port <port>` | `PORT`, `ADMINDB_PORT` | `3000` | Port to listen on |
+| **Port** | `-p, --port <port>` | `PORT`, `ADMINDB_PORT` | `45531` | Port to listen on |
 | **Host** | `-H, --host <host>` | `HOST`, `ADMINDB_HOST` | `0.0.0.0` | Host / interface to bind |
 | **Connection URI** | `-c, --connection, --pg <uri>` | `DATABASE_URL`, `ADMINDB_CONNECTION`, `PG_CONNECTION` | — | PostgreSQL connection URI or path |
 | **Single DB** | `-o, --open, --db-path <file>` | `DB_PATH`, `ADMINDB_DB_PATH`, `ADMINDB_PATH` | — | Open a single database file directly |
@@ -224,7 +224,10 @@ admindb --no-auth                            # Authentication disabled
 
 ## 🔒 Authentication & Security
 
-AdminDB includes built-in native authentication (**enabled by default**), with support for salted cryptographic hashes, cookie sessions, HTTP Basic Auth, and Bearer tokens.
+> [!WARNING]
+> **Important Security Notice:**
+> AdminDB's built-in native authentication provides **basic single-user access control** for local development and private internal tools.
+> For production environments and internet-facing networks, **it is entirely the user's responsibility to protect AdminDB** by placing it behind your own web application's authentication (e.g. NextAuth, Passport, OAuth2/OIDC middleware), an IP-restricted VPN, or a secure reverse proxy with TLS/HTTPS.
 
 ### Generate a Secure Password Hash
 
@@ -240,9 +243,28 @@ Paste the resulting hash into `ADMINDB_PASSWORD`, CLI `-P`, or your Express conf
 ADMINDB_USERNAME="ops" ADMINDB_PASSWORD="scrypt:8011bcda...:85465796..." npx admindb
 ```
 
+### Wrapping with Your Own Express Authentication (Recommended for Production)
+
+When embedding AdminDB in your Express application, turn off built-in auth (`auth: false`) and protect the route with your existing auth middleware:
+
+```ts
+import express from 'express';
+import { createRouter } from 'admindb';
+
+const app = express();
+
+app.use('/admin', requireYourAppAuth, createRouter({
+  connection: process.env.DATABASE_URL,
+  basePath: '/admin',
+  auth: false, // Turn off built-in login form; rely on requireYourAppAuth
+}));
+
+app.listen(45531);
+```
+
 ### Disabling Built-in Authentication
 
-When deploying behind an external gateway (Cloudflare Zero Trust, OAuth2 Proxy, Authelia) or using custom Express middleware:
+When deploying behind an external gateway (Cloudflare Zero Trust, OAuth2 Proxy, Authelia):
 
 ```bash
 admindb --no-auth
@@ -250,7 +272,8 @@ admindb --no-auth
 ADMINDB_AUTH=false npx admindb
 ```
 
-> 📖 **Full Security Guide:** See [**`docs/SECURITY.md`**](docs/SECURITY.md) for security best practices, cookie flags, reverse proxy configurations, and threat mitigation guidelines.
+> 📖 **Full Security Guide:** See [**`docs/SECURITY.md`**](docs/SECURITY.md) for the shared security model, filesystem sandboxing, PostgreSQL remote protection, and production deployment checklists.
+
 
 ---
 
