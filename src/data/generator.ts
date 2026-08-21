@@ -2,8 +2,9 @@
  * Data generator / seeder engine.
  *
  * Given a table's schema, every column can be filled with realistic fake data
- * from a chosen "strategy" — first name, email, UUID, a random integer, a value
- * sampled from a referenced table's foreign key, a fixed value, and so on.
+ * from a chosen "strategy" — first name, email, UUID, job title, company,
+ * avatar, currency, sequential numbering, pattern template, foreign key sampling,
+ * and many more.
  *
  * Responsibilities:
  *  - auto-detect a sensible default strategy per column (column name + type +
@@ -11,7 +12,8 @@
  *  - generate N rows of concrete, type-coerced values (ready for SQLite
  *    binding via `db.insertRows`);
  *  - render the generated rows as a multi-row INSERT for the "preview SQL"
- *    mode that never executes.
+ *    mode that never executes;
+ *  - generate structured preview rows for the interactive preview grid.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -22,17 +24,37 @@ import { quoteIdentifier, sqlValue } from '../sql/generator';
 /** Hard cap on how many rows a single seed run may generate. */
 export const MAX_SEED_ROWS = 5000;
 
+export type StrategyCategory =
+  | 'identity'
+  | 'contact_web'
+  | 'commerce'
+  | 'location'
+  | 'numeric'
+  | 'datetime'
+  | 'system_crypto'
+  | 'custom_control'
+  | 'relational';
+
 export type GeneratorStrategyId =
-  | 'skip' | 'null' | 'fixed' | 'list'
-  | 'first' | 'last' | 'fullname'
-  | 'email' | 'username' | 'phone'
-  | 'city' | 'country' | 'postal' | 'address'
-  | 'url' | 'domain' | 'ip' | 'uuid'
-  | 'words' | 'sentence'
-  | 'int' | 'decimal'
-  | 'date' | 'datetime' | 'time'
-  | 'bool' | 'bytes'
-  | 'json' | 'hash' | 'token'
+  // Control / Custom
+  | 'skip' | 'null' | 'fixed' | 'list' | 'pattern'
+  // Identity & People
+  | 'first' | 'last' | 'fullname' | 'username' | 'job'
+  // Contact & Web
+  | 'email' | 'phone' | 'url' | 'domain' | 'ip' | 'avatar'
+  // Commerce & Business
+  | 'company' | 'currency' | 'status' | 'creditCard'
+  // Location
+  | 'city' | 'country' | 'state' | 'postal' | 'address' | 'countryCode' | 'latitude' | 'longitude'
+  // Text & Content
+  | 'words' | 'sentence' | 'paragraph' | 'slug'
+  // Numbers & Math
+  | 'int' | 'decimal' | 'sequence'
+  // Date & Time
+  | 'date' | 'datetime' | 'time' | 'timestampUnix'
+  // System, Crypto & Tech
+  | 'bool' | 'bytes' | 'json' | 'hash' | 'token' | 'uuid' | 'color' | 'mac'
+  // Relational
   | 'fk';
 
 /** Per-column generator settings. Which options are meaningful depends on `strategy`. */
@@ -42,27 +64,43 @@ export interface ColumnPlan {
   value?: string;
   /** `list` — random value picked from this set. */
   values?: string[];
-  /** `int` / `decimal` range. */
+  /** `int` / `decimal` / `latitude` / `longitude` range. */
   min?: number;
   max?: number;
   /** `decimal` — digits after the decimal point. */
   precision?: number;
-  /** `date` / `datetime` bounds (ISO strings). */
+  /** `date` / `datetime` / `timestampUnix` bounds (ISO strings). */
   from?: string;
   to?: string;
-  /** `words` / `bytes` / `hash` / `token` — length bounds. */
+  /** `words` / `bytes` / `hash` / `token` / `sentence` — length bounds. */
   minLen?: number;
   maxLen?: number;
   /** `json` — object keys to include (comma-separated in the UI). */
   jsonKeys?: string[];
   /** `json` — per-key allowed values, derived from CHECK constraints. */
   jsonValues?: Record<string, string[]>;
+  /** Percentage chance (0 to 100) to generate NULL for nullable columns. */
+  nullPct?: number;
+  /** Optional string prefix to prepend to generated string/text values. */
+  prefix?: string;
+  /** Optional string suffix to append to generated string/text values. */
+  suffix?: string;
+  /** Sequence start (for `sequence` strategy). */
+  start?: number;
+  /** Sequence step increment (for `sequence` strategy). */
+  step?: number;
+  /** Custom pattern template with tokens (for `pattern` strategy). */
+  pattern?: string;
+  /** Format variation (e.g. 'hex' | 'name' for color, 'sec' | 'ms' for unix timestamp). */
+  format?: string;
 }
 
 /** A strategy choice offered to the UI for a column. */
 export interface StrategyDescriptor {
   id: GeneratorStrategyId;
   label: string;
+  category: StrategyCategory;
+  description?: string;
 }
 
 /** Everything the "Seed data" page needs to render one column's controls. */
@@ -83,15 +121,18 @@ export interface ColumnGeneratorConfig {
 export interface GenerateResult {
   /** One entry per generated row: the columns/values to bind (skipped columns are absent). */
   rows: WhereClause[][];
+  /** Structured row records for interactive UI table preview. */
+  previewRows: Record<string, unknown>[];
   /** Non-fatal notes surfaced to the user (e.g. a NOT NULL column being skipped). */
   warnings: string[];
 }
 
 /** Sentinel returned by value generation when the column should be omitted from the row. */
-const SKIP = Symbol('skip');
+export const SKIP = Symbol('skip');
 
 // ---- Static data sets ----------------------------------------------------
-const FIRST_NAMES = [
+
+export const FIRST_NAMES = [
   "Sombat", "Ting", "Rajan", "Minh", "Hiroshi", "William", "Made", "Ravi", "John", "Kiran",
   "Raj", "Wayan", "Chaiwat", "Aarav", "Sita", "Zara", "Ratna", "Ananya", "Ha-eun", "Siti",
   "Seo-yeon", "Mary", "Priyanka", "Xu", "Ali", "Priya", "Sakura", "Ken", "Ketut", "Soo-hyun",
@@ -105,10 +146,11 @@ const FIRST_NAMES = [
   "Chen", "Anh", "Jia", "Xiao", "Yang", "Ji-hoon", "Jing", "Hedy", "Elizabeth", "Zhang",
   "Arjun", "Yuki", "Ada", "Edsger", "Nong", "Lynn", "Anjali", "Nguyen", "Sora", "Mieko",
   "Nyoman", "Jin", "Aisha", "Bayu", "Tariq", "Daiki", "David", "Rani", "Tran", "Haruki",
-  "Dae-hyun", "Dao", "Rama", "Aiko", "Min-jun", "Zhu", "Radia", "Wei"
+  "Dae-hyun", "Dao", "Rama", "Aiko", "Min-jun", "Zhu", "Radia", "Wei", "Sophia", "Lucas",
+  "Emma", "Liam", "Olivia", "Noah", "Elena", "Mateo", "Chloe", "Alexander", "Aria", "Leo"
 ];
 
-const LAST_NAMES = [
+export const LAST_NAMES = [
   "Chen", "Smith", "Thompson", "Shah", "Thai", "Perlman", "Brown", "Hsu", "Turing", "Sharma",
   "Purnama", "Lopez", "Williams", "Davis", "Liao", "Xu", "Martin", "Dhawan", "Yoon", "Tan",
   "Yamamoto", "Iyer", "Phung", "Gonzalez", "Huang", "Hu", "Vo", "Shetty", "Le", "Wijaya",
@@ -124,7 +166,7 @@ const LAST_NAMES = [
   "Verma", "Suzuki", "White", "Lu", "Pillai", "Lin", "Joshi", "Tran", "Chawla", "Zhou", "Desai"
 ];
 
-const CITIES = [
+export const CITIES = [
   "Hyderabad", "Yangon", "Medan", "Minneapolis", "Faisalabad", "Yokohama", "Nha Trang",
   "Hong Kong", "Phoenix", "Delhi", "Chennai", "Denver", "Guangzhou", "Davao City",
   "Chiang Mai", "Atlanta", "Manila", "Naypyidaw", "Sylhet", "Phuket", "Incheon",
@@ -145,7 +187,7 @@ const CITIES = [
   "Beijing", "Nakhon Ratchasima", "Nagpur"
 ];
 
-const COUNTRIES = [
+export const COUNTRIES = [
   "Japan", "United States", "Bhutan", "Belgium", "Myanmar", "Kazakhstan", "Mexico",
   "Bangladesh", "United Kingdom", "South Africa", "Indonesia", "Vietnam", "South Korea", "Germany",
   "Romania", "Italy", "Spain", "China", "India", "Taiwan", "Philippines",
@@ -156,7 +198,7 @@ const COUNTRIES = [
   "Laos", "Nepal", "Thailand", "Finland", "Hong Kong", "Czech Republic", "Timor-Leste", "New Zealand"
 ];
 
-const DOMAINS = [
+export const DOMAINS = [
   "outlook.com", "nus.edu.sg", "ust.hk", "iitb.ac.in", "acme.io", "ac.sg", "mail.ru", "163.com",
   "outlook.kr", "tech.asia", "startup.io", "proton.me", "sohu.com", "gmail.com", "kyoto-u.ac.jp", 
   "example.com", "naver.com", "protonmail.com", "hanmail.net", "globex.org", "tudelft.nl", "company.com",
@@ -164,7 +206,7 @@ const DOMAINS = [
   "sina.com", "innovate.sg", "zoho.com"
 ];
 
-const LOREM_WORDS = [  
+export const LOREM_WORDS = [  
   "schema", "nu", "worker", "alpha", "cache", "edge", "async", "chi", "service", "packet",
   "scale", "upsilon", "scrum", "node", "peace", "deploy", "epsilon", "lambda", "record", "pi",
   "column", "module", "omicron", "query", "buffer", "persistence", "comet", "joy", "integrity", "galaxy",
@@ -172,60 +214,134 @@ const LOREM_WORDS = [
   "aurora", "nature", "gamma", "cloud", "omega", "mu", "orbit", "delta", "kindness", "tau",
   "row", "compassion", "theta", "beta", "balance", "wisdom", "rho", "kanban", "kappa", "session",
   "compile", "phi", "stream", "queue", "event", "pixel", "resilience", "nebula", "iota", "index",
-  "cluster", "xi", "eta", "signal", "zeta", "fetch", "sigma", "psi"
+  "cluster", "xi", "eta", "signal", "zeta", "fetch", "sigma", "psi", "prism", "nexus"
+];
+
+export const COMPANIES = [
+  "Apex Solutions", "Vortex Digital", "Nexus Systems", "Horizon Labs", "Zenith Global",
+  "Quantum Dynamics", "Starlight Media", "Alpha Robotics", "Pinnacle Financial", "BlueWave Tech",
+  "Elevate Innovations", "Pulse Health", "Echo Stream", "Stratum Capital", "Beacon Analytics",
+  "Solaris Energy", "Vertex Cloud", "Catalyst Corp", "Synergy Ventures", "Omega Group",
+  "Hyperion Logic", "Aegis Security", "Terra Industries", "Prism Data", "Spectra Works",
+  "Novus Labs", "Orbit Software", "Forge Interactive", "Crestline Global", "Ironclad Partners",
+  "Acme Corp", "Globex Corporation", "Initech LLC", "Soylent Industries", "Umbrella Tech"
+];
+
+export const JOB_TITLES = [
+  "Software Engineer", "Product Manager", "UX/UI Designer", "DevOps Specialist",
+  "Data Scientist", "Engineering Manager", "Account Executive", "Marketing Director",
+  "Content Strategist", "Customer Success Lead", "Financial Analyst", "Operations Lead",
+  "HR Generalist", "QA Automation Engineer", "Solutions Architect", "Security Specialist",
+  "Chief Technology Officer", "VP of Product", "Database Administrator", "Scrum Master",
+  "Technical Writer", "Brand Manager", "Legal Counsel", "Research Scientist", "Sales Director"
+];
+
+export const US_STATES = [
+  "California", "New York", "Texas", "Florida", "Washington", "Illinois", "Pennsylvania",
+  "Ohio", "Georgia", "North Carolina", "Michigan", "New Jersey", "Virginia", "Colorado",
+  "Arizona", "Massachusetts", "Tennessee", "Indiana", "Missouri", "Maryland", "Wisconsin",
+  "Minnesota", "Oregon", "South Carolina", "Alabama", "Louisiana", "Kentucky", "Utah"
+];
+
+export const CURRENCIES = [
+  "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "SGD",
+  "NZD", "BRL", "SEK", "KRW", "MXN", "ZAR", "HKD", "NOK", "AED", "SAR"
+];
+
+export const COUNTRY_CODES = [
+  "US", "GB", "CA", "DE", "FR", "JP", "AU", "IN", "BR", "SG",
+  "NL", "IT", "ES", "SE", "CH", "KR", "MX", "NZ", "ZA", "AE",
+  "SA", "NO", "DK", "FI", "IE", "PL", "PT", "BE", "AT", "ID"
+];
+
+export const STATUSES = [
+  "active", "inactive", "pending", "completed", "cancelled",
+  "archived", "suspended", "draft", "processing", "approved", "rejected"
+];
+
+export const HEX_COLORS = [
+  "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
+  "#ec4899", "#06b6d4", "#6366f1", "#14b8a6", "#f97316",
+  "#84cc16", "#a855f7", "#0ea5e9", "#64748b", "#d946ef",
+  "#1e293b", "#047857", "#b91c1c", "#1d4ed8", "#4338ca"
+];
+
+export const NAMED_COLORS = [
+  "Emerald", "Indigo", "Amber", "Rose", "Cyan", "Violet",
+  "Sky", "Slate", "Teal", "Fuchsia", "Crimson", "Navy",
+  "Coral", "Bronze", "Charcoal", "Mint", "Lavender", "Ruby", "Cobalt"
 ];
 
 // ---- Random helpers -------------------------------------------------------
 
-function randInt(min: number, max: number): number {
+export function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function randFloat(min: number, max: number): number {
+export function randFloat(min: number, max: number): number {
   return Math.random() * (max - min) + min;
 }
 
-function pick<T>(arr: T[]): T {
+export function pick<T>(arr: T[]): T {
   return arr[randInt(0, arr.length - 1)];
 }
 
-function slug(): string {
+export function makeSlug(): string {
   return `${pick(LOREM_WORDS)}-${pick(LOREM_WORDS)}-${randInt(100, 999)}`;
 }
 
-function makeEmail(): string {
+export function makeEmail(): string {
   return `${pick(FIRST_NAMES).toLowerCase()}.${pick(LAST_NAMES).toLowerCase()}${randInt(1, 99)}@${pick(DOMAINS)}`;
 }
 
-function makeUsername(): string {
+export function makeUsername(): string {
   return `${pick(FIRST_NAMES).toLowerCase()}${pick(LAST_NAMES).toLowerCase()}${randInt(1, 9999)}`;
 }
 
-function makePhone(): string {
+export function makePhone(): string {
   return `+1 (${randInt(200, 999)}) ${randInt(200, 999)}-${String(randInt(0, 9999)).padStart(4, '0')}`;
 }
 
-function makeAddress(): string {
+export function makeAddress(): string {
   return `${randInt(10, 9999)} ${pick(LOREM_WORDS)} ${pick(['St', 'Ave', 'Rd', 'Blvd', 'Ln', 'Dr'])}, ${pick(CITIES)}`;
 }
 
-function makeIp(): string {
+export function makeIp(): string {
   return `${randInt(1, 223)}.${randInt(0, 255)}.${randInt(0, 255)}.${randInt(1, 254)}`;
 }
 
-function makeUuid(): string {
+export function makeMacAddress(): string {
+  const byte = () => randInt(0, 255).toString(16).padStart(2, '0').toUpperCase();
+  return `${byte()}:${byte()}:${byte()}:${byte()}:${byte()}:${byte()}`;
+}
+
+export function makeCreditCard(): string {
+  const b = () => String(randInt(1000, 9999));
+  return `4532-${b()}-${b()}-${b()}`;
+}
+
+export function makeAvatar(seedVal?: string): string {
+  const seed = encodeURIComponent(seedVal || makeUsername());
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+}
+
+export function makeColor(format = 'hex'): string {
+  return format === 'name' ? pick(NAMED_COLORS) : pick(HEX_COLORS);
+}
+
+export function makeUuid(): string {
   const hex = () => randInt(0, 0xffffffff).toString(16).padStart(8, '0');
   return `${hex()}-${hex().slice(0, 4)}-4${hex().slice(0, 3)}-${['8', '9', 'a', 'b'][randInt(0, 3)]}${hex().slice(0, 3)}-${hex()}`;
 }
 
-function makeWords(minLen: number, maxLen: number): string {
+export function makeWords(minLen: number, maxLen: number): string {
   const n = randInt(minLen, maxLen);
   const parts: string[] = [];
   for (let i = 0; i < n; i++) parts.push(pick(LOREM_WORDS));
   return parts.join(' ');
 }
 
-function makeSentences(minLen: number, maxLen: number): string {
+export function makeSentences(minLen: number, maxLen: number): string {
   const n = randInt(minLen, maxLen);
   const sentences: string[] = [];
   for (let i = 0; i < n; i++) {
@@ -236,13 +352,58 @@ function makeSentences(minLen: number, maxLen: number): string {
   return sentences.join(' ');
 }
 
+export function makeParagraph(): string {
+  return makeSentences(3, 5);
+}
+
+/**
+ * Replace pattern template placeholders:
+ * - `#` with a random digit (0-9)
+ * - `A` or `?` with a random uppercase letter (A-Z)
+ * - `a` with a random lowercase letter (a-z)
+ * - `{YYYY}` with current year
+ * - `{YY}` with 2-digit year
+ * - `{MM}` with random 2-digit month
+ * - `{DD}` with random 2-digit day
+ */
+export function formatPattern(pattern: string): string {
+  if (!pattern) return '';
+  const now = new Date();
+  const year = String(now.getFullYear());
+  const yy = year.slice(-2);
+  const mm = String(randInt(1, 12)).padStart(2, '0');
+  const dd = String(randInt(1, 28)).padStart(2, '0');
+
+  let s = pattern
+    .replace(/\{YYYY\}/g, year)
+    .replace(/\{YY\}/g, yy)
+    .replace(/\{MM\}/g, mm)
+    .replace(/\{DD\}/g, dd);
+
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+
+  let res = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '#') {
+      res += String(randInt(0, 9));
+    } else if (ch === 'A' || ch === '?') {
+      res += uppercase[randInt(0, uppercase.length - 1)];
+    } else if (ch === 'a') {
+      res += lowercase[randInt(0, lowercase.length - 1)];
+    } else {
+      res += ch;
+    }
+  }
+  return res;
+}
+
 /**
  * Random date (or datetime) string inside [from, to]; bounds default to the
- * last ~2 years. Datetimes use the ISO-8601 UTC form (YYYY-MM-DDTHH:MM:SS.sssZ)
- * so TEXT timestamp columns — e.g. a strftime('%Y-%m-%dT%H:%M:%fZ','now')
- * default — get values consistent with their existing data.
+ * last ~2 years. Datetimes use the ISO-8601 UTC form (YYYY-MM-DDTHH:MM:SS.sssZ).
  */
-function randomDate(from?: string, to?: string, kind: 'date' | 'datetime' = 'date'): string {
+export function randomDate(from?: string, to?: string, kind: 'date' | 'datetime' = 'date'): string {
   const now = Date.now();
   const lo = from ? Date.parse(from) : now - 730 * 86400_000;
   const hi = to ? Date.parse(to) : now;
@@ -253,24 +414,29 @@ function randomDate(from?: string, to?: string, kind: 'date' | 'datetime' = 'dat
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-function randomTime(): string {
+export function randomTime(): string {
   return `${String(randInt(0, 23)).padStart(2, '0')}:${String(randInt(0, 59)).padStart(2, '0')}:${String(randInt(0, 59)).padStart(2, '0')}`;
+}
+
+export function randomUnixTimestamp(format = 'sec', from?: string, to?: string): number {
+  const now = Date.now();
+  const lo = from ? Date.parse(from) : now - 730 * 86400_000;
+  const hi = to ? Date.parse(to) : now;
+  const t = randInt(Number.isFinite(lo) ? lo : now - 730 * 86400_000, Number.isFinite(hi) ? hi : now);
+  return format === 'ms' ? t : Math.floor(t / 1000);
 }
 
 // ---- Column name / type detection ----------------------------------------
 
 /** Lowercase, punctuation stripped — e.g. "first_name" → "firstname". */
-function normName(s: string): string {
+export function normName(s: string): string {
   return String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**
- * True when a (normalized, lowercase) column name looks like a timestamp /
- * datetime field — created_at, CreatedAt, UpdatedAt, DeletedAt, OccurredAt,
- * expires_at, LastUsed, modified, joined, ts, … (camelCase is normalized to one
- * lowercase token, so both "CreatedAt" and "created_at" match).
+ * True when a (normalized, lowercase) column name looks like a timestamp / datetime field.
  */
-function isTimestampName(name: string): boolean {
+export function isTimestampName(name: string): boolean {
   return (
     /created|updated|modified|registered|joined|timestamp|lastused|lastseen|lastlogin|lastactivity|accessed|viewed|visited|^ts$/.test(name) ||
     /^(created|updated|deleted|archived|occurred|started|ended|expires|published|processed|completed|inserted|requested|resolved|used|seen|accessed|viewed|visited|logged|active)at$/.test(name)
@@ -278,9 +444,9 @@ function isTimestampName(name: string): boolean {
 }
 
 /** True when a declared type can reasonably hold text-ish values (incl. JSON). */
-function isTextishType(type: string): boolean {
+export function isTextishType(type: string): boolean {
   const t = (type || '').toUpperCase();
-  return t === 'TEXT' || t === '' || t.includes('JSON') || t.includes('CHAR') || t.includes('CLOB');
+  return t === 'TEXT' || t === '' || t.includes('JSON') || t.includes('CHAR') || t.includes('CLOB') || t.includes('VARCHAR');
 }
 
 /** Ordering constraint between two columns derived from a CHECK (e.g. ExpiresAt > CreatedAt). */
@@ -297,13 +463,9 @@ interface NumericConstraint {
 
 /** CHECK-derived facts the generator can honor so generated rows actually insert. */
 interface CheckInfo {
-  /** column -> allowed values (from `Scope IN ('read-only', 'read-write')` or `Scope = 'a' OR Scope = 'b'`) */
   columnAllowed: Map<string, string[]>;
-  /** column -> numeric range bounds (from `ExpiresInDays > 0 AND ExpiresInDays <= 365`) */
   columnRange: Map<string, NumericConstraint>;
-  /** column -> key -> allowed values (from `Permissions ->> 'scope' IN (...)`) */
   jsonAllowed: Map<string, Map<string, string[]>>;
-  /** column -> ordering relative to another column */
   ordering: Map<string, OrderingConstraint>;
 }
 
@@ -363,12 +525,7 @@ function extractCheckExprs(sql: string): string[] {
 }
 
 /**
- * Parse a table's CHECK constraints for seed-relevant shapes:
- *  - column value whitelists: `"Scope" IN ('read-only','write')` or `Scope IN (...)`
- *  - column equality OR chains: `"Scope" = 'read-only' OR "Scope" = 'write'`
- *  - numeric bounds: `"ExpiresInDays" > 0 AND "ExpiresInDays" <= 365`
- *  - JSON value whitelists: `("Permissions" ->> 'scope') IN ('read-only','write')`
- *  - column ordering: `("ExpiresAt" > "CreatedAt")` or `(ExpiresAt > CreatedAt)`
+ * Parse a table's CHECK constraints for seed-relevant shapes.
  */
 function parseChecks(sql: string | null): CheckInfo {
   const info: CheckInfo = {
@@ -421,7 +578,7 @@ function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // 2. Direct column whitelists: "col" IN ('a', 'b') / col IN ('a', 'b') / lower(col) IN ('a', 'b')
+    // 2. Direct column whitelists: "col" IN ('a', 'b') / col IN ('a', 'b')
     const colIn = /(?:^|[^(->>\w])(?:\(\s*)?(?:(?:lower|upper|trim|coalesce)\s*\(\s*)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*,\s*[^)]+)?\s*\)?\s*\)?\s*IN\s*\(([^)]*)\)/gi;
     let mColIn: RegExpExecArray | null;
     while ((mColIn = colIn.exec(expr))) {
@@ -438,7 +595,7 @@ function parseChecks(sql: string | null): CheckInfo {
       if (values.length) setColumnAllowed(col, values);
     }
 
-    // 3. Direct column equality OR chains: "Scope" = 'read-only' OR "Scope" = 'read-write'
+    // 3. Direct column equality OR chains
     const eqOr = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*=\s*'((?:[^']|'')*)'/gi;
     let mEq: RegExpExecArray | null;
     const eqByCol = new Map<string, string[]>();
@@ -455,7 +612,7 @@ function parseChecks(sql: string | null): CheckInfo {
       if (vals.length > 0) setColumnAllowed(col, vals);
     }
 
-    // 4. Numeric range constraints: col >= N / col > N / col <= N / col < N
+    // 4. Numeric range constraints
     const numCmp1 = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(>=|>|<=|<)\s*(-?\d+(?:\.\d+)?)/g;
     let mNum1: RegExpExecArray | null;
     while ((mNum1 = numCmp1.exec(expr))) {
@@ -475,7 +632,6 @@ function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // N <= col / N < col / N >= col / N > col
     const numCmp2 = /(-?\d+(?:\.\d+)?)\s*(>=|>|<=|<)\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))/g;
     let mNum2: RegExpExecArray | null;
     while ((mNum2 = numCmp2.exec(expr))) {
@@ -495,7 +651,7 @@ function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // 5. Column ordering: "A" > "B", A > B, "UpdatedAt" >= "CreatedAt", etc.
+    // 5. Column ordering
     const ord = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(>=|<=|>|<)\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))/g;
     let m2: RegExpExecArray | null;
     while ((m2 = ord.exec(expr))) {
@@ -520,7 +676,7 @@ function parseChecks(sql: string | null): CheckInfo {
 /** True when a (normalized) column name suggests a hash / secret / token value. */
 function isHashName(name: string): boolean {
   return (
-    /^(hash|digest|secret|token|passphrase)$/.test(name) ||
+    /^(hash|digest|secret|passphrase)$/.test(name) ||
     /tokenhash|passwordhash|passhash|accesskey|apikey|api_key|secretkey|clientsecret|appsecret|appid|privatekey|publickey/.test(name)
   );
 }
@@ -538,7 +694,6 @@ function isTokenName(name: string): boolean {
 function jsonDefault(dflt: string | null): unknown {
   if (!dflt) return null;
   let s = String(dflt).trim();
-  // Unwrap a single-quoted SQL string literal, e.g. '{"scope":"read-only"}'.
   const m = s.match(/^'((?:[^']|'')*)'$/);
   if (m) s = m[1].replace(/''/g, "'");
   try {
@@ -550,10 +705,7 @@ function jsonDefault(dflt: string | null): unknown {
 }
 
 /**
- * True when a TEXT-ish column must hold valid JSON: it is referenced by a
- * JSON-expression index (e.g. `Permissions ->> 'scope'`), its default is JSON,
- * or its name strongly implies a JSON document. Filling such a column with
- * random words throws "malformed JSON" at insert time.
+ * True when a TEXT-ish column must hold valid JSON.
  */
 function isJsonColumn(col: ColumnInfo, hasJsonIndex: boolean): boolean {
   if (!isTextishType(col.type)) return false;
@@ -567,9 +719,7 @@ function isJsonColumn(col: ColumnInfo, hasJsonIndex: boolean): boolean {
 }
 
 /**
- * Columns + keys referenced by JSON operators in an index statement
- * (`->`, `->>`, `json_extract`). PRAGMA index_info reports expression-index
- * columns as null, so the SQL text is the reliable source.
+ * Columns + keys referenced by JSON operators in an index statement.
  */
 function extractJsonColumns(sql: string): { col: string; keys: string[] }[] {
   const out: { col: string; keys: string[] }[] = [];
@@ -584,21 +734,18 @@ function extractJsonColumns(sql: string): { col: string; keys: string[] }[] {
       if (last && !entry.keys.includes(last)) entry.keys.push(last);
     }
   };
-  // "col" ->> 'key' | col ->> 'key' | -> 'key'
   const arrow = /"([^"]+)"\s*(?:->>|->)\s*'([^']+)'|([A-Za-z_][A-Za-z0-9_]*)\s*(?:->>|->)\s*'([^']+)'/g;
   let m: RegExpExecArray | null;
   while ((m = arrow.exec(sql))) push(m[1] || m[3], m[2] || m[4]);
-  // json_extract("col", '$.key') | json_extract(col, '$.key')
   const jx = /json_extract\s*\(\s*(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))\s*,\s*'(?:\$\??|\.)?\.?([^']+)'/g;
   while ((m = jx.exec(sql))) push(m[1] || m[2], m[3]);
   return out;
 }
 
 /**
- * Pick a sensible default plan for a column. Order matters: foreign keys and
- * primary keys first, then explicit types, then name-based heuristics for TEXT.
+ * Pick a sensible default plan for a column.
  */
-function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPlan {
+export function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPlan {
   const type = (col.type || '').toUpperCase();
   const rawName = col.name.toLowerCase();
   const name = normName(col.name);
@@ -631,16 +778,26 @@ function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPlan {
   }
   if (type === 'TIME' || name === 'time') return { strategy: 'time' };
 
+  // UNIX timestamps
+  if (type.startsWith('INTEGER') && /(timestamp|epoch|unix|createdtime|updatedtime)/.test(name)) {
+    return { strategy: 'timestampUnix', format: 'sec' };
+  }
+
+  // Coordinates
+  if (/^(lat|latitude)$/.test(name)) return { strategy: 'latitude' };
+  if (/^(lng|lon|longitude)$/.test(name)) return { strategy: 'longitude' };
+
   if (type.startsWith('INTEGER')) {
     if (name.includes('year')) return { strategy: 'int', min: 1990, max: 2026 };
     if (name.includes('age')) return { strategy: 'int', min: 18, max: 90 };
     if (/(count|quantity|qty|stock|views|likes|total|num|number)$/.test(name)) return { strategy: 'int', min: 0, max: 100000 };
     if (name.includes('rating') || name.includes('score')) return { strategy: 'int', min: 1, max: 5 };
+    if (/(order|rank|position|seq|sequence|priority|sort|step)$/.test(name)) return { strategy: 'sequence', start: 1, step: 1 };
     return { strategy: 'int', min: 1, max: 1000 };
   }
 
-  if (type === 'REAL') {
-    if (/(price|cost|amount|total|salary|balance)/.test(name)) return { strategy: 'decimal', min: 1, max: 5000, precision: 2 };
+  if (type === 'REAL' || type.includes('DECIMAL') || type.includes('NUMERIC') || type.includes('FLOAT') || type.includes('DOUBLE')) {
+    if (/(price|cost|amount|total|salary|balance|fee|charge|budget)/.test(name)) return { strategy: 'decimal', min: 1, max: 5000, precision: 2 };
     if (name.includes('rating')) return { strategy: 'decimal', min: 1, max: 5, precision: 1 };
     return { strategy: 'decimal', min: 1, max: 1000, precision: 2 };
   }
@@ -648,6 +805,18 @@ function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPlan {
   if (type === 'BLOB') return { strategy: 'bytes', minLen: 8, maxLen: 32 };
 
   // TEXT / untyped → name-based heuristics.
+  if (/avatar|picture|photo|image|img|thumbnail|icon|logo/.test(name)) return { strategy: 'avatar' };
+  if (/company|organization|org|firm|corp|employer|agency/.test(name)) return { strategy: 'company' };
+  if (/job|title|role|position|occupation|profession/.test(name)) return { strategy: 'job' };
+  if (/currency|curr|currencycode/.test(name)) return { strategy: 'currency' };
+  if (/countrycode|countryiso|isocountry|cca2/.test(name)) return { strategy: 'countryCode' };
+  if (/state|province|region/.test(name) && !/status|statement/.test(name)) return { strategy: 'state' };
+  if (/status|stage|phase|state/.test(name)) return { strategy: 'status' };
+  if (/color|colour|theme|hexcolor/.test(name)) return { strategy: 'color', format: 'hex' };
+  if (/mac|macaddress|hwaddr/.test(name)) return { strategy: 'mac' };
+  if (/creditcard|cardnumber|cardno|ccnumber|ccno/.test(name)) return { strategy: 'creditCard' };
+  if (/slug|permalink|handle|alias/.test(name)) return { strategy: 'slug' };
+
   if (isHashName(name)) return { strategy: 'hash', minLen: 32, maxLen: 64 };
   if (isTokenName(name)) return { strategy: 'token', minLen: 6, maxLen: 12 };
   if (/uuid|guid/.test(name)) return { strategy: 'uuid' };
@@ -665,76 +834,117 @@ function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPlan {
   if (/(url|website|site|link|homepage|href)/.test(name)) return { strategy: 'url' };
   if (/(domain|host)/.test(name)) return { strategy: 'domain' };
   if (name === 'ip' || /(ipaddr|ipv4|ip_address)/.test(name)) return { strategy: 'ip' };
-  if (/(description|content|body|comment|message|note|bio|summary|details)/.test(name)) return { strategy: 'sentence', minLen: 1, maxLen: 2 };
-  if (/(title|subject|category|status|type|tag|label|color|role)/.test(name)) return { strategy: 'words', minLen: 1, maxLen: 3 };
+  if (/(bio|about|overview|article|body|post|story)/.test(name)) return { strategy: 'paragraph' };
+  if (/(description|content|comment|message|note|summary|details|remarks)/.test(name)) return { strategy: 'sentence', minLen: 1, maxLen: 2 };
+  if (/(title|subject|category|type|tag|label)/.test(name)) return { strategy: 'words', minLen: 1, maxLen: 3 };
   return { strategy: 'words', minLen: 1, maxLen: 4 };
 }
 
-/** The strategies a column may use, in UI order. */
-function strategiesFor(col: ColumnInfo, fk: ForeignKeyInfo | null): StrategyDescriptor[] {
+/** The strategies a column may use, organized by category for the UI. */
+export function strategiesFor(col: ColumnInfo, fk: ForeignKeyInfo | null): StrategyDescriptor[] {
   const type = (col.type || '').toUpperCase();
-  const rawName = col.name.toLowerCase();
-  const name = normName(col.name);
   const out: StrategyDescriptor[] = [];
-  const add = (id: GeneratorStrategyId, label: string) => out.push({ id, label });
+  const add = (id: GeneratorStrategyId, label: string, category: StrategyCategory, description?: string) => {
+    out.push({ id, label, category, description });
+  };
 
-  add('skip', 'Skip — let the DB default apply');
-  add('null', 'Set NULL');
-  add('fixed', 'Fixed value');
-  add('list', 'Random from list');
-  if (fk) add('fk', `Random from ${fk.table}${fk.to ? `.${fk.to}` : ''}`);
+  // Custom & Control
+  add('skip', 'Skip (DB default or NULL applies)', 'custom_control');
+  add('null', 'Set NULL explicitly', 'custom_control');
+  add('fixed', 'Fixed constant value', 'custom_control');
+  add('list', 'Random item from custom list', 'custom_control');
+  add('pattern', 'Custom pattern template (e.g. INV-####)', 'custom_control');
 
-  if (type === 'BOOLEAN' || (type.startsWith('INTEGER') && /flag|active|enabled|status/.test(col.name.toLowerCase()))) {
-    add('bool', 'Random boolean');
+  // Relational
+  if (fk) {
+    add('fk', `Foreign Key: Sample from ${fk.table}${fk.to ? `.${fk.to}` : ''}`, 'relational');
   }
-  if (type.startsWith('INTEGER')) add('int', 'Random integer');
-  if (type === 'REAL') add('decimal', 'Random decimal');
-  if (type === 'DATE') add('date', 'Random date');
-  if (type === 'DATETIME' || type === 'TIMESTAMP') add('datetime', 'Random datetime');
-  if (type === 'TIME') add('time', 'Random time');
-  if (type === 'BLOB') add('bytes', 'Random bytes');
 
+  // Identity & People
   if (isTextishType(type)) {
-    // Date-ish TEXT columns usually hold ISO timestamps (e.g. a
-    // strftime('%Y-%m-%dT%H:%M:%fZ','now') default). Offer the matching
-    // generators so a detected date/datetime/time default stays valid for them.
-    if (/^date|birthdate|dob|birthday/.test(rawName)) add('date', 'Random date');
-    if (isTimestampName(name)) add('datetime', 'Random datetime');
-    if (name === 'time') add('time', 'Random time');
-
-    add('json', 'Valid JSON object');
-    add('hash', 'Random hash (hex)');
-    add('token', 'Random token');
-    add('words', 'A few words');
-    add('sentence', 'Sentence(s)');
-    add('first', 'First name');
-    add('last', 'Last name');
-    add('fullname', 'Full name');
-    add('email', 'Email');
-    add('username', 'Username');
-    add('phone', 'Phone number');
-    add('city', 'City');
-    add('country', 'Country');
-    add('postal', 'Postal code');
-    add('address', 'Street address');
-    add('url', 'URL');
-    add('domain', 'Domain');
-    add('ip', 'IP address');
-    add('uuid', 'UUID');
+    add('fullname', 'Full name (e.g. John Smith)', 'identity');
+    add('first', 'First name', 'identity');
+    add('last', 'Last name / Surname', 'identity');
+    add('username', 'Username handle', 'identity');
+    add('job', 'Job title / Profession', 'identity');
   }
+
+  // Contact & Web
+  if (isTextishType(type)) {
+    add('email', 'Email address', 'contact_web');
+    add('phone', 'Phone number', 'contact_web');
+    add('url', 'Website URL', 'contact_web');
+    add('domain', 'Domain name', 'contact_web');
+    add('ip', 'IPv4 address', 'contact_web');
+    add('avatar', 'Avatar image URL', 'contact_web');
+  }
+
+  // Commerce & Business
+  if (isTextishType(type)) {
+    add('company', 'Company / Organization name', 'commerce');
+    add('currency', 'Currency code (USD, EUR...)', 'commerce');
+    add('status', 'Status badge (active, pending...)', 'commerce');
+    add('creditCard', 'Masked test credit card', 'commerce');
+  }
+
+  // Location
+  if (isTextishType(type)) {
+    add('address', 'Street address', 'location');
+    add('city', 'City name', 'location');
+    add('state', 'State / Province', 'location');
+    add('country', 'Country name', 'location');
+    add('countryCode', 'Country code (ISO-2 e.g. US)', 'location');
+    add('postal', 'Postal / Zip code', 'location');
+  }
+  add('latitude', 'Latitude (-90 to 90)', 'location');
+  add('longitude', 'Longitude (-180 to 180)', 'location');
+
+  // Numbers & Math
+  if (type.startsWith('INTEGER') || type === 'REAL' || type.includes('DECIMAL') || type.includes('NUMERIC') || isTextishType(type)) {
+    add('int', 'Random integer in range', 'numeric');
+    add('decimal', 'Random decimal / price', 'numeric');
+    add('sequence', 'Sequential numbering (1, 2, 3...)', 'numeric');
+  }
+
+  // Date & Time
+  add('date', 'Random date (YYYY-MM-DD)', 'datetime');
+  add('datetime', 'Random datetime (ISO-8601)', 'datetime');
+  add('time', 'Random time (HH:MM:SS)', 'datetime');
+  add('timestampUnix', 'Unix timestamp (epoch)', 'datetime');
+
+  // Text & Content
+  if (isTextishType(type)) {
+    add('words', 'Short words / Tags', 'system_crypto');
+    add('sentence', 'Sentences', 'system_crypto');
+    add('paragraph', 'Paragraph (multi-sentence text)', 'system_crypto');
+    add('slug', 'URL slug (e.g. tech-news-402)', 'system_crypto');
+  }
+
+  // System, Crypto & Tech
+  add('bool', 'Boolean flag (1/0 or true/false)', 'system_crypto');
+  if (type === 'BLOB' || isTextishType(type)) {
+    add('bytes', 'Random hex bytes (BLOB)', 'system_crypto');
+  }
+  if (isTextishType(type)) {
+    add('uuid', 'UUID v4', 'system_crypto');
+    add('token', 'Short alphanumeric token', 'system_crypto');
+    add('hash', 'Hexadecimal hash (MD5/SHA)', 'system_crypto');
+    add('json', 'Valid JSON object', 'system_crypto');
+    add('color', 'Color (Hex code or name)', 'system_crypto');
+    add('mac', 'MAC network address', 'system_crypto');
+  }
+
   return out;
 }
 
 /**
- * A safe, value-generating default plan for a column's declared type. Used as a
- * fallback whenever the name/type heuristic would pick a strategy the column
- * does not actually support, or a NOT NULL column cannot be skipped.
+ * A safe, value-generating default plan for a column's declared type.
  */
-function fallbackPlanFor(col: ColumnInfo): ColumnPlan {
+export function fallbackPlanFor(col: ColumnInfo): ColumnPlan {
   const type = (col.type || '').toUpperCase();
   if (type === 'BOOLEAN') return { strategy: 'bool' };
   if (type.startsWith('INTEGER')) return { strategy: 'int', min: 1, max: 1000 };
-  if (type === 'REAL') return { strategy: 'decimal', min: 1, max: 1000, precision: 2 };
+  if (type === 'REAL' || type.includes('DECIMAL')) return { strategy: 'decimal', min: 1, max: 1000, precision: 2 };
   if (type === 'DATE') return { strategy: 'date', from: '2020-01-01', to: '2026-12-31' };
   if (type === 'DATETIME' || type === 'TIMESTAMP') return { strategy: 'datetime', from: '2024-01-01T00:00:00', to: '2026-12-31T23:59:59' };
   if (type === 'TIME') return { strategy: 'time' };
@@ -743,24 +953,16 @@ function fallbackPlanFor(col: ColumnInfo): ColumnPlan {
 }
 
 /**
- * Compute per-column generator configuration for a table (default strategies,
- * available strategies, FK metadata). Pure — no DB access — so the page route
- * and the API can share it.
+ * Compute per-column generator configuration for a table.
  */
 export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[] {
   const fkByColumn = new Map<string, ForeignKeyInfo>();
   for (const fk of info.foreignKeys) fkByColumn.set(fk.from, fk);
 
-  // Which columns are covered by a single-column UNIQUE index (their generated
-  // values must be unique) and which columns are referenced by a JSON-expression
-  // index (their generated values must be valid JSON).
   const uniqueCols = new Set<string>();
   const jsonIndexKeys = new Map<string, string[]>();
   for (const ix of info.indexes ?? ([] as IndexInfo[])) {
-    // Single-column UNIQUE indexes (PRAGMA index_info reports real names for
-    // regular indexes; expression indexes have name=null and are skipped).
     if (ix.unique && ix.columns.length === 1 && ix.columns[0]) uniqueCols.add(ix.columns[0]);
-    // JSON-expression indexes: columns must be filled with valid JSON.
     if (ix.sql && /json_extract|->>|->\s*'|json_/i.test(ix.sql)) {
       for (const { col, keys } of extractJsonColumns(ix.sql)) {
         if (!col) continue;
@@ -770,8 +972,6 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
     }
   }
 
-  // CHECK constraints (JSON value whitelists + column ordering) the generator
-  // can honor so generated rows pass the table's CHECKs.
   const checkInfo = parseChecks(info.sql ?? null);
 
   return info.columns.map((col) => {
@@ -780,9 +980,6 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
     const unique = uniqueCols.has(col.name);
     let defaultPlan = detectPlan(col, fk);
 
-    // A column referenced by a JSON-expression index (or with a JSON default /
-    // JSON-like name) must hold valid JSON — filling it with random words throws
-    // "malformed JSON" at insert time because the index evaluates the JSON path.
     if (defaultPlan.strategy !== 'fk' && !col.pk && isJsonColumn(col, jsonIndexKeys.has(col.name))) {
       const keys = jsonIndexKeys.get(col.name);
       const useKeys = keys && keys.length ? keys : ['scope', 'enabled', 'allowedApps'];
@@ -799,7 +996,6 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
       };
     }
 
-    // Direct column CHECK constraint allowed values (e.g. Scope IN ('read-only', 'read-write', 'admin') or Scope = 'a' OR Scope = 'b')
     const colAllowed = findInMap(checkInfo.columnAllowed, col.name);
     if (colAllowed && colAllowed.length > 0 && defaultPlan.strategy !== 'fk' && !col.pk) {
       if (colAllowed.length === 1) {
@@ -809,24 +1005,16 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
       }
     }
 
-    // Direct column CHECK numeric range bounds (e.g. ExpiresInDays > 0 AND ExpiresInDays <= 365)
     const colRange = findInMap(checkInfo.columnRange, col.name);
     if (colRange && (defaultPlan.strategy === 'int' || defaultPlan.strategy === 'decimal')) {
       if (colRange.min != null) defaultPlan.min = colRange.min;
       if (colRange.max != null) defaultPlan.max = colRange.max;
     }
 
-    // The detected default must always be a strategy the column actually
-    // supports (e.g. TEXT "CreatedAt" detects as datetime, so datetime must be
-    // offered to TEXT columns — see strategiesFor). Any remaining mismatch
-    // falls back to a type-appropriate value generator so the default can never
-    // be rejected by generateRows.
     if (!strategies.some((s) => s.id === defaultPlan.strategy)) {
       defaultPlan = fallbackPlanFor(col);
     }
 
-    // A NOT NULL column without a default cannot fall back on skip/NULL (unless
-    // it is a primary key, which SQLite fills for us).
     if (!col.pk && col.notnull && col.dflt_value == null && (defaultPlan.strategy === 'skip' || defaultPlan.strategy === 'null')) {
       defaultPlan = fallbackPlanFor(col);
     }
@@ -847,12 +1035,14 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
 
 // ---- Plan sanitization (from untrusted client input) ----------------------
 
-const PLAN_KEYS = ['value', 'values', 'min', 'max', 'precision', 'from', 'to', 'minLen', 'maxLen', 'jsonKeys'] as const;
+const PLAN_KEYS = [
+  'value', 'values', 'min', 'max', 'precision', 'from', 'to',
+  'minLen', 'maxLen', 'jsonKeys', 'nullPct', 'prefix', 'suffix',
+  'start', 'step', 'pattern', 'format'
+] as const;
 
 /**
- * Validate/normalize a client-supplied per-column plan. Returns null when the
- * payload is not a usable plan. Strategy validity against the column's allowed
- * set is enforced later by `generateRows`.
+ * Validate/normalize a client-supplied per-column plan.
  */
 export function sanitizeColumnPlan(raw: unknown): ColumnPlan | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -868,7 +1058,7 @@ export function sanitizeColumnPlan(raw: unknown): ColumnPlan | null {
     } else if (key === 'jsonKeys') {
       const raw = Array.isArray(v) ? (v as unknown[]).map(String) : String(v).split(/[,;]/);
       out.jsonKeys = raw.map((s) => s.trim()).filter(Boolean);
-    } else if (key === 'value' || key === 'from' || key === 'to') {
+    } else if (key === 'value' || key === 'from' || key === 'to' || key === 'prefix' || key === 'suffix' || key === 'pattern' || key === 'format') {
       out[key] = String(v);
     } else {
       const n = Number(v);
@@ -876,8 +1066,6 @@ export function sanitizeColumnPlan(raw: unknown): ColumnPlan | null {
     }
   }
 
-  // Per-key allowed JSON values (derived from CHECK constraints on the server;
-  // passed through untouched so a generated plan keeps them).
   if (r.jsonValues && typeof r.jsonValues === 'object' && !Array.isArray(r.jsonValues)) {
     const jv: Record<string, string[]> = {};
     for (const [k, vals] of Object.entries(r.jsonValues as Record<string, unknown>)) {
@@ -904,7 +1092,6 @@ function randomAlnum(min: number, max: number): string {
   return s;
 }
 
-/** Pick a plausible JSON value for a key (key-name aware, but always valid JSON). */
 function jsonValueForKey(key: string): unknown {
   const k = key.toLowerCase();
   if (k.includes('scope') || k === 'role' || k === 'access') return pick(JSON_SCOPES);
@@ -925,7 +1112,6 @@ function jsonValueForKey(key: string): unknown {
   return makeUuid();
 }
 
-/** Build a valid JSON object from a set of keys (or a small sensible default). */
 function makeJsonObject(keys?: string[], jsonValues?: Record<string, string[]>): string {
   const k = (keys && keys.length ? keys : ['scope', 'enabled', 'flags']).slice(0, 16);
   const obj: Record<string, unknown> = {};
@@ -953,9 +1139,23 @@ async function sampleFkValues(db: SqliteDatabase, fk: ForeignKeyInfo | null): Pr
   }
 }
 
-/** Generate a single value for a column from its plan (or SKIP to omit it). */
-function generateOne(col: ColumnInfo, p: ColumnPlan, fkPool?: unknown[]): unknown {
+/**
+ * Generate a single value for a column from its plan.
+ */
+export function generateOne(
+  col: ColumnInfo,
+  p: ColumnPlan,
+  fkPool?: unknown[],
+  rowIndex = 0,
+): unknown {
   const type = (col.type || '').toUpperCase();
+
+  // Handle null percentage for nullable columns
+  if (!col.pk && !col.notnull && p.nullPct && p.nullPct > 0) {
+    if (Math.random() * 100 < p.nullPct) return null;
+  }
+
+  let rawVal: unknown;
 
   switch (p.strategy) {
     case 'skip':
@@ -963,63 +1163,147 @@ function generateOne(col: ColumnInfo, p: ColumnPlan, fkPool?: unknown[]): unknow
     case 'null':
       return null;
     case 'fixed':
-      return coerceFormValue(p.value ?? '', col.type);
+      rawVal = p.value ?? '';
+      break;
     case 'list': {
       const vals = (p.values ?? []).filter((v) => String(v).trim() !== '');
       if (!vals.length) return SKIP;
-      return coerceFormValue(pick(vals), col.type);
+      rawVal = pick(vals);
+      break;
     }
+    case 'pattern':
+      rawVal = formatPattern(p.pattern || 'INV-2026-####');
+      break;
     case 'first':
-      return coerceFormValue(pick(FIRST_NAMES), col.type);
+      rawVal = pick(FIRST_NAMES);
+      break;
     case 'last':
-      return coerceFormValue(pick(LAST_NAMES), col.type);
+      rawVal = pick(LAST_NAMES);
+      break;
     case 'fullname':
-      return coerceFormValue(`${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`, col.type);
+      rawVal = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
+      break;
     case 'email':
-      return coerceFormValue(makeEmail(), col.type);
+      rawVal = makeEmail();
+      break;
     case 'username':
-      return coerceFormValue(makeUsername(), col.type);
+      rawVal = makeUsername();
+      break;
+    case 'job':
+      rawVal = pick(JOB_TITLES);
+      break;
+    case 'company':
+      rawVal = pick(COMPANIES);
+      break;
+    case 'currency':
+      rawVal = pick(CURRENCIES);
+      break;
+    case 'status':
+      rawVal = pick(STATUSES);
+      break;
+    case 'creditCard':
+      rawVal = makeCreditCard();
+      break;
+    case 'avatar':
+      rawVal = makeAvatar();
+      break;
+    case 'color':
+      rawVal = makeColor(p.format);
+      break;
     case 'phone':
-      return coerceFormValue(makePhone(), col.type);
+      rawVal = makePhone();
+      break;
     case 'city':
-      return coerceFormValue(pick(CITIES), col.type);
+      rawVal = pick(CITIES);
+      break;
+    case 'state':
+      rawVal = pick(US_STATES);
+      break;
     case 'country':
-      return coerceFormValue(pick(COUNTRIES), col.type);
+      rawVal = pick(COUNTRIES);
+      break;
+    case 'countryCode':
+      rawVal = pick(COUNTRY_CODES);
+      break;
     case 'postal':
-      return coerceFormValue(String(randInt(10000, 99999)), col.type);
+      rawVal = String(randInt(10000, 99999));
+      break;
     case 'address':
-      return coerceFormValue(makeAddress(), col.type);
+      rawVal = makeAddress();
+      break;
     case 'url':
-      return coerceFormValue(`https://www.${pick(DOMAINS)}/${slug()}`, col.type);
+      rawVal = `https://www.${pick(DOMAINS)}/${makeSlug()}`;
+      break;
     case 'domain':
-      return coerceFormValue(pick(DOMAINS), col.type);
+      rawVal = pick(DOMAINS);
+      break;
     case 'ip':
-      return coerceFormValue(makeIp(), col.type);
+      rawVal = makeIp();
+      break;
+    case 'mac':
+      rawVal = makeMacAddress();
+      break;
     case 'uuid':
-      return coerceFormValue(makeUuid(), col.type);
+      rawVal = makeUuid();
+      break;
+    case 'slug':
+      rawVal = makeSlug();
+      break;
     case 'words':
-      return coerceFormValue(makeWords(p.minLen ?? 1, p.maxLen ?? 4), col.type);
+      rawVal = makeWords(p.minLen ?? 1, p.maxLen ?? 4);
+      break;
     case 'sentence':
-      return coerceFormValue(makeSentences(p.minLen ?? 1, p.maxLen ?? 2), col.type);
+      rawVal = makeSentences(p.minLen ?? 1, p.maxLen ?? 2);
+      break;
+    case 'paragraph':
+      rawVal = makeParagraph();
+      break;
+    case 'latitude': {
+      const min = p.min ?? -90;
+      const max = p.max ?? 90;
+      rawVal = Number(randFloat(min, max).toFixed(6));
+      break;
+    }
+    case 'longitude': {
+      const min = p.min ?? -180;
+      const max = p.max ?? 180;
+      rawVal = Number(randFloat(min, max).toFixed(6));
+      break;
+    }
+    case 'sequence': {
+      const start = p.start ?? 1;
+      const step = p.step ?? 1;
+      rawVal = start + rowIndex * step;
+      break;
+    }
     case 'int': {
       const min = p.min ?? 1;
       const max = Math.max(min, p.max ?? 1000);
-      return coerceFormValue(String(randInt(min, max)), type || 'INTEGER');
+      rawVal = randInt(min, max);
+      break;
     }
     case 'decimal': {
       const min = p.min ?? 1;
       const max = Math.max(min, p.max ?? 1000);
       const prec = Math.max(0, Math.min(10, p.precision ?? 2));
-      return coerceFormValue(randFloat(min, max).toFixed(prec), type || 'REAL');
+      rawVal = randFloat(min, max).toFixed(prec);
+      break;
     }
     case 'date':
-      return coerceFormValue(randomDate(p.from, p.to, 'date'), type || 'TEXT');
+      rawVal = randomDate(p.from, p.to, 'date');
+      break;
     case 'datetime':
-      return coerceFormValue(randomDate(p.from, p.to, 'datetime'), type || 'TEXT');
+      rawVal = randomDate(p.from, p.to, 'datetime');
+      break;
     case 'time':
-      return coerceFormValue(randomTime(), type || 'TEXT');
+      rawVal = randomTime();
+      break;
+    case 'timestampUnix':
+      rawVal = randomUnixTimestamp(p.format, p.from, p.to);
+      break;
     case 'bool':
-      return coerceFormValue(pick(['1', '0']), type || 'BOOLEAN');
+      rawVal = pick(['1', '0']);
+      break;
     case 'bytes': {
       const len = randInt(Math.max(0, p.minLen ?? 8), Math.max(1, p.maxLen ?? 32));
       const buf = Buffer.alloc(len);
@@ -1027,15 +1311,18 @@ function generateOne(col: ColumnInfo, p: ColumnPlan, fkPool?: unknown[]): unknow
       return coerceFormValue(`0x${buf.toString('hex')}`, type || 'BLOB');
     }
     case 'json':
-      return coerceFormValue(makeJsonObject(p.jsonKeys, p.jsonValues), type || 'TEXT');
+      rawVal = makeJsonObject(p.jsonKeys, p.jsonValues);
+      break;
     case 'hash': {
       const min = Math.max(8, p.minLen ?? 32);
       const max = Math.max(min, p.maxLen ?? 64);
       const len = randInt(min, max);
-      return coerceFormValue(randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len), type || 'TEXT');
+      rawVal = randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len);
+      break;
     }
     case 'token':
-      return coerceFormValue(randomAlnum(Math.max(2, p.minLen ?? 6), Math.max(2, p.maxLen ?? 12)), type || 'TEXT');
+      rawVal = randomAlnum(Math.max(2, p.minLen ?? 6), Math.max(2, p.maxLen ?? 12));
+      break;
     case 'fk': {
       if (!fkPool || !fkPool.length) return null;
       return fkPool[randInt(0, fkPool.length - 1)];
@@ -1043,21 +1330,31 @@ function generateOne(col: ColumnInfo, p: ColumnPlan, fkPool?: unknown[]): unknow
     default:
       return SKIP;
   }
+
+  // Apply string prefix & suffix
+  if (rawVal != null && (p.prefix || p.suffix) && typeof rawVal === 'string') {
+    rawVal = `${p.prefix || ''}${rawVal}${p.suffix || ''}`;
+  }
+
+  return coerceFormValue(String(rawVal), type || 'TEXT');
 }
 
 /**
- * Generate `count` rows for a table. `plan` is a per-column override map;
- * columns without an entry use their detected default plan. Values are coerced
- * to the column's declared type for SQLite binding.
- *
- * Throws when a plan uses a strategy that the column does not support.
+ * Generate a single representative sample value for UI cards.
  */
+export function generateSampleValue(col: ColumnInfo, plan: ColumnPlan, fkPool?: unknown[]): unknown {
+  const v = generateOne(col, plan, fkPool || ['[FK sample]'], 0);
+  if (v === SKIP) return '(omitted / default)';
+  if (v === null) return 'NULL';
+  if (v instanceof Uint8Array || Buffer.isBuffer(v)) return `0x${Buffer.from(v).toString('hex').slice(0, 16)}...`;
+  return v;
+}
+
 function stringifyKey(v: unknown): string {
   if (v instanceof Uint8Array || Buffer.isBuffer(v)) return `buf:${Buffer.from(v).toString('hex')}`;
   return `${typeof v}:${String(v)}`;
 }
 
-/** Append a unique suffix to a colliding value (numeric columns stay numeric). */
 function uniqueSuffix(base: unknown, seen: Set<string>): unknown {
   if (typeof base === 'number' && Number.isFinite(base)) {
     let n = Number(base);
@@ -1073,11 +1370,6 @@ function uniqueSuffix(base: unknown, seen: Set<string>): unknown {
   return cand;
 }
 
-/**
- * Move `value` so it is strictly after / before `base` (or equal when
- * `orEqual`), for datetime/date strings and numbers. Unrecognized types are
- * returned unchanged.
- */
 function orderedValue(value: unknown, base: unknown, dir: 'after' | 'before', orEqual: boolean): unknown {
   const v = value;
   const b = base;
@@ -1110,7 +1402,6 @@ function orderedValue(value: unknown, base: unknown, dir: 'after' | 'before', or
   return v;
 }
 
-/** Apply per-row ordering CHECKs (e.g. ExpiresAt > CreatedAt) in place. */
 function applyOrdering(fields: WhereClause[], ordering: Map<string, OrderingConstraint>): void {
   if (!ordering.size) return;
   const byCol = new Map(fields.map((f) => [f.column, f]));
@@ -1128,6 +1419,9 @@ function applyOrdering(fields: WhereClause[], ordering: Map<string, OrderingCons
   }
 }
 
+/**
+ * Generate `count` rows for a table with structured previews.
+ */
 export async function generateRows(
   db: SqliteDatabase,
   info: TableInfoData,
@@ -1138,19 +1432,14 @@ export async function generateRows(
   const fkByColumn = new Map<string, ForeignKeyInfo>();
   for (const fk of info.foreignKeys) fkByColumn.set(fk.from, fk);
 
-  // Columns with a single-column UNIQUE index must get distinct values.
   const uniqueCols = new Set<string>();
   for (const cfg of configs) if (cfg.unique) uniqueCols.add(cfg.name);
 
-  // CHECK constraints (JSON whitelists + column ordering).
   const checkInfo = parseChecks(info.sql ?? null);
 
   const warnings: string[] = [];
   const prepared: { col: ColumnInfo; plan: ColumnPlan }[] = [];
   const fkPools = new Map<string, unknown[]>();
-  // A NOT NULL FK whose referenced table is empty cannot be satisfied (SQLite
-  // enforces FKs) — the column is omitted from generated rows with a clear
-  // warning so the user knows to seed the referenced table first.
   const fkOmit = new Set<string>();
 
   for (const col of info.columns) {
@@ -1195,19 +1484,29 @@ export async function generateRows(
   }
 
   const rows: WhereClause[][] = [];
+  const previewRows: Record<string, unknown>[] = [];
   const uniqueSeen = new Map<string, Set<string>>();
+
   for (let i = 0; i < count; i++) {
     const fields: WhereClause[] = [];
+    const previewRow: Record<string, unknown> = {};
+
     for (const { col, plan: p } of prepared) {
-      if (p.strategy === 'fk' && fkOmit.has(col.name)) continue;
-      let v = generateOne(col, p, fkPools.get(col.name));
-      if (v === SKIP) continue;
+      if (p.strategy === 'fk' && fkOmit.has(col.name)) {
+        previewRow[col.name] = null;
+        continue;
+      }
+      let v = generateOne(col, p, fkPools.get(col.name), i);
+      if (v === SKIP) {
+        previewRow[col.name] = '(default)';
+        continue;
+      }
 
       if (uniqueCols.has(col.name)) {
         const seen = uniqueSeen.get(col.name) ?? new Set<string>();
         let attempts = 0;
         while (seen.has(stringifyKey(v)) && attempts < 20) {
-          v = generateOne(col, p, fkPools.get(col.name));
+          v = generateOne(col, p, fkPools.get(col.name), i);
           attempts += 1;
         }
         if (seen.has(stringifyKey(v))) {
@@ -1219,19 +1518,25 @@ export async function generateRows(
       }
 
       fields.push({ column: col.name, value: v });
+      previewRow[col.name] = v;
     }
-    // Honor CHECK ordering constraints (e.g. ExpiresAt > CreatedAt) so rows pass.
+    // Honor CHECK ordering constraints
     applyOrdering(fields, checkInfo.ordering);
+    for (const f of fields) {
+      previewRow[f.column] = f.value;
+    }
+
     rows.push(fields);
+    if (previewRows.length < 50) {
+      previewRows.push(previewRow);
+    }
   }
 
-  return { rows, warnings };
+  return { rows, previewRows, warnings };
 }
 
 /**
- * Render generated rows as a sequence of INSERT statements for preview
- * ("generate but never execute"). Each row is its own statement so per-row
- * column lists (with skips) stay valid.
+ * Render generated rows as a sequence of INSERT statements for preview.
  */
 export function buildSeedInsertSql(table: string, rows: WhereClause[][]): string {
   return rows

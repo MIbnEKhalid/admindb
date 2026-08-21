@@ -113,13 +113,14 @@ function pkWhere(info: TableInfoData, encodedId: string): { column: string; valu
 const MAX_BULK_ROWS = 1000;
 
 /**
- * Parse and clamp the seed request body `{ count, plan }` into a safe row count
- * and a per-column plan map (each plan sanitized against known keys). Per-column
- * strategy validity is enforced later by `generateRows` against the table config.
+ * Parse and clamp the seed request body `{ count, plan, truncate }` into a safe row count,
+ * truncate flag, and a per-column plan map (each plan sanitized against known keys).
+ * Per-column strategy validity is enforced later by `generateRows` against the table config.
  */
-function parseSeedRequest(body: unknown): { count: number; plan: Record<string, ColumnPlan> } {
-  const b = (body ?? {}) as { count?: unknown; plan?: unknown };
+function parseSeedRequest(body: unknown): { count: number; plan: Record<string, ColumnPlan>; truncate: boolean } {
+  const b = (body ?? {}) as { count?: unknown; plan?: unknown; truncate?: unknown };
   const count = Math.max(1, Math.min(MAX_SEED_ROWS, Number.parseInt(String(b.count ?? '10'), 10) || 10));
+  const truncate = Boolean(b.truncate);
   const plan: Record<string, ColumnPlan> = {};
   if (b.plan && typeof b.plan === 'object') {
     for (const [k, v] of Object.entries(b.plan as Record<string, unknown>)) {
@@ -127,7 +128,7 @@ function parseSeedRequest(body: unknown): { count: number; plan: Record<string, 
       if (p) plan[k] = p;
     }
   }
-  return { count, plan };
+  return { count, plan, truncate };
 }
 
 /**
@@ -603,6 +604,7 @@ export function registerApi(router: Router, ctx: ApiContext): void {
       table: req.params.table,
       count: gen.rows.length,
       sql: buildSeedInsertSql(req.params.table, gen.rows),
+      previewRows: gen.previewRows,
       warnings: gen.warnings,
     });
   }),
@@ -612,18 +614,29 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   router.post('/api/tables/:table/seed', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    const { count, plan } = parseSeedRequest(req.body);
+    const { count, plan, truncate } = parseSeedRequest(req.body);
     const configs = buildColumnConfigs(info);
+    const t0 = Date.now();
+
+    if (truncate) {
+      const clearRes = await db.run(`DELETE FROM ${quoteIdentifier(req.params.table)}`);
+      if (!clearRes.success) {
+        return fail(res, clearRes.error ?? 'Failed to clear table before seeding.', 400);
+      }
+    }
+
     const gen = await generateRows(db, info, configs, count, plan);
     const result = await db.insertRows(req.params.table, gen.rows);
     if (!result.success) return fail(res, result.error ?? 'Seed failed.', 400);
+    const elapsedMs = Date.now() - t0;
     ok(
       res,
       {
-        message: `Inserted ${result.data?.inserted ?? 0} row(s).`,
+        message: `${truncate ? 'Cleared table and inserted' : 'Inserted'} ${result.data?.inserted ?? 0} row(s) in ${elapsedMs}ms.`,
         inserted: result.data?.inserted ?? 0,
         skipped: result.data?.skipped ?? 0,
         warnings: gen.warnings,
+        elapsedMs,
       },
       201,
     );
@@ -733,7 +746,7 @@ export function registerApi(router: Router, ctx: ApiContext): void {
       notNull: !!col.notNull,
       unique: !!col.unique,
       primaryKey: !!col.primaryKey,
-      defaultValue: col.defaultValue !== undefined ? (col.defaultValue === null ? null : String(col.defaultValue)) : undefined,
+      defaultValue: col.defaultValue !== undefined ? (!String(col.defaultValue ?? '').trim() ? null : String(col.defaultValue).trim()) : undefined,
       foreignKey: col.foreignKey || null,
     };
 

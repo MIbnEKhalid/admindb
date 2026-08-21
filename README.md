@@ -6,96 +6,112 @@
 [![Downloads](https://img.shields.io/npm/dm/admindb.svg)](https://www.npmjs.com/package/admindb)
 [![Publish](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml)
 
-**A browser-based SQLite administration tool.** Manage a SQLite database
-entirely from the browser — browse and edit rows, run SQL, design schemas,
-import/export and seed data — with no separate frontend app to build or deploy.
+**A modern, browser-based SQLite database administration tool.** Manage SQLite databases entirely from your browser — browse and edit rows, run arbitrary SQL queries, design schemas visually, seed realistic test data, and import/export CSV/JSON — with no separate frontend app to build or deploy.
 
-- **No frontend build step.** Handlebars server-rendered UI + vanilla JS +
-  Tailwind/DaisyUI; one Express process serves pages, static assets, and the
-  JSON API.
-- **Standalone or embeddable.** Run it from the CLI against a file or a folder
-  of databases, or mount it inside an existing Express app under any path on
-  the same port.
-- **Safe SQL by construction.** Every identifier is quoted and every literal is
-  escaped when SQL is generated, and the "Get query / preview" modes only
-  produce SQL strings — they never execute.
+- **Zero frontend build step:** Server-rendered Handlebars UI + vanilla JS + Tailwind/DaisyUI; a single lightweight Express process serves pages, static assets, and the REST API.
+- **Standalone CLI or embeddable library:** Run instantly via `npx admindb` or mount it directly into your existing Express application under any subpath.
+- **Modern terminal experience:** Clean, colorized startup banner with auto-detected local/network URLs and streamlined runtime logs.
+- **Safe SQL by construction:** Quoted identifiers, escaped literals, parameterized queries, and non-executing SQL preview modes.
+
+---
 
 ![Home dashboard](docs/screenshots/home.png)
 
-> More screenshots in [`docs/screenshots/`](docs/screenshots/): table browser,
-> query editor, table designer, insert/edit form, schema editor, and the
-> databases landing page.
+> 📸 **Visual Tour:** See [`docs/screenshots/`](docs/screenshots/) for screenshots of the Table Browser, Query Editor, Visual Schema Designer, Inline Grid Editor, and Multi-Database Manager.
 
-## 30-Second Start
+---
 
-No install needed:
+## ⚡ 30-Second Quickstart
+
+No installation required:
 
 ```bash
 npx admindb
-# → AdminDB is listening on http://localhost:3000
 ```
 
-With no arguments the server starts in **manager mode**: a **Databases** landing
-page where you can browse the filesystem and open any SQLite database file
-(`.db` / `.sqlite` / `.sqlite3`), or create new ones. Or point it straight at a
-file:
+By default, AdminDB opens in **Manager Mode** on `http://localhost:3000`, allowing you to browse the filesystem, create new SQLite databases, or open existing `.db` / `.sqlite` / `.sqlite3` files.
+
+### Point directly to a database file or directory:
 
 ```bash
-npx admindb ./data/app.db          # open one database
-npx admindb -d ./dbs               # manage a folder of databases
+npx admindb ./data/app.db          # Open a single database directly
+npx admindb -d ./databases         # Manage a folder of databases
+npx admindb -p 8080 -r             # Run on port 8080 in read-only mode
 ```
 
-From a clone:
-
-```bash
-git clone https://github.com/MIbnEKhalid/admindb.git
-cd admindb
-npm install
-npm run build
-npm start                          # serves http://localhost:3000
-```
-
-> Requires **Node.js ≥ 20**. Runtime dependencies are `express`,
-> `express-handlebars`, and `better-sqlite3`; the rest is the application.
-
-## Why This Exists
-
-AdminDB exists because SQLite deserves a proper web admin UI, and desktop tools
-(DBeaver, DB Browser for SQLite) live outside both your browser and your stack.
-Web admin tools like phpMyAdmin target MySQL/Postgres, not SQLite. This one is
-server-rendered, so there is no frontend build step and nothing extra to deploy
-— the same Express process serves pages, assets, and the JSON API. Run it
-standalone from the CLI, or mount it under any path of an existing Express app
-on the same port.
-
-## Install
-
-### Try it (no install)
-
-```bash
-npx admindb -p 8080        # run on port 8080 without installing
-npx admindb ./app.db       # open a database file directly
-```
-
-### Install as a standalone CLI tool
-
-Requires **Node.js ≥ 20**:
+### Install globally:
 
 ```bash
 npm install -g admindb
-admindb                    # starts the server → open http://localhost:3000
+admindb
 ```
 
-The `admindb` command starts the built-in server and prints the URL to open in
-your browser. See the [CLI reference](#cli-reference) for `--port`,
-`--open <file>`, `--dir <folder>`, `--readonly`, and more.
+---
 
-### Embed AdminDB in your own app
+## 🖥️ Modern Terminal Experience
 
-AdminDB is an Express app you can mount inside your own application, under your
-own path, on the same port as the rest of your server.
+AdminDB features a clean, colorized CLI startup banner and streamlined, low-noise runtime logging:
 
-#### Minimal example
+```text
+  ⚡ AdminDB v1.2.1
+
+  ➜  Local:    http://localhost:3000/
+  ➜  Network:  http://192.168.1.15:3000/
+  ➜  Mode:     Manager (C:\Users\...\databases)
+  ➜  Auth:     User: admin (default password)
+
+  ⚠  Default password in use (admin). Generate a secure hash with:
+     npm run generatehash and set ADMINDB_PASSWORD or -P <hash>
+```
+
+Runtime operations produce crisp, color-coded status logs:
+
+```text
+16:38:13 [info] [db:app.db] Opened SQLite database at ./data/app.db
+16:38:15 [info] [db:app.db] Executed query in 2.4ms (42 rows returned)
+16:38:18 [warn] Failed login attempt for user "unknown"
+```
+
+---
+
+## 🌟 Core Features
+
+### 🔍 Browse & Edit Rows
+* **Table Browser:** Paginated grid, column-header sorting, sticky headers, and per-row action menus. Composite primary keys are fully supported.
+* **Inline Spreadsheet Editing:** Double-click any cell to edit in place (FK dropdowns, boolean toggles, date pickers, numeric inputs). Staged changes are highlighted and committed atomically in a single transaction.
+* **Type-Aware Filters:** Filter by exact match, comparison (`>5`, `<=10`), prefix (`pre*`), substring, boolean state, or date/numeric ranges.
+* **Bulk Operations:** Select rows to delete in one transaction (with foreign-key impact previews) or export selected rows as CSV/JSON.
+* **Related Rows:** Cross-table foreign key indicators show how many child records reference each row, with one-click nested table exploration.
+
+### ⚡ Query Runner & SQL Tools
+* **Arbitrary SQL Runner:** Execute queries with results formatted as clean tables; `COUNT` queries display a concise summary, and mutations report affected row counts.
+* **Saved Named Queries:** Save frequently used queries in the database and reload them from a dropdown menu.
+* **Safe SQL Preview:** Generate `CREATE`, `INSERT`, or `UPDATE` SQL without executing it.
+* **Full Database Dump:** Download the entire database as a standard SQL file (`CREATE TABLE` + `INSERT` statements).
+
+### 🗂️ Visual Schema Designer & Indexes
+* **Visual Table Designer:** Create tables interactively with column types, primary keys, autoincrement, nullable/unique constraints, default values, and foreign keys.
+* **Relationship-Safe Schema Editor:** Rename tables, add columns, rename columns, and drop columns/tables with safety checks to protect active foreign keys and unique constraints.
+* **Index Manager:** Create single or multi-column indexes (plain or unique) with live SQL previews, and drop existing indexes safely.
+
+### 🔄 Import, Export & Seed Data Generation
+* **CSV Import:** Upload or paste CSV files with column matching, executed transactionally.
+* **Data Export:** Download table data or arbitrary SQL query results as CSV or JSON.
+* **Intelligent Seed Generator:** Populate tables with up to 5,000 realistic rows using intelligent heuristic strategy detection (names, emails, phones, addresses, dates, UUIDs, custom templates, or sampled foreign keys).
+
+### 📁 Multi-Database Manager
+* Manage directories of SQLite files or configure explicit file lists.
+* Dedicated landing page with an in-browser filesystem browser to open, create, and delete databases.
+
+### 🛡️ Strict Read-Only Mode
+* Open databases with `SQLITE_OPEN_READONLY` + `PRAGMA query_only = ON`.
+* Rejects all mutation endpoints (`403 Forbidden`) and automatically hides write controls in the UI.
+
+---
+
+## 🚀 Embed AdminDB in Express
+
+AdminDB can be mounted directly into any existing Express application under any subpath on the same port:
 
 ```ts
 import express from 'express';
@@ -103,387 +119,142 @@ import { createRouter } from 'admindb';
 
 const app = express();
 
-app.get('/', (_req, res) => res.send('My main app'));
+app.get('/', (_req, res) => res.send('Main App'));
 
-// All AdminDB routes live under /admin on the same port.
-app.use('/admin', createRouter({ dbPath: '/data/my.db', basePath: '/admin' }));
-
-app.listen(3000);
-```
-
-`createRouter(options)` returns a fully wired Express app (pages + JSON API +
-static assets + view engine). Mounting it is just `app.use('/path', router)`.
-
-#### Options
-
-| Option     | Type                 | Description                                                    |
-| ---------- | -------------------- | -------------------------------------------------------------- |
-| `dbPath`   | `string`             | Path to a single SQLite file (single-db mode). Default: `admindb.db` |
-| `db`       | `SqliteDatabase`     | An already-open database instance (advanced embedding)         |
-| `manager`  | `DbManager`          | Enables multi-database mode (see below)                        |
-| `basePath` | `string`             | URL prefix used by templates/assets (e.g. `/admin`). Pass the same prefix you mount at |
-| `logger`   | `Logger`             | Custom logger (see `createLogger`)                             |
-| `logLevel` | `'debug'\|'info'\|'warn'\|'error'` | Log verbosity (used when no logger is passed)     |
-| `allowBrowse` | `boolean`         | Manager mode: show the filesystem file-browser on the databases page. Set `false` to disable it (e.g. when the server was started with specific database files). Default: `true` |
-| `browseRoot` | `string`          | Manager mode: restrict the file-browser to this folder (absolute path) — it cannot navigate above it and only databases inside it can be opened |
-| `readonly` | `boolean`            | Open the database(s) **read-only**: every write is rejected (403), write controls are disabled in the UI, and a banner is shown. The DB file is opened with `SQLITE_OPEN_READONLY` + `PRAGMA query_only` as a belt-and-suspenders guard. Default: `false` |
-
-Example with a custom logger and prefix:
-
-```ts
-import express from 'express';
-import { createRouter, createLogger } from 'admindb';
-
-const app = express();
-app.use('/tools/db', createRouter({
-  dbPath: './data/app.db',
-  basePath: '/tools/db',
-  logLevel: 'info',
-}));
-app.listen(3000);
-```
-
-#### Multiple databases
-
-Pass a `DbManager` to manage several database files — either from a directory,
-from an explicit list of file paths, or both:
-
-```ts
-import express from 'express';
-import { createRouter, DbManager, createLogger } from 'admindb';
-
-const app = express();
+// Mount AdminDB under /admin
 app.use('/admin', createRouter({
-  manager: new DbManager(
-    {
-      dir: './data',                                   // scan a directory
-      files: ['/srv/legacy/app.db', './shared.sqlite'], // and/or explicit paths
-      readonly: true,                                  // open all databases read-only
-    },
-    createLogger('info'),
-  ),
+  dbPath: './data/app.db',
   basePath: '/admin',
 }));
+
+app.listen(3000, () => {
+  console.log('App running on http://localhost:3000 (Admin: http://localhost:3000/admin)');
+});
 ```
 
-In multi-db mode:
-
-- a **"Databases" landing page** lets you open, create, and delete database files,
-- every database is scoped under its file name, e.g.
-  `/admin/app.db/tables/users` and `/admin/app.db/api/tables`,
-- file names that collide across sources are deduped (`name__2.db`).
-
-### CLI reference
-
-The standalone server is a full web app. With no arguments it runs in
-**manager mode**: a **Databases** landing page where you can browse the
-filesystem and open any SQLite database file (`.db` / `.sqlite` / `.sqlite3`),
-or create new ones.
-
-| Flag                 | Description                                              |
-| -------------------- | -------------------------------------------------------- |
-| `-p, --port <port>`  | Port to listen on (default `3000`)                       |
-| `-H, --host <host>`  | Host / interface to bind (default `0.0.0.0`)             |
-| `-o, --open <file>`  | Open a single database file directly                     |
-| `-d, --dir <dir>`    | Manage a folder of database files                        |
-| `--files <list>`     | Comma-separated database file paths to manage            |
-| `-b, --base-path <p>`| URL prefix to serve under (default `/`)                  |
-| `-r, --readonly`     | Open databases read-only (all writes disabled)           |
-| `-l, --log-level <l>`| `debug` \| `info` \| `warn` \| `error` (default `info`)  |
-| `-h, --help`         | Show help                                                |
-| `-v, --version`      | Show the version                                         |
-
-A positional `path` argument opens a database file directly, or manages a
-folder when it is a directory.
-
-Every flag has a matching environment variable; **flags override the
-environment**:
-
-| Variable    | Default | Description                          |
-| ----------- | ------- | ------------------------------------ |
-| `PORT`      | `3000`  | Port to listen on                    |
-| `HOST`      | `0.0.0.0` | Host / interface to bind           |
-| `DB_PATH`   | —       | Single SQLite database file          |
-| `DB_DIR`    | —       | Folder of `.db`/`.sqlite` files      |
-| `DB_FILES`  | —       | Comma-separated explicit database file paths |
-| `READONLY`  | —       | `1` / `true` / `yes` / `on` opens the database(s) read-only |
-| `BASE_PATH` | `''`    | URL prefix (e.g. `/admin`)           |
-| `LOG_LEVEL` | `info`  | `debug` \| `info` \| `warn` \| `error` |
-
-Examples:
-
-```bash
-admindb                        # manager UI on http://localhost:3000
-admindb -p 8080                # same, on port 8080
-admindb ./data/app.db          # open a single database file
-admindb --open ~/notes.sqlite  # open a file directly
-admindb -d ./dbs               # manage a folder of databases
-admindb --files a.db,b.db -r   # open two files read-only
-```
-
-```powershell
-$env:DB_DIR='./db'; npm start   # PowerShell
-# bash/zsh:  DB_DIR=./db npm start
-```
-
-When the server runs without an explicit single file, the **Databases** landing
-page lists the managed databases and includes an **"Open an existing
-database"** file browser: navigate folders, pick a database file, and open it.
-Opened files are added to the list so you can switch between databases freely.
-
-**File-browser policy:**
-
-- When a **folder** is given (`--dir`, a directory path, or `DB_DIR`), browsing
-  is limited to that folder — it cannot navigate above it and only databases
-  inside it can be opened.
-- When specific **files** are given (`--files`, or `DB_FILES`) without a folder,
-  file browsing is **disabled** entirely; only the configured databases are
-  listed.
-- With no folder or files, browsing is unrestricted.
-
-## Features
-
-### 🔍 Browse & edit rows
-
-- **Table browser** — every table with pagination, sorting (click a column
-  header), a sticky header, and per-row actions; composite primary keys are
-  supported (values are URL-encoded and comma-joined in the row endpoints).
-- **Type-aware filters** — per-column filter controls: foreign-key dropdowns,
-  boolean toggles, date and numeric range inputs, plus the exact (`=value`),
-  comparison (`>5`, `<=10`), prefix (`pre*`) and substring (plain text)
-  operators on text columns. Filters survive sorting and pagination.
-- **Inline (spreadsheet-style) editing** — double-click any cell to edit it in
-  place with a type-aware control (FK dropdown, boolean toggle, date picker,
-  number/text input). Changes are staged and highlighted in the grid, then
-  applied all at once in a single transaction, or discarded.
-- **Insert and delete rows** (full CRUD). FK columns become dropdowns; insert
-  forms pre-fill column defaults from the schema.
-- **Bulk row operations** — select rows with checkboxes (or "select all"), then
-  **delete** them in one transaction (with a warning listing how many rows in
-  other tables reference them) or **export** only the selected rows as CSV/JSON.
-- **Related rows** — every table that has a foreign key pointing at a table gets
-  its own column at the end of that table's grid; each cell shows how many of its
-  rows reference that record. Click it to open a nested table with all of the
-  referencing table's columns and data for that specific record.
-
-### ⚡ Query & run SQL
-
-- **Arbitrary SQL runner** — SELECTs render as a table, `COUNT` queries show a
-  readable summary, and write statements execute and report affected rows.
-- **Saved named queries** — save a query and reload it from a dropdown.
-- **"Get query" / preview mode** — generate `CREATE` / `INSERT` / `UPDATE` SQL
-  from the UI without executing it. The preview modes only return the SQL
-  string; they never touch the database.
-- **SQL dump** — export the whole database as a downloadable `CREATE` + `INSERT`
-  SQL file.
-
-### 🗂️ Design & manage schema
-
-- **Visual table designer** — create a table with name, type, primary key,
-  not-null / unique, default value, and foreign-key references, with a live
-  `CREATE TABLE` SQL preview.
-- **Schema editor** — rename the table, add / rename / drop columns, and drop
-  tables, with relationship-safety checks: drops are refused when the column is
-  a primary key, has a UNIQUE constraint, is used by an index, is part of a
-  foreign key, or is referenced by another table's foreign key. Tables
-  referenced by other tables cannot be dropped. Internal (`_`-prefixed) tables
-  cannot be renamed or dropped.
-- **Indexes** — create indexes (plain or unique, on one or many columns — pick
-  columns in order, with a live `CREATE INDEX` SQL preview) and drop them from
-  the schema editor; automatic SQLite (primary-key/unique) indexes are
-  protected.
-
-### 🔄 Import, export & seed data
-
-- **Export** — table rows or query results as **CSV or JSON** (a whole table or
-  only selected rows).
-- **CSV import** — paste or upload CSV into a table; the header must match
-  existing columns, and the import runs in a single transaction (a failed row
-  rolls everything back).
-- **Seed data generator** — fill a table with realistic rows in one go. Each
-  column gets an auto-detected strategy (first/last/full name, email, phone,
-  city, country, UUID, random integer/decimal/date/datetime/boolean/bytes, a few
-  words, a sentence, a fixed value, a random value from a list, or "skip — let
-  the DB default apply"); foreign-key columns can sample real values from the
-  referenced table. Insert up to 5,000 rows transactionally, or preview the
-  generated `INSERT` SQL without executing it.
-
-### 🚀 Deploy
-
-- **Read-only mode** — open the database(s) without write access: the file is
-  opened `SQLITE_OPEN_READONLY` + `query_only`, every write route returns `403`,
-  and the UI hides/disables all write controls and shows a banner.
-- **Standalone CLI / file browser** — `admindb` runs as a full web app; with no
-  arguments it opens a **Databases** landing page where you can browse the
-  filesystem and open any SQLite database file, or create new ones. Flags set
-  the port, open a file, manage a folder, and more (`admindb --help`).
-- **Multiple databases** — directory scanning and/or explicit file lists, each
-  with its own workspace under `/{db}/…`.
-
-## Authentication & Security
-
-AdminDB includes a built-in native authentication system that is **enabled by default**, while giving developers complete freedom to customize credentials with salted password hashes, disable it, or supply their own authentication layer.
-
-> ⚠️ **Production Security Notice:**
-> The built-in native authentication is intended for **basic/lightweight protection** (e.g. local networks, staging environments, internal developer tools). For production deployments with sensitive or public data, **always use your own robust authentication system** (such as OAuth2 / OIDC, enterprise SSO, mTLS, or custom Express middleware) or place AdminDB behind an authenticated reverse proxy or API gateway.
-
-### Default Credentials
-- **Default Username:** `admin`
-- **Default Password:** `admin` *(stored via a hardcoded salted `scrypt` cryptographic hash)*
-
-> 💡 *When running with the default password, a warning badge is displayed in the navigation bar to remind you to set custom credentials.*
+> 📖 **Full Options & Advanced Embedding Recipes:**
+> See [**`docs/EXAMPLES.md`**](docs/EXAMPLES.md#-part-2-programmatic-code-examples-express--typescript) for the complete `createRouter` options reference, multi-database management (`DbManager`), custom loggers, read-only mode, and custom authentication configurations.
 
 ---
 
-### Generating a Secure Password Hash (`npm run generatehash`)
+## ⚙️ CLI & Environment Variables
 
-To secure your installation with a custom password, generate a salted cryptographic `scrypt` hash using the built-in generator script:
+Every setting can be configured via **CLI flags** or **Environment Variables** (CLI flags override environment variables):
+
+| Setting | CLI Flag & Aliases | Environment Variable & Aliases | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **Port** | `-p, --port <port>` | `PORT`, `ADMINDB_PORT` | `3000` | Port to listen on |
+| **Host** | `-H, --host <host>` | `HOST`, `ADMINDB_HOST` | `0.0.0.0` | Host / interface to bind |
+| **Single DB** | `-o, --open, --db-path <file>` | `DB_PATH`, `ADMINDB_DB_PATH`, `ADMINDB_PATH` | — | Open a single SQLite database file directly |
+| **Database Dir** | `-d, --dir, --db-dir <dir>` | `DB_DIR`, `ADMINDB_DB_DIR`, `ADMINDB_DIR` | — | Folder of database files to manage |
+| **Explicit Files** | `--files, --db-files <list>` | `DB_FILES`, `ADMINDB_DB_FILES` | — | Comma-separated database file paths |
+| **Base Path** | `-b, --base-path, --base <p>` | `BASE_PATH`, `ADMINDB_BASE_PATH` | `''` (`/`) | URL prefix to serve under (e.g. `/admin`) |
+| **Read-Only** | `-r, --readonly, --read-only`| `READONLY`, `ADMINDB_READONLY` | `false` | Open databases read-only (writes disabled) |
+| **Auth** | `--auth` / `--no-auth` | `ADMINDB_AUTH`, `ADMINDB_NO_AUTH` | `true` | Enable or disable built-in authentication |
+| **Username** | `-u, --username, --user <user>` | `ADMINDB_USERNAME`, `ADMINDB_USER` | `admin` | Admin username |
+| **Password** | `-P, --password, --pass <pass>` | `ADMINDB_PASSWORD`, `ADMINDB_PASS` | `admin` *(hash)* | Admin password or salted `scrypt:...` hash |
+| **Session Secret**| `--auth-secret, --secret <sec>` | `ADMINDB_SECRET`, `SESSION_SECRET` | *(auto)* | Secret key for signing session cookies |
+| **Log Level** | `-l, --log-level <level>` | `LOG_LEVEL`, `ADMINDB_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
+| **Help** | `-h, --help` | — | — | Show CLI help |
+| **Version** | `-v, --version` | — | — | Show version |
+
+Quick CLI examples:
+
+```bash
+admindb                                      # Manager UI on http://localhost:3000
+admindb -p 8080                              # Run on port 8080
+admindb ./data/app.db                        # Open a single database directly
+admindb -d ./databases                       # Manage a folder of databases
+admindb --files a.db,b.db -r                 # Open two files read-only
+admindb -u ops -P secret123                  # Custom credentials
+admindb --no-auth                            # Authentication disabled
+```
+
+> 📖 **Full Configuration Reference & Deployment Recipes:**
+> See [**`docs/EXAMPLES.md`**](docs/EXAMPLES.md) for detailed variable explanations, reasons/use cases, and ready-to-run recipes for Bash, PowerShell, Docker, Docker Compose, and Nginx.
+
+---
+
+## 🔒 Authentication & Security
+
+AdminDB includes built-in native authentication (**enabled by default**), with support for salted cryptographic hashes, cookie sessions, HTTP Basic Auth, and Bearer tokens.
+
+### Generate a Secure Password Hash
+
+To configure custom credentials with a salted cryptographic `scrypt` hash:
 
 ```bash
 npm run generatehash
 ```
 
-The script will prompt you:
-```text
-Enter password to hash: [your-strong-password]
-```
+Paste the resulting hash into `ADMINDB_PASSWORD`, CLI `-P`, or your Express configuration:
 
-And outputs a secure hash format:
-```text
-scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75...
-```
-
-You can then **paste this hash in place of your password** across any configuration method:
-
-#### 1. Via Environment Variables (`.env`)
 ```bash
-# Set your custom username and generated password hash
-export ADMINDB_USERNAME="ops"
-export ADMINDB_PASSWORD="scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75..."
-
-# Run AdminDB
-npx admindb
+ADMINDB_USERNAME="ops" ADMINDB_PASSWORD="scrypt:8011bcda...:85465796..." npx admindb
 ```
 
-#### 2. Via Standalone CLI Options
-```bash
-# Pass the username and generated password hash directly
-admindb -u ops -P "scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75..."
-```
+### Disabling Built-in Authentication
 
-#### 3. When Embedding in Express (`createRouter`)
-```ts
-import { createRouter } from 'admindb';
+When deploying behind an external gateway (Cloudflare Zero Trust, OAuth2 Proxy, Authelia) or using custom Express middleware:
 
-app.use('/admin', createRouter({
-  dbPath: './data/app.db',
-  auth: {
-    enabled: true,
-    username: 'ops',
-    password: 'scrypt:3f8e02d9a1c4b7e8...:cb3032b16f29c8d44f75...',
-    secret: process.env.SESSION_SECRET,
-  },
-}));
-```
-
----
-
-### Disabling Native Authentication
-
-If you want no protection (e.g. for local scratchpads) or want to handle authentication entirely with your own custom Express middleware / gateway:
-
-#### 1. Via CLI Flag
 ```bash
 admindb --no-auth
-```
-
-#### 2. Via Environment Variables
-```bash
-ADMINDB_AUTH=false admindb
 # or
-ADMINDB_NO_AUTH=1 admindb
+ADMINDB_AUTH=false npx admindb
 ```
 
-#### 3. Via Express Options
-```ts
-// Attach your own authentication middleware before AdminDB
-app.use('/admin', myCustomAuthMiddleware, createRouter({
-  dbPath: './data/app.db',
-  auth: false, // Disables built-in auth completely
-}));
-```
+> 📖 **Full Security Guide:** See [**`docs/SECURITY.md`**](docs/SECURITY.md) for security best practices, cookie flags, reverse proxy configurations, and threat mitigation guidelines.
 
 ---
 
-### Supported Authentication Methods
-1. **Web Browser UI:** Form login at `/login` with constant-time verification, salted scrypt key derivation, and `HMAC-SHA256` signed HTTP-only session cookies.
-2. **HTTP Basic Auth:** Send `Authorization: Basic <base64(username:password)>` with API requests.
-3. **Bearer Token:** Send `Authorization: Bearer <sessionToken>` in REST API headers.
+## 📡 REST API
 
-## Security Warning & Best Practices
-
-> ⚠️ **AdminDB provides full administrative access to your database and filesystem.**
-> - Always set a strong, custom `ADMINDB_PASSWORD` or pass custom credentials before deploying to a shared network.
-> - If exposing over the internet, place the application behind HTTPS / SSL termination.
-> - When authentication is disabled (`--no-auth` / `auth: false`), ensure the port is bound to `127.0.0.1` or protected by your own gateway.
-
-## API
-
-All routes live under `basePath` and return the consistent shape
-`{ success, data?, error? }`. In multi-db mode, every route is scoped under the
-database, e.g. `/api/app.db/tables`.
+AdminDB exposes a comprehensive REST API under `basePath` returning `{ success, data?, error? }`:
 
 ```text
 GET    /api/tables                          List tables
-GET    /api/tables/:table/rows              Paginated rows (filters, sorting)
-POST   /api/tables/:table/rows              Insert row
-PUT    /api/tables/:table/row/:id           Update row
-DELETE /api/tables/:table/row/:id           Delete row
-POST   /api/query                           Run arbitrary SQL
-POST   /api/tables                          Create table
-GET    /api/tables/:table/export            Download all rows as csv|json
+GET    /api/tables/:table/rows              Paginated rows (with filtering & sorting)
+POST   /api/tables/:table/rows              Insert a new row
+PUT    /api/tables/:table/row/:id           Update an existing row
+DELETE /api/tables/:table/row/:id           Delete a row
+POST   /api/tables/:table/rows/bulk-update  Apply staged inline edits atomically
+POST   /api/tables/:table/rows/bulk-delete  Delete selected rows atomically
 POST   /api/tables/:table/seed              Generate and insert seed rows
+POST   /api/tables                          Create a new table
+GET    /api/tables/:table/schema            Inspect full table schema & constraints
+POST   /api/query                           Execute arbitrary SQL
+GET    /api/databases                       List managed database files
 ```
 
-Plus bulk row operations, CSV import, schema and index management, saved
-queries, a data generator — and, in manager mode, database-file management and
-the filesystem browser.
+> 📖 **Full API Reference:** See [**`docs/API.md`**](docs/API.md) for detailed documentation of all 30+ endpoints, query parameters, payload schemas, and TypeScript types.
 
-> **Full reference:** every endpoint (including seed config/generate, bulk
-> update/delete/export, and the multi-db manager endpoints) is documented in
-> **[`docs/API.md`](docs/API.md)**.
+---
 
-**Behaviour notes:**
+## 📚 Documentation Index
 
-- **Empty input = "not set".** Empty form fields are omitted so DB defaults
-  apply; `0` is a valid value and is never treated as empty. Insert forms
-  pre-fill column defaults from the schema (string/number/boolean literals and
-  `CURRENT_TIMESTAMP`-style defaults).
-- **Inline editing is staged, not instant.** Double-click a cell to edit it in
-  place; edits are buffered locally and highlighted in the grid rather than
-  written immediately. Press **Apply** to write every pending change in a single
-  transaction (the page then reloads so related-row counts stay accurate), or
-  **Discard** to revert. Clearing a text/date/number field stages a `NULL`.
-- **Bulk operations** run per page with "select all"; delete first shows an
-  FK-impact warning (rows may be cascaded away or orphaned depending on the
-  foreign-key action, and the delete can fail if a constraint blocks it). Both
-  delete and export are capped at 1000 rows per batch.
-- **CSV import** runs in a single transaction — a failed row rolls everything
-  back.
-- **Identifiers are quoted and string values escaped** everywhere SQL is built,
-  so generated SQL is correct and safe; **"Get query" never executes** — it only
-  returns the generated SQL string.
-- **`COUNT` queries** return a readable summary message instead of a table.
-- **Internal table** `_saved_queries` stores saved queries and is kept out of
-  user-facing FK pickers. Schema initialization is idempotent and safe to run
-  repeatedly.
+| Document | Description |
+| :--- | :--- |
+| [**`docs/EXAMPLES.md`**](docs/EXAMPLES.md) | Comprehensive Environment Variables reference, Express code examples, and deployment recipes. |
+| [**`docs/SECURITY.md`**](docs/SECURITY.md) | Authentication architecture, password hashing, reverse proxy setup, and security checklist. |
+| [**`docs/API.md`**](docs/API.md) | Complete REST API endpoint reference and TypeScript type exports. |
+| [**`CONTRIBUTING.md`**](CONTRIBUTING.md) | Development workflow, running tests, project layout, and contribution guidelines. |
 
-## Contributing
+---
 
-PRs are welcome. Development workflow (`npm run dev` for live reload, `npm test`
-to build and run the unit suite), project layout, and contribution guidelines
-live in **[`CONTRIBUTING.md`](CONTRIBUTING.md)**.
+## 🤝 Contributing
 
-## License
+Contributions are welcome! Please check out [**`CONTRIBUTING.md`**](CONTRIBUTING.md) for development setup and testing instructions.
 
-[MIT](./LICENSE) — see the [LICENSE](LICENSE) file.
+```bash
+git clone https://github.com/MIbnEKhalid/admindb.git
+cd admindb
+npm install
+npm run dev        # Live reload development server
+npm test           # Run comprehensive unit test suite
+```
+
+---
+
+## 📄 License
+
+[MIT](./LICENSE) © MIbnEKhalid

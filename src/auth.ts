@@ -196,9 +196,9 @@ export function resolveAuthConfig(
     ['1', 'true', 'yes'].includes(String(env.ADMINDB_NO_AUTH ?? env.ADMINDB_DISABLE_AUTH ?? '').trim().toLowerCase());
 
   let enabled = true;
-  let username = env.ADMINDB_USERNAME ? String(env.ADMINDB_USERNAME).trim() : DEFAULT_USERNAME;
-  let password = env.ADMINDB_PASSWORD ? String(env.ADMINDB_PASSWORD).trim() : DEFAULT_PASSWORD_HASH;
-  let secret = env.ADMINDB_SECRET ? String(env.ADMINDB_SECRET).trim() : PROCESS_FALLBACK_SECRET;
+  let username = (env.ADMINDB_USERNAME ?? env.ADMINDB_USER) ? String(env.ADMINDB_USERNAME ?? env.ADMINDB_USER).trim() : DEFAULT_USERNAME;
+  let password = (env.ADMINDB_PASSWORD ?? env.ADMINDB_PASS) ? String(env.ADMINDB_PASSWORD ?? env.ADMINDB_PASS).trim() : DEFAULT_PASSWORD_HASH;
+  let secret = (env.ADMINDB_SECRET ?? env.SESSION_SECRET) ? String(env.ADMINDB_SECRET ?? env.SESSION_SECRET).trim() : PROCESS_FALLBACK_SECRET;
   let sessionDurationMs = DEFAULT_SESSION_DURATION_MS;
 
   if (optionsAuth === false || envDisabled) {

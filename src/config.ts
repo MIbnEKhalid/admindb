@@ -25,29 +25,36 @@ export interface Config {
 
 /** Load configuration from environment variables with sensible defaults. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const port = Number.parseInt(env.PORT ?? '3000', 10);
+  const portRaw = env.ADMINDB_PORT ?? env.PORT ?? '3000';
+  const port = Number.parseInt(portRaw, 10);
   const authDisabled =
     ['0', 'false', 'no', 'off'].includes(String(env.ADMINDB_AUTH ?? '').trim().toLowerCase()) ||
     ['1', 'true', 'yes'].includes(String(env.ADMINDB_NO_AUTH ?? env.ADMINDB_DISABLE_AUTH ?? '').trim().toLowerCase());
 
+  const dbDirRaw = env.ADMINDB_DB_DIR ?? env.ADMINDB_DIR ?? env.DB_DIR;
+  const dbFilesRaw = env.ADMINDB_DB_FILES ?? env.DB_FILES;
+  const dbPathRaw = env.ADMINDB_DB_PATH ?? env.ADMINDB_PATH ?? env.DB_PATH;
+  const basePathRaw = env.ADMINDB_BASE_PATH ?? env.BASE_PATH ?? '';
+  const logLevelRaw = env.ADMINDB_LOG_LEVEL ?? env.LOG_LEVEL ?? 'info';
+  const readonlyRaw = env.ADMINDB_READONLY ?? env.READONLY ?? '';
+
   return {
-    host: env.HOST ?? '0.0.0.0',
+    host: env.ADMINDB_HOST ?? env.HOST ?? '0.0.0.0',
     port: Number.isFinite(port) ? port : 3000,
-    dbPath: env.DB_PATH ?? 'admindb.db',
-    dbDir: env.DB_DIR ? String(env.DB_DIR) : undefined,
-    dbFiles: env.DB_FILES
-      ? String(env.DB_FILES)
+    dbPath: dbPathRaw ? String(dbPathRaw) : 'admindb.db',
+    dbDir: dbDirRaw ? String(dbDirRaw) : undefined,
+    dbFiles: dbFilesRaw
+      ? String(dbFilesRaw)
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined,
-    basePath: (env.BASE_PATH ?? '').replace(/\/+$/, ''),
-    logLevel: ((env.LOG_LEVEL as LogLevel) ?? 'info'),
-    readonly: ['1', 'true', 'yes', 'on'].includes(String(env.READONLY ?? '').trim().toLowerCase()),
+    basePath: String(basePathRaw).replace(/\/+$/, ''),
+    logLevel: (logLevelRaw as LogLevel),
+    readonly: ['1', 'true', 'yes', 'on'].includes(String(readonlyRaw).trim().toLowerCase()),
     auth: !authDisabled,
-    authUsername: env.ADMINDB_USERNAME ? String(env.ADMINDB_USERNAME).trim() : undefined,
-    authPassword: env.ADMINDB_PASSWORD ? String(env.ADMINDB_PASSWORD).trim() : undefined,
-    authSecret: env.ADMINDB_SECRET ? String(env.ADMINDB_SECRET).trim() : undefined,
+    authUsername: (env.ADMINDB_USERNAME ?? env.ADMINDB_USER) ? String(env.ADMINDB_USERNAME ?? env.ADMINDB_USER).trim() : undefined,
+    authPassword: (env.ADMINDB_PASSWORD ?? env.ADMINDB_PASS) ? String(env.ADMINDB_PASSWORD ?? env.ADMINDB_PASS).trim() : undefined,
+    authSecret: (env.ADMINDB_SECRET ?? env.SESSION_SECRET) ? String(env.ADMINDB_SECRET ?? env.SESSION_SECRET).trim() : undefined,
   };
 }
-

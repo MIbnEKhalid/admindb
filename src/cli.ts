@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import express from 'express';
+import os from 'node:os';
 import path from 'node:path';
 import { createRouter } from './app';
 import { loadConfig } from './config';
 import { createLogger } from './logger';
 import { DbManager } from './db/manager';
-import { parseArgs, helpText, versionText } from './args';
+import { parseArgs, helpText, versionText, getPackageVersion } from './args';
 import { DEFAULT_PASSWORD_HASH } from './auth';
+import { c } from './colors';
 
 /**
  * Standalone CLI / server entry point. Run `npm start` (or `npx admindb`).
@@ -27,7 +29,7 @@ import { DEFAULT_PASSWORD_HASH } from './auth';
 const env = loadConfig();
 const parsed = parseArgs(process.argv.slice(2));
 if (parsed.error) {
-  console.error(parsed.error);
+  console.error(c.red(c.bold(`Error: ${parsed.error}`)));
   console.error();
   console.error(helpText());
   process.exit(1);
@@ -78,7 +80,9 @@ app.disable('x-powered-by');
 //    filesystem and open database files, or create new ones.
 const hasDir = Boolean(config.dbDir);
 const hasFiles = Boolean(config.dbFiles && config.dbFiles.length > 0);
-const explicitFile = args.dbPath ?? (process.env.DB_PATH ? process.env.DB_PATH : undefined);
+const explicitFile =
+  args.dbPath ??
+  (process.env.ADMINDB_DB_PATH || process.env.ADMINDB_PATH || process.env.DB_PATH ? config.dbPath : undefined);
 const singleFileOnly = Boolean(explicitFile) && !hasDir && !hasFiles;
 const useManager = !singleFileOnly;
 
@@ -116,43 +120,86 @@ const router = useManager
     });
 app.use(config.basePath || '/', router);
 
+function getNetworkIp(): string | undefined {
+  try {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] ?? []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
 const server = app.listen(config.port, config.host, () => {
-  const url = `http://${config.host}:${config.port}${config.basePath}/`;
-  logger.info(`AdminDB listening on ${url}`);
-  if (authEnabled) {
-    logger.info(`Authentication enabled — User: ${authUsername}`);
-    if (authUsername === 'admin' && (!authPassword || authPassword === 'admin' || authPassword === DEFAULT_PASSWORD_HASH)) {
-      logger.warn('Default password in use (admin). Generate a secure hash with "npm run generatehash" and set ADMINDB_PASSWORD or -P <hash>.');
+  const v = getPackageVersion();
+  const versionStr = v ? ` v${v}` : '';
+
+  const isAnyHost = config.host === '0.0.0.0' || config.host === '::' || config.host === '';
+  const localHost = isAnyHost ? 'localhost' : config.host;
+  const localUrl = `http://${localHost}:${config.port}${config.basePath}/`;
+
+  console.log();
+  console.log(`  ${c.cyan(c.bold('⚡ AdminDB'))}${c.dim(versionStr)}`);
+  console.log();
+  console.log(`  ${c.green('➜')}  ${c.bold('Local:')}    ${c.cyan(localUrl)}`);
+
+  if (isAnyHost) {
+    const netIp = getNetworkIp();
+    if (netIp) {
+      const netUrl = `http://${netIp}:${config.port}${config.basePath}/`;
+      console.log(`  ${c.green('➜')}  ${c.bold('Network:')}  ${c.cyan(netUrl)}`);
     }
-  } else {
-    logger.warn('Authentication is DISABLED (--no-auth). Anyone with network access can view and modify databases.');
   }
+
+  // Mode & Target Info
   if (useManager) {
-    const sources = [
-      managerDir ? `dir:${managerDir}` : null,
-      managerFiles.length ? `files:[${managerFiles.join(', ')}]` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    logger.info(`Manager mode — ${sources}`);
+    const modeDesc = config.readonly ? 'Manager [Read-Only]' : 'Manager';
+    const target = managerDir ? managerDir : managerFiles.length ? `[${managerFiles.join(', ')}]` : '';
+    console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}${target ? c.dim(` (${target})`) : ''}`);
     if (!allowBrowse) {
-      logger.info('File browsing disabled — only the configured database files are listed.');
+      console.log(`  ${c.green('➜')}  ${c.bold('Browse:')}   ${c.dim('Disabled (configured files only)')}`);
     } else if (browseRoot) {
-      logger.info(`File browsing is limited to: ${browseRoot}`);
-    } else {
-      logger.info('Open the URL above in your browser to browse and open database files.');
+      console.log(`  ${c.green('➜')}  ${c.bold('Browse:')}   ${c.dim(`Limited to ${browseRoot}`)}`);
     }
   } else {
-    logger.info(`Database file: ${explicitFile}`);
+    const modeDesc = config.readonly ? 'Single DB [Read-Only]' : 'Single DB';
+    console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}`);
+    console.log(`  ${c.green('➜')}  ${c.bold('Database:')} ${explicitFile}`);
   }
-  if (config.readonly) {
-    logger.info('Read-only mode enabled — all writes are disabled.');
+
+  // Auth Status
+  if (authEnabled) {
+    const isDefaultPass =
+      authUsername === 'admin' &&
+      (!authPassword || authPassword === 'admin' || authPassword === DEFAULT_PASSWORD_HASH);
+    if (isDefaultPass) {
+      console.log(`  ${c.green('➜')}  ${c.bold('Auth:')}     User: ${c.bold(authUsername)} ${c.yellow('(default password)')}`);
+      console.log();
+      console.log(`  ${c.yellow('⚠')}  ${c.yellow('Default password in use (admin).')} Generate a secure hash with:`);
+      console.log(`     ${c.dim('npm run generatehash')} and set ${c.cyan('ADMINDB_PASSWORD')} or ${c.cyan('-P <hash>')}`);
+    } else {
+      console.log(`  ${c.green('➜')}  ${c.bold('Auth:')}     User: ${c.bold(authUsername)}`);
+    }
+  } else {
+    console.log(`  ${c.yellow('➜')}  ${c.bold('Auth:')}     ${c.yellow('Disabled (--no-auth)')}`);
+    console.log(`     ${c.dim('Warning: Anyone with network access can view and modify databases.')}`);
   }
+
+  console.log();
 });
 
 const shutdown = (signal: string): void => {
-  logger.info(`Received ${signal}, shutting down…`);
-  server.close(() => process.exit(0));
+  console.log(`\n  ${c.dim(`Received ${signal}, shutting down…`)}`);
+  server.close(() => {
+    console.log(`  ${c.green('✓')} ${c.dim('AdminDB stopped.')}\n`);
+    process.exit(0);
+  });
   setTimeout(() => process.exit(0), 2000).unref();
 };
 

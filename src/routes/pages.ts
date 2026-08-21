@@ -223,14 +223,18 @@ export function registerPages(router: Router, ctx: PageContext): void {
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
       }
+      const countRes = await db.all(`SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)}`);
+      const rowCount = countRes.success && countRes.data && countRes.data[0] ? (countRes.data[0] as { c?: number }).c ?? 0 : 0;
       const columns = buildColumnConfigs(info.data);
       res.locals.currentTable = table;
       res.render('pages/seed', {
         title: `Seed data · ${table}`,
         table,
+        rowCount,
+        colCount: info.data.columns.length,
         maxRows: MAX_SEED_ROWS,
-        quickCounts: [10, 100, 1000, MAX_SEED_ROWS],
-        seedConfig: { table, columns, maxRows: MAX_SEED_ROWS },
+        quickCounts: [10, 50, 100, 500, 1000, MAX_SEED_ROWS],
+        seedConfig: { table, columns, rowCount, maxRows: MAX_SEED_ROWS },
       });
     } catch (err) {
       next(err);

@@ -514,3 +514,67 @@ test('supports row identification and bulk operations on tables without primary 
     cleanup();
   }
 });
+
+test('modifyColumn and renameColumn properly update indexes and preserve table UNIQUE constraints', async () => {
+  const { db, cleanup } = openDb();
+  try {
+    await db.execResult('CREATE TABLE articles (id INTEGER PRIMARY KEY, email TEXT UNIQUE, title TEXT, category TEXT, score INTEGER)');
+    await db.execResult('CREATE INDEX idx_articles_title ON articles (title)');
+    await db.execResult('CREATE INDEX custom_cat_title ON articles (category, title)');
+
+    // 1. Rename title -> heading via modifyColumn
+    const renameRes = await db.modifyColumn('articles', 'title', {
+      name: 'heading',
+      type: 'TEXT',
+      notNull: false,
+      unique: false,
+      primaryKey: false,
+      defaultValue: null,
+      foreignKey: null,
+    });
+    assert.equal(renameRes.success, true);
+
+    let schema = await db.getSchema('articles');
+    // Ensure title is renamed to heading
+    assert.ok(schema.data?.columns.find((c) => c.name === 'heading'));
+    assert.ok(!schema.data?.columns.find((c) => c.name === 'title'));
+    // Ensure email is still unique
+    const emailCol = schema.data?.columns.find((c) => c.name === 'email');
+    assert.equal(emailCol?.unique, true);
+
+    // Ensure default-named index was renamed and updated
+    const titleIdx = schema.data?.indexes.find((i) => i.name === 'idx_articles_heading');
+    assert.ok(titleIdx, 'idx_articles_heading should exist');
+    assert.deepEqual(titleIdx?.columns, ['heading']);
+
+    // Ensure multi-column custom index was updated with new column name
+    const customIdx = schema.data?.indexes.find((i) => i.name === 'custom_cat_title');
+    assert.ok(customIdx, 'custom_cat_title should exist');
+    assert.deepEqual(customIdx?.columns, ['category', 'heading']);
+
+    // 2. Rename email -> email_address (UNIQUE column) + change type to VARCHAR(255)
+    const uqRes = await db.modifyColumn('articles', 'email', {
+      name: 'email_address',
+      type: 'VARCHAR(255)',
+      notNull: true,
+      unique: true,
+      primaryKey: false,
+      defaultValue: null,
+      foreignKey: null,
+    });
+    assert.equal(uqRes.success, true);
+
+    schema = await db.getSchema('articles');
+    const uqCol = schema.data?.columns.find((c) => c.name === 'email_address');
+    assert.equal(uqCol?.unique, true);
+    assert.equal(uqCol?.type, 'VARCHAR(255)');
+    assert.equal(uqCol?.notnull, 1);
+
+    // All indexes still intact
+    assert.ok(schema.data?.indexes.find((i) => i.name === 'idx_articles_heading'));
+    assert.ok(schema.data?.indexes.find((i) => i.name === 'custom_cat_title'));
+  } finally {
+    cleanup();
+  }
+});
+

@@ -1,3 +1,5 @@
+import { c } from './colors';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
@@ -10,18 +12,34 @@ export interface Logger {
 
 const LEVELS: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
-function timestamp(): string {
-  return new Date().toISOString();
+function formatTime(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-/** Minimal console logger with level filtering and scoped children. */
-export function createLogger(level: LogLevel = 'info', scope = 'app'): Logger {
+const BADGES: Record<LogLevel, string> = {
+  debug: c.magenta('[debug]'),
+  info: c.cyan('[info]'),
+  warn: c.yellow('[warn]'),
+  error: c.red(c.bold('[error]')),
+};
+
+/** Minimal, color-enhanced console logger with level filtering and scoped children. */
+export function createLogger(level: LogLevel = 'info', scope = 'admindb'): Logger {
   const threshold = LEVELS[level] ?? LEVELS.info;
+
+  // Clean scope name (e.g. "admindb:db:users.db" -> "db:users.db")
+  const cleanScope = scope === 'admindb' || scope === 'app' ? '' : scope.replace(/^admindb:/, '');
+  const scopeTag = cleanScope ? c.dim(c.cyan(`[${cleanScope}]`)) : '';
 
   const write = (lv: LogLevel, args: unknown[]): void => {
     if (LEVELS[lv] < threshold) return;
+    const time = c.gray(formatTime());
+    const badge = BADGES[lv];
+    const prefix = [time, badge, scopeTag].filter(Boolean).join(' ');
     // eslint-disable-next-line no-console
-    console.log(`[${timestamp()}] [${lv.toUpperCase()}] [${scope}]`, ...args);
+    console.log(prefix, ...args);
   };
 
   return {
@@ -29,6 +47,6 @@ export function createLogger(level: LogLevel = 'info', scope = 'app'): Logger {
     info: (...args) => write('info', args),
     warn: (...args) => write('warn', args),
     error: (...args) => write('error', args),
-    child: (s) => createLogger(level, `${scope}:${s}`),
+    child: (s) => createLogger(level, cleanScope ? `${cleanScope}:${s}` : s),
   };
 }

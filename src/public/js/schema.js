@@ -67,7 +67,8 @@
     return all.map((x) => '<option value="' + escapeHtml(x) + '"' + (x.toUpperCase() === upper ? ' selected' : '') + '>' + escapeHtml(x) + '</option>').join('');
   }
 
-  function buildAddForm() {
+  async function buildAddForm() {
+    if (!fkTables.length) await loadFkTables();
     formEl.innerHTML = '';
     formEl.innerHTML = [
       '<div class="col-span-2 sm:col-span-3"><label class="field-label">Name</label><input class="field-input ac-name" placeholder="column_name" autocomplete="off" spellcheck="false"></div>',
@@ -121,12 +122,12 @@
   }
 
   if (addBtn) {
-    addBtn.addEventListener('click', () => {
+    addBtn.addEventListener('click', async () => {
       if (editPanel) editPanel.classList.add('hidden');
       panel.classList.toggle('hidden');
       if (!panel.classList.contains('hidden')) {
         errEl.classList.add('hidden');
-        buildAddForm();
+        await buildAddForm();
       }
     });
   }
@@ -146,6 +147,7 @@
   async function openEditColumn(colData) {
     if (!editPanel || !editFormEl) return;
     if (panel) panel.classList.add('hidden');
+    if (!fkTables.length) await loadFkTables();
     currentEditingCol = colData.name;
     if (editTargetSpan) editTargetSpan.textContent = '"' + colData.name + '"';
     editErrEl.classList.add('hidden');
@@ -230,53 +232,6 @@
         fkTable: btn.dataset.fkTable || '',
         fkTo: btn.dataset.fkTo || '',
       });
-    });
-  });
-
-  // ---- Column rename (inline) ---------------------------------------------
-
-  function inlineRename(cell, oldName) {
-    const display = cell.querySelector('.name-display');
-    if (!display) return;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = oldName;
-    input.className = 'field-input !py-1 !text-[13px]';
-    input.spellcheck = false;
-    let done = false;
-    const restore = () => { if (display.parentNode) cell.replaceChild(display, input); };
-    const finish = async (save) => {
-      if (done) return;
-      done = true;
-      if (!save) return restore();
-      const newName = input.value.trim();
-      if (!newName || newName === oldName) return restore();
-      try {
-        await Api.put('/api/tables/' + t + '/columns/' + encodeURIComponent(oldName), { name: newName });
-        UI.showToast('Column renamed.', 'success');
-        window.location.reload();
-      } catch (e) {
-        UI.showError(e.message);
-        done = false;
-        restore();
-      }
-    };
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-    });
-    input.addEventListener('blur', () => finish(false));
-    cell.replaceChild(input, display);
-    input.focus();
-    input.select();
-  }
-
-  document.querySelectorAll('.col-rename').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tr = btn.closest('tr');
-      if (!tr) return;
-      const cell = tr.querySelector('.col-name-cell');
-      if (cell) inlineRename(cell, cell.dataset.column);
     });
   });
 

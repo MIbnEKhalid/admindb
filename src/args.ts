@@ -5,7 +5,7 @@
  * manage a folder of databases, and more. Every flag has a matching
  * environment variable; flags always win over the environment.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel } from './logger';
 
@@ -14,28 +14,29 @@ const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 export interface CliArgs {
   help: boolean;
   version: boolean;
-  /** Bind host/interface. */
+  /** Bind host/interface (`--host`, `-H`). */
   host?: string;
-  /** Port to listen on. */
+  /** Port to listen on (`--port`, `-p`). */
   port?: number;
-  /** A single database file to open directly (`--open`/`--db`/`--file`). */
+  /** A single database file to open directly (`--open`/`--db`/`--file`/`--db-path`). */
   dbPath?: string;
-  /** Directory of database files to manage (`--dir`). */
+  /** Directory of database files to manage (`--dir`/`--folder`/`--db-dir`, `-d`). */
   dbDir?: string;
-  /** Explicit database file paths (`--files a.db,b.db`). */
+  /** Explicit database file paths (`--files`/`--db-files`). */
   dbFiles?: string[];
-  /** URL prefix to serve under (`--base-path`). */
+  /** URL prefix to serve under (`--base-path`/`--base`, `-b`). */
   basePath?: string;
+  /** Log level filter (`--log-level`, `-l`). */
   logLevel?: LogLevel;
-  /** Open databases read-only (`--readonly`). */
+  /** Open databases read-only (`--readonly`, `-r`). */
   readonly: boolean;
   /** Whether authentication is enabled (defaults to true). Set to false via `--no-auth`. */
   auth?: boolean;
-  /** Custom admin username (`--username`, `-u`). */
+  /** Custom admin username (`--username`/`--user`/`--auth-username`, `-u`). */
   authUsername?: string;
-  /** Custom admin password (`--password`, `-P`). */
+  /** Custom admin password (`--password`/`--pass`/`--auth-password`, `-P`). */
   authPassword?: string;
-  /** Secret key for session cookie signing (`--auth-secret`). */
+  /** Secret key for session cookie signing (`--auth-secret`/`--secret`). */
   authSecret?: string;
 }
 
@@ -53,40 +54,37 @@ export function helpText(): string {
     'you browse the filesystem and open any database file, or create new ones.',
     '',
     'Arguments:',
-    '  path                     Path to a database file (opens it directly) or to a',
-    '                           folder of databases (lists them). Default: the',
-    '                           current directory.',
+    '  path                           Path to a database file (opens it directly) or to a',
+    '                                 folder of databases (lists them). Default: current directory.',
     '',
-    'Options:',
-    '  -p, --port <port>         Port to listen on (default: 3000)',
-    '  -H, --host <host>         Host/interface to bind (default: 0.0.0.0)',
-    '  -o, --open <file>         Open a single database file',
-    '  -d, --dir <dir>           Folder of database files to manage',
-    '      --files <list>        Comma-separated database file paths',
-    '  -b, --base-path <p>       URL prefix to serve under (default: /)',
-    '  -r, --readonly            Open databases read-only (all writes disabled)',
-    '      --no-auth             Disable authentication completely (no login barrier)',
-    '      --auth                Enable authentication (default: on)',
-    '  -u, --username <user>     Set admin username (default: admin, or ADMINDB_USERNAME)',
-    '  -P, --password <pass>     Set admin password (default: admin, or ADMINDB_PASSWORD)',
-    '      --auth-secret <sec>   Secret key used to sign session cookies',
-    '  -l, --log-level <l>       debug | info | warn | error (default: info)',
-    '  -h, --help                Show this help',
-    '  -v, --version             Show the version',
-    '',
-    'Environment variables (used when the matching flag is not given):',
-    '  PORT, HOST, DB_PATH, DB_DIR, DB_FILES, BASE_PATH, READONLY, LOG_LEVEL,',
-    '  ADMINDB_AUTH, ADMINDB_NO_AUTH, ADMINDB_USERNAME, ADMINDB_PASSWORD, ADMINDB_SECRET',
+    'Options & Environment Variables:',
+    '  -p, --port <port>              Port to listen on (default: 3000) [PORT / ADMINDB_PORT]',
+    '  -H, --host <host>              Host/interface to bind (default: 0.0.0.0) [HOST / ADMINDB_HOST]',
+    '  -o, --open, --db-path <file>   Open a single database file directly [DB_PATH / ADMINDB_DB_PATH]',
+    '  -d, --dir, --db-dir <dir>      Folder of database files to manage [DB_DIR / ADMINDB_DB_DIR]',
+    '      --files, --db-files <list> Comma-separated database file paths [DB_FILES / ADMINDB_DB_FILES]',
+    '  -b, --base-path, --base <p>    URL prefix to serve under (default: /) [BASE_PATH / ADMINDB_BASE_PATH]',
+    '  -r, --readonly, --read-only    Open databases read-only (writes disabled) [READONLY / ADMINDB_READONLY]',
+    '      --auth                     Enable authentication (default: on) [ADMINDB_AUTH=true]',
+    '      --no-auth, --disable-auth  Disable authentication completely [ADMINDB_NO_AUTH=1 / ADMINDB_AUTH=false]',
+    '  -u, --username, --user <user>  Admin username (default: admin) [ADMINDB_USERNAME / ADMINDB_USER]',
+    '  -P, --password, --pass <pass>  Admin password or hash [ADMINDB_PASSWORD / ADMINDB_PASS]',
+    '      --auth-secret <sec>        Secret key used to sign session cookies [ADMINDB_SECRET / SESSION_SECRET]',
+    '  -l, --log-level <level>        debug | info | warn | error (default: info) [LOG_LEVEL / ADMINDB_LOG_LEVEL]',
+    '  -h, --help                     Show this help message',
+    '  -v, --version                  Show version',
     '',
     'Examples:',
-    '  admindb                                  # manager UI with default auth (admin/admin)',
-    '  admindb --no-auth                        # run with authentication turned off',
-    '  admindb -u dev -P secret123              # run with custom credentials',
-    '  admindb -p 8080                          # run on port 8080',
-    '  admindb ./data/app.db                    # open a single database file',
-    '  admindb --open ~/notes.sqlite            # open a file (direct)',
-    '  admindb -d ./dbs                         # manage a folder of databases',
-    '  admindb --files a.db,b.db -r             # open two files read-only',
+    '  admindb                                      # manager UI with default auth (admin/admin)',
+    '  admindb --no-auth                            # run with authentication turned off',
+    '  admindb -u dev -P secret123                  # run with custom credentials',
+    '  admindb -p 8080                              # run on port 8080',
+    '  admindb ./data/app.db                        # open a single database file',
+    '  admindb --open ~/notes.sqlite                # open a file directly',
+    '  admindb -d ./dbs                             # manage a folder of databases',
+    '  admindb --files a.db,b.db -r                 # open two files read-only',
+    '',
+    'See docs/EXAMPLES.md for full configuration reference and deployment recipes.',
   ].join('\n');
 }
 
@@ -148,17 +146,17 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       const v = takeValue('--host');
       if (v === undefined) return invalid('Missing value for --host.');
       args.host = v;
-    } else if (isFlag(tok, '-o', '--open', '--db', '-f', '--file')) {
+    } else if (isFlag(tok, '-o', '--open', '--db', '-f', '--file', '--db-path', '--path')) {
       const v = takeValue('--open');
-      if (v === undefined) return invalid('Missing value for --open.');
+      if (v === undefined) return invalid('Missing value for --open / --db-path.');
       args.dbPath = v;
-    } else if (isFlag(tok, '-d', '--dir', '--folder')) {
+    } else if (isFlag(tok, '-d', '--dir', '--folder', '--db-dir')) {
       const v = takeValue('--dir');
-      if (v === undefined) return invalid('Missing value for --dir.');
+      if (v === undefined) return invalid('Missing value for --dir / --db-dir.');
       args.dbDir = v;
-    } else if (isFlag(tok, '--files')) {
+    } else if (isFlag(tok, '--files', '--db-files')) {
       const v = takeValue('--files');
-      if (v === undefined) return invalid('Missing value for --files.');
+      if (v === undefined) return invalid('Missing value for --files / --db-files.');
       args.dbFiles = v
         .split(',')
         .map((s) => s.trim())
@@ -174,21 +172,21 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
         return invalid(`Invalid log level: "${v}". Expected one of: ${LOG_LEVELS.join(', ')}.`);
       }
       args.logLevel = v as LogLevel;
-    } else if (tok === '-r' || tok === '--readonly') {
+    } else if (tok === '-r' || tok === '--readonly' || tok === '--read-only') {
       args.readonly = true;
-    } else if (tok === '--no-auth') {
+    } else if (tok === '--no-auth' || tok === '--disable-auth') {
       args.auth = false;
     } else if (tok === '--auth') {
       args.auth = true;
-    } else if (isFlag(tok, '-u', '--username', '--user')) {
+    } else if (isFlag(tok, '-u', '--username', '--user', '--auth-username')) {
       const v = takeValue('--username');
       if (v === undefined) return invalid('Missing value for --username.');
       args.authUsername = v;
-    } else if (isFlag(tok, '-P', '--password', '--pass')) {
+    } else if (isFlag(tok, '-P', '--password', '--pass', '--auth-password')) {
       const v = takeValue('--password');
       if (v === undefined) return invalid('Missing value for --password.');
       args.authPassword = v;
-    } else if (isFlag(tok, '--auth-secret', '--secret')) {
+    } else if (isFlag(tok, '--auth-secret', '--secret', '--session-secret')) {
       const v = takeValue('--auth-secret');
       if (v === undefined) return invalid('Missing value for --auth-secret.');
       args.authSecret = v;

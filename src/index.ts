@@ -12,6 +12,7 @@
  */
 export { createRouter, type AppOptions } from './app';
 export { createLogger, type Logger, type LogLevel } from './logger';
+export { c, supportsColor } from './colors';
 export {
   SqliteDatabase,
   type Result,

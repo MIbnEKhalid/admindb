@@ -850,6 +850,67 @@ export class SqliteDatabase {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(() => {
       const newName = String(newColDef.name || oldColName).trim();
+      const rawCols = this.db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as unknown as ColumnInfo[];
+      const existing = rawCols.find((c) => c.name === oldColName);
+      if (!existing) throw new Error(`Column "${oldColName}" does not exist in table "${table}".`);
+
+      const fks = this.db.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`).all() as unknown as ForeignKeyInfo[];
+      const existingFk = fks.find((f) => f.from === oldColName);
+      const indexRows = this.db.prepare(`PRAGMA index_list(${quoteIdentifier(table)})`).all() as unknown as { seq: number; name: string; unique: number; origin: string; partial: number }[];
+
+      let existingIsUnique = false;
+      for (const ix of indexRows) {
+        if (ix.unique) {
+          const ixCols = (this.db.prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`).all() as unknown as { seqno: number; cid: number; name: string }[]).map((c) => c.name);
+          if (ixCols.length === 1 && ixCols[0] === oldColName) {
+            existingIsUnique = true;
+            break;
+          }
+        }
+      }
+
+      const typeMatches = !newColDef.type || newColDef.type.toUpperCase() === existing.type.toUpperCase();
+      const pkMatches = newColDef.primaryKey === undefined || newColDef.primaryKey === (existing.pk > 0);
+      const notNullMatches = newColDef.notNull === undefined || newColDef.notNull === (!!existing.notnull);
+      const uniqueMatches = newColDef.unique === undefined || newColDef.unique === existingIsUnique;
+      const defaultMatches = newColDef.defaultValue === undefined || String(newColDef.defaultValue ?? '').trim() === String(existing.dflt_value ?? '').trim();
+      const fkMatches = newColDef.foreignKey === undefined || (
+        (!newColDef.foreignKey && !existingFk) ||
+        (newColDef.foreignKey && existingFk && newColDef.foreignKey.table === existingFk.table && newColDef.foreignKey.column === existingFk.to)
+      );
+
+      // Fast path: if ONLY the column name was changed, use SQLite's native ALTER TABLE ... RENAME COLUMN.
+      // This natively updates references in triggers, views, foreign keys, and indexes.
+      if (oldColName !== newName && typeMatches && pkMatches && notNullMatches && uniqueMatches && defaultMatches && fkMatches) {
+        this.db.exec(generateRenameColumn(table, oldColName, newName));
+
+        // Update default-named indexes if present
+        const defaultOldIdx = `idx_${table}_${oldColName}`;
+        const defaultOldUniqueIdx = `idx_${table}_${oldColName}_unique`;
+        const existingIdxNames = new Set(indexRows.map((i) => i.name));
+
+        if (existingIdxNames.has(defaultOldIdx)) {
+          const newIdxName = `idx_${table}_${newName}`;
+          try {
+            this.db.exec(`DROP INDEX ${quoteIdentifier(defaultOldIdx)};`);
+            this.db.exec(`CREATE INDEX IF NOT EXISTS ${quoteIdentifier(newIdxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(newName)});`);
+          } catch { /* ignore */ }
+        }
+        if (existingIdxNames.has(defaultOldUniqueIdx)) {
+          const newIdxName = `idx_${table}_${newName}_unique`;
+          try {
+            this.db.exec(`DROP INDEX ${quoteIdentifier(defaultOldUniqueIdx)};`);
+            this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(newIdxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(newName)});`);
+          } catch { /* ignore */ }
+        }
+
+        return { changes: 1 };
+      }
+
+      if (oldColName === newName && typeMatches && pkMatches && notNullMatches && uniqueMatches && defaultMatches && fkMatches) {
+        return { changes: 0 };
+      }
+
       return this.modifyTableStructure(
         table,
         (cols) => {
@@ -886,12 +947,31 @@ export class SqliteDatabase {
     const fks = this.db.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`).all() as unknown as ForeignKeyInfo[];
     const indexRows = this.db.prepare(`PRAGMA index_list(${quoteIdentifier(table)})`).all() as unknown as { seq: number; name: string; unique: number; origin: string; partial: number }[];
 
+    // Discover which single columns are UNIQUE across the whole table (so existing uniqueness is preserved)
+    const uniqueCols = new Set<string>();
+    for (const ix of indexRows) {
+      if (ix.unique) {
+        const ixCols = (this.db.prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`).all() as unknown as { seqno: number; cid: number; name: string }[]).map((c) => c.name);
+        if (ixCols.length === 1) {
+          uniqueCols.add(ixCols[0]);
+        }
+      }
+    }
+
     const userIndexes: { name: string; unique: boolean; columns: string[] }[] = [];
     for (const ix of indexRows) {
       if (ix.origin === 'c') {
         const ixCols = (this.db.prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`).all() as unknown as { seqno: number; cid: number; name: string }[]).map((c) => c.name);
+        let ixName = ix.name;
+        if (renamedOldCol && renamedNewCol) {
+          if (ixName === `idx_${table}_${renamedOldCol}`) {
+            ixName = `idx_${table}_${renamedNewCol}`;
+          } else if (ixName === `idx_${table}_${renamedOldCol}_unique`) {
+            ixName = `idx_${table}_${renamedNewCol}_unique`;
+          }
+        }
         userIndexes.push({
-          name: ix.name,
+          name: ixName,
           unique: !!ix.unique,
           columns: ixCols.map((c) => (renamedOldCol && renamedNewCol && c === renamedOldCol ? renamedNewCol : c)),
         });
@@ -905,7 +985,7 @@ export class SqliteDatabase {
         type: c.type,
         primaryKey: c.pk > 0,
         notNull: !!c.notnull,
-        unique: false,
+        unique: uniqueCols.has(c.name),
         defaultValue: c.dflt_value,
         foreignKey: existingFk ? { table: existingFk.table, column: existingFk.to ?? '' } : null,
       };
@@ -967,7 +1047,32 @@ export class SqliteDatabase {
   }
 
   async renameColumn(table: string, oldName: string, newName: string): Promise<Result<{ changes?: number }>> {
-    return this.execResult(generateRenameColumn(table, oldName, newName));
+    if (this.isReadOnly) return this.readonlyBlocked();
+    return this.tryRun(() => {
+      this.db.exec(generateRenameColumn(table, oldName, newName));
+
+      const indexRows = this.db.prepare(`PRAGMA index_list(${quoteIdentifier(table)})`).all() as unknown as { name: string }[];
+      const existingIdxNames = new Set(indexRows.map((i) => i.name));
+      const defaultOldIdx = `idx_${table}_${oldName}`;
+      const defaultOldUniqueIdx = `idx_${table}_${oldName}_unique`;
+
+      if (existingIdxNames.has(defaultOldIdx)) {
+        const newIdxName = `idx_${table}_${newName}`;
+        try {
+          this.db.exec(`DROP INDEX ${quoteIdentifier(defaultOldIdx)};`);
+          this.db.exec(`CREATE INDEX IF NOT EXISTS ${quoteIdentifier(newIdxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(newName)});`);
+        } catch { /* ignore */ }
+      }
+      if (existingIdxNames.has(defaultOldUniqueIdx)) {
+        const newIdxName = `idx_${table}_${newName}_unique`;
+        try {
+          this.db.exec(`DROP INDEX ${quoteIdentifier(defaultOldUniqueIdx)};`);
+          this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(newIdxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(newName)});`);
+        } catch { /* ignore */ }
+      }
+
+      return { changes: 1 };
+    });
   }
 
   async dropColumn(table: string, column: string): Promise<Result<{ changes?: number }>> {

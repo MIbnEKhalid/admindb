@@ -14,6 +14,12 @@ import { randomBytes, scryptSync } from 'node:crypto';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
+const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
+const green = (s) => `\x1b[32m${s}\x1b[0m`;
+const bold = (s) => `\x1b[1m${s}\x1b[22m`;
+const dim = (s) => `\x1b[2m${s}\x1b[22m`;
+const red = (s) => `\x1b[31m${s}\x1b[0m`;
+
 function hashPassword(password) {
   const saltHex = randomBytes(16).toString('hex');
   const derivedKey = scryptSync(password, saltHex, 64).toString('hex');
@@ -26,40 +32,33 @@ async function main() {
   if (!password) {
     const rl = readline.createInterface({ input, output });
     try {
-      password = await rl.question('Enter password to hash: ');
+      password = await rl.question(cyan('Enter password to hash: '));
     } finally {
       rl.close();
     }
   }
 
   if (!password || !password.trim()) {
-    console.error('Error: Password cannot be empty.');
+    console.error(red('Error: Password cannot be empty.'));
     process.exit(1);
   }
 
   const trimmedPassword = password.trim();
   const hash = hashPassword(trimmedPassword);
 
-  console.log('\n===============================================================');
-  console.log('  AdminDB Native Password Hash Generated');
-  console.log('===============================================================');
-  console.log('\nGenerated Hash:\n');
-  console.log(hash);
-  console.log('\n---------------------------------------------------------------');
-  console.log('How to use this hash:');
-  console.log('---------------------------------------------------------------');
-  console.log('1. Environment Variable:');
-  console.log(`   export ADMINDB_PASSWORD="${hash}"`);
-  console.log('\n2. Standalone CLI:');
-  console.log(`   npx admindb -P "${hash}"`);
-  console.log('\n3. Express createRouter():');
-  console.log(`   createRouter({`);
-  console.log(`     auth: {`);
-  console.log(`       username: 'admin',`);
-  console.log(`       password: '${hash}',`);
-  console.log(`     }`);
-  console.log(`   });`);
-  console.log('===============================================================\n');
+  console.log();
+  console.log(`  ${cyan(bold('⚡ AdminDB Password Hash Generated'))}`);
+  console.log();
+  console.log(`  ${green('➜')}  ${bold('Hash:')} ${cyan(hash)}`);
+  console.log();
+  console.log(`  ${dim('How to use this hash:')}`);
+  console.log(`  ${dim('1. Environment Variable:')}`);
+  console.log(`     export ADMINDB_PASSWORD="${hash}"`);
+  console.log(`  ${dim('2. Standalone CLI:')}`);
+  console.log(`     npx admindb -P "${hash}"`);
+  console.log(`  ${dim('3. Express createRouter():')}`);
+  console.log(`     createRouter({ auth: { username: 'admin', password: '${hash}' } });`);
+  console.log();
 }
 
 main().catch((err) => {

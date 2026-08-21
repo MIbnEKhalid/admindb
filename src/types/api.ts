@@ -18,7 +18,13 @@ import type {
 } from '../db/database';
 import type { DatabaseEntry } from '../db/manager';
 import type { ColumnDef, IndexDef } from '../sql/generator';
-import type { ColumnGeneratorConfig, ColumnPlan } from '../data/generator';
+import type {
+  ColumnGeneratorConfig,
+  ColumnPlan,
+  GeneratorStrategyId,
+  StrategyDescriptor,
+  StrategyCategory,
+} from '../data/generator';
 
 // Re-export common domain types for convenience
 export type {
@@ -35,6 +41,9 @@ export type {
   IndexDef,
   ColumnGeneratorConfig,
   ColumnPlan,
+  GeneratorStrategyId,
+  StrategyDescriptor,
+  StrategyCategory,
 };
 
 // ============================================================================
@@ -241,6 +250,7 @@ export interface SeedGenerateResponseData {
   table: string;
   count: number;
   sql: string;
+  previewRows?: Record<string, unknown>[];
   warnings: string[];
 }
 export type SeedGenerateResponse = ApiResponse<SeedGenerateResponseData>;
@@ -249,12 +259,14 @@ export type SeedGenerateResponse = ApiResponse<SeedGenerateResponseData>;
 export interface SeedInsertRequestBody {
   count?: number;
   plan?: Record<string, ColumnPlan>;
+  truncate?: boolean;
 }
 export interface SeedInsertResponseData {
   message: string;
   inserted: number;
   skipped: number;
   warnings: string[];
+  elapsedMs?: number;
 }
 export type SeedInsertResponse = ApiResponse<SeedInsertResponseData>;
 
