@@ -20,7 +20,7 @@
 
 ![Home dashboard](docs/screenshots/home.png)
 
-> 📸 **Visual Tour:** See [`docs/screenshots/`](docs/screenshots/) for screenshots of the Table Browser, Query Editor, Visual Schema Designer, Inline Grid Editor, and Multi-Database Manager.
+> 📸 **Visual Tour:** See [`docs/screenshots/`](docs/screenshots/) for screenshots of the Table Browser, Inline Grid Editor, Read-Only Mode, Query Workbench, Visual Schema Designer, Universal Data Inspector, Mock Data Seeder, and Multi-Database Manager.
 
 ---
 
@@ -73,7 +73,7 @@ admindb
 AdminDB features a clean, colorized CLI startup banner and streamlined, low-noise runtime logging:
 
 ```text
-  ⚡ AdminDB v2.0.0
+  ⚡ AdminDB v2.1.0
 
   ➜  Local:    http://localhost:45531/
   ➜  Network:  http://192.168.1.15:45531/

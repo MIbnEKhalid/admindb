@@ -11,7 +11,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{basePath}}/css/app.css" />
   <script>
-    window.APP = { basePath: {{{json basePath}}}, readonly: {{{json readonly}}}, serverless: {{{json serverless}}} };
+    window.APP = {
+      basePath: {{{json basePath}}},
+      readonly: {{{json readonly}}},
+      serverless: {{{json serverless}}},
+      dialect: {{{json dialect}}},
+      isSqlite: {{{json isSqlite}}},
+      isPostgres: {{{json isPostgres}}}
+    };
     // Apply the saved theme before first paint to avoid a flash.
     (function () {
       try {

@@ -2,7 +2,20 @@
  * and preview the generated CREATE TABLE live. Create executes; Copy copies. */
 (function () {
   'use strict';
-  const DESIGNER_TYPES = [
+  const SQLITE_TYPES = [
+    'TEXT',
+    'INTEGER',
+    'REAL',
+    'BLOB',
+    'BOOLEAN',
+    'DATE',
+    'DATETIME',
+    'NUMERIC',
+    'VARCHAR(255)',
+    'JSON',
+  ];
+
+  const POSTGRES_TYPES = [
     'TEXT',
     'VARCHAR(255)',
     'INTEGER',
@@ -24,9 +37,11 @@
     'JSONB',
     'UUID',
     'BYTEA',
-    'BLOB',
     'INET',
   ];
+
+  const isPostgres = window.APP && window.APP.dialect === 'postgres';
+  const DESIGNER_TYPES = isPostgres ? POSTGRES_TYPES : SQLITE_TYPES;
 
   const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 

@@ -6398,16 +6398,16 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   border-color: var(--fallback-wa,oklch(var(--wa)/0.2));
 }
 
+.border-warning\/30 {
+  border-color: var(--fallback-wa,oklch(var(--wa)/0.3));
+}
+
 .border-warning\/40 {
   border-color: var(--fallback-wa,oklch(var(--wa)/0.4));
 }
 
 .border-white\/10 {
   border-color: rgb(255 255 255 / 0.1);
-}
-
-.border-warning\/30 {
-  border-color: var(--fallback-wa,oklch(var(--wa)/0.3));
 }
 
 .\!bg-transparent {
@@ -6589,12 +6589,12 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   background-color: var(--fallback-wa,oklch(var(--wa)/0.03));
 }
 
-.bg-white\/\[0\.06\] {
-  background-color: rgb(255 255 255 / 0.06);
-}
-
 .bg-warning\/\[0\.04\] {
   background-color: var(--fallback-wa,oklch(var(--wa)/0.04));
+}
+
+.bg-white\/\[0\.06\] {
+  background-color: rgb(255 255 255 / 0.06);
 }
 
 .object-contain {

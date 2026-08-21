@@ -4,6 +4,44 @@
  * mutating operation share these functions.
  */
 
+export const SQLITE_DESIGNER_TYPES = [
+  'TEXT',
+  'INTEGER',
+  'REAL',
+  'BLOB',
+  'BOOLEAN',
+  'DATE',
+  'DATETIME',
+  'NUMERIC',
+  'VARCHAR(255)',
+  'JSON',
+] as const;
+
+export const POSTGRES_DESIGNER_TYPES = [
+  'TEXT',
+  'VARCHAR(255)',
+  'INTEGER',
+  'BIGINT',
+  'SMALLINT',
+  'SERIAL',
+  'BIGSERIAL',
+  'REAL',
+  'DECIMAL(10,2)',
+  'NUMERIC',
+  'BOOLEAN',
+  'DATE',
+  'DATETIME',
+  'TIMESTAMP',
+  'TIMESTAMPTZ',
+  'TIME',
+  'INTERVAL',
+  'JSON',
+  'JSONB',
+  'UUID',
+  'BYTEA',
+  'INET',
+] as const;
+
 export const DESIGNER_TYPES = [
   'TEXT',
   'VARCHAR(255)',
@@ -29,6 +67,10 @@ export const DESIGNER_TYPES = [
   'BLOB',
   'INET',
 ] as const;
+
+export function getDesignerTypes(dialect: 'sqlite' | 'postgres' = 'sqlite'): readonly string[] {
+  return dialect === 'postgres' ? POSTGRES_DESIGNER_TYPES : SQLITE_DESIGNER_TYPES;
+}
 
 export type DesignerColumnType = (typeof DESIGNER_TYPES)[number];
 

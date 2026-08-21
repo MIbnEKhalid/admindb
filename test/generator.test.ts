@@ -15,6 +15,7 @@ import {
   quoteIdentifier,
   sqlValue,
   mapColumnType,
+  getDesignerTypes,
 } from '../src/sql/generator';
 
 test('quoteIdentifier quotes and escapes double quotes', () => {
@@ -198,3 +199,22 @@ test('generateDropIndex quotes the index name', () => {
   assert.equal(generateDropIndex('idx_users_email'), 'DROP INDEX "idx_users_email";');
   assert.throws(() => generateDropIndex('bad; DROP'), /Invalid index name/);
 });
+
+test('getDesignerTypes returns SQLite compatible types for SQLite and PostgreSQL types for PostgreSQL', () => {
+  const sqliteTypes = getDesignerTypes('sqlite');
+  assert.ok(sqliteTypes.includes('TEXT'));
+  assert.ok(sqliteTypes.includes('INTEGER'));
+  assert.ok(sqliteTypes.includes('REAL'));
+  assert.ok(sqliteTypes.includes('BLOB'));
+  assert.ok(sqliteTypes.includes('BOOLEAN'));
+  assert.ok(!sqliteTypes.includes('SERIAL'));
+  assert.ok(!sqliteTypes.includes('BYTEA'));
+  assert.ok(!sqliteTypes.includes('TIMESTAMPTZ'));
+
+  const pgTypes = getDesignerTypes('postgres');
+  assert.ok(pgTypes.includes('SERIAL'));
+  assert.ok(pgTypes.includes('BYTEA'));
+  assert.ok(pgTypes.includes('TIMESTAMPTZ'));
+  assert.ok(pgTypes.includes('JSONB'));
+});
+

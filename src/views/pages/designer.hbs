@@ -68,14 +68,29 @@
       </div>
 
       <div class="rounded-2xl border border-base-300/70 bg-base-100 p-4">
-        <h3 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/45">Type guide</h3>
+        <h3 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/45">
+          {{#if isPostgres}}PostgreSQL Type Guide{{else}}SQLite Type Guide{{/if}}
+        </h3>
         <ul class="space-y-1.5 text-[13px] text-base-content/60">
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">TEXT</span><span class="text-base-content/40">Free-form text</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">INTEGER</span><span class="text-base-content/40">Whole numbers</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">REAL</span><span class="text-base-content/40">Decimal numbers</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">BLOB / BYTEA</span><span class="text-base-content/40">Binary data</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">BOOLEAN</span><span class="text-base-content/40">Stored as 0/1</span></li>
-          <li class="flex items-center justify-between gap-2"><span class="font-mono">TIMESTAMP</span><span class="text-base-content/40">Datetime + auto default</span></li>
+          {{#if isPostgres}}
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">TEXT / VARCHAR</span><span class="text-base-content/40">Free-form string</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">INTEGER / BIGINT</span><span class="text-base-content/40">Whole numbers</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">SERIAL / BIGSERIAL</span><span class="text-base-content/40">Auto-incrementing PK</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">REAL / NUMERIC</span><span class="text-base-content/40">Decimal numbers</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">BYTEA</span><span class="text-base-content/40">Binary byte data</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">BOOLEAN</span><span class="text-base-content/40">true / false</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">TIMESTAMPTZ</span><span class="text-base-content/40">Timestamp with TZ</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">JSON / JSONB</span><span class="text-base-content/40">Structured JSON</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">UUID</span><span class="text-base-content/40">UUID generator</span></li>
+          {{else}}
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">TEXT</span><span class="text-base-content/40">Free-form text</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">INTEGER</span><span class="text-base-content/40">Whole numbers / PK</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">REAL</span><span class="text-base-content/40">Decimal numbers</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">BLOB</span><span class="text-base-content/40">Binary data</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">BOOLEAN</span><span class="text-base-content/40">Stored as 0/1</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">DATETIME</span><span class="text-base-content/40">ISO-8601 timestamps</span></li>
+            <li class="flex items-center justify-between gap-2"><span class="font-mono">JSON</span><span class="text-base-content/40">JSON string/functions</span></li>
+          {{/if}}
         </ul>
       </div>
     </aside>

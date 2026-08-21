@@ -313,7 +313,10 @@ export function registerPages(router: Router, ctx: PageContext): void {
         table,
         schema: schema.data,
         isInternal: table.startsWith('_'),
-        config: { table, isInternal: table.startsWith('_') },
+        dialect: db.dialect,
+        isSqlite: db.dialect === 'sqlite',
+        isPostgres: db.dialect === 'postgres',
+        config: { table, isInternal: table.startsWith('_'), dialect: db.dialect },
       });
     } catch (err) {
       next(err);
@@ -399,7 +402,12 @@ export function registerPages(router: Router, ctx: PageContext): void {
 
   // Table designer.
   router.get('/designer', (_req: Request, res: Response) => {
-    res.render('pages/designer', { title: 'New table' });
+    res.render('pages/designer', {
+      title: 'New table',
+      dialect: db.dialect,
+      isSqlite: db.dialect === 'sqlite',
+      isPostgres: db.dialect === 'postgres',
+    });
   });
 
   // Query editor.
