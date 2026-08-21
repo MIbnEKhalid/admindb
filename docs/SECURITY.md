@@ -17,6 +17,7 @@
 - [Production Security Checklist & Best Practices](#production-security-checklist--best-practices)
 - [SQL Safety & Injection Protections](#sql-safety--injection-protections)
 - [Read-Only Mode Safeguards](#read-only-mode-safeguards)
+- [Universal Destructive Action Safeguards](#universal-destructive-action-safeguards)
 
 ---
 
@@ -203,3 +204,20 @@ When read-only mode is active (`--readonly` / `READONLY=true` / `readonly: true`
 * Every mutation REST API endpoint (`POST`, `PUT`, `DELETE`) immediately returns `403 Forbidden`.
 * The web interface disables and hides all write buttons, insert forms, delete triggers, schema alter forms, seed generators, and CSV import tools.
 * A prominent warning banner is displayed across the interface alerting users that writes are disabled.
+
+---
+
+## Universal Destructive Action Safeguards
+
+AdminDB strictly enforces a **zero-unprompted-destruction** policy across the web interface to prevent accidental data loss:
+
+1. **Interactive Confirmation Barriers (`UI.confirm`):**
+   - **Single Row Deletions:** Always prompts with row primary key preview and impact warnings.
+   - **Bulk Row Purges:** Performs a pre-flight foreign key check via `/api/tables/:table/rows/bulk-impact` and displays a breakdown of child records referencing the target rows before confirmation.
+   - **Discarding Staged Edits:** Warns user of the exact count of pending cell modifications before reverting.
+   - **Schema Alterations:** Dropping columns or indexes prompts with confirmation of affected fields.
+2. **Type-to-Confirm Input Verification:**
+   - **Dropping Tables:** Requires typing the exact table name into an input field before the destructive action button enables.
+   - **Deleting Databases (Manager Mode):** Requires typing the exact database identifier before disk deletion is authorized.
+3. **Transactional Isolation:**
+   - All batch operations (bulk updates, bulk deletions, CSV imports, and seed data generation) run inside dedicated atomic database transactions (`BEGIN IMMEDIATE ... COMMIT/ROLLBACK`). If any record fails or violates constraints, the entire batch automatically rolls back with zero partial corruption.

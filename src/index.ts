@@ -65,6 +65,18 @@ export {
   type LambdaProxyResult,
 } from './serverless';
 
+export {
+  sniffMimeType,
+  generateHexDump,
+  analyzeBlob,
+  isJsonString,
+  formatJsonSafely,
+  type MimeAnalysis,
+  type HexDumpLine,
+  type HexDumpResult,
+  type BlobMetadata,
+} from './utils/datatype';
+
 // Export all published REST API response and request types
 export * from './types/api';
 

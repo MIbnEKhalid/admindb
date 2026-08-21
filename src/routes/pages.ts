@@ -3,7 +3,8 @@ import type { SqliteDatabase, TableInfoData } from '../db/database';
 import type { Logger } from '../utils/logger';
 import { generateSqlDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
-import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS } from '../utils/common';
+import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS, formatBytes } from '../utils/common';
+import { sniffMimeType, isJsonString } from '../utils/datatype';
 import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/index';
 
 interface PageContext {
@@ -16,6 +17,16 @@ interface DisplayCell {
   value: unknown;
   isNull: boolean;
   display: string;
+  type?: string;
+  isBlob?: boolean;
+  isJson?: boolean;
+  isImage?: boolean;
+  isUrl?: boolean;
+  isColor?: boolean;
+  blobSize?: string;
+  blobMime?: string;
+  blobExt?: string;
+  blobUrl?: string;
 }
 
 interface DisplayRow {
@@ -23,15 +34,76 @@ interface DisplayRow {
   pkEncoded: string | null;
 }
 
-function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoData): DisplayRow[] {
+function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoData, table?: string, basePath = ''): DisplayRow[] {
   const pkCols = info.primaryKey.length ? info.primaryKey : ['_rowid_'];
-  return rawRows.map((row) => ({
-    cells: info.columns.map((c) => {
-      const v = normalizeCell(row[c.name]);
-      return { name: c.name, value: v, isNull: v == null, display: v == null ? '' : String(v) };
-    }),
-    pkEncoded: encodePk(pkCols.map((c) => row[c])),
-  }));
+  return rawRows.map((row) => {
+    const pkEncoded = encodePk(pkCols.map((c) => row[c]));
+    return {
+      cells: info.columns.map((c) => {
+        const raw = row[c.name];
+        const v = normalizeCell(raw);
+        const isNull = v == null;
+        const typeUpper = (c.type || '').toUpperCase();
+        const isBlob = typeUpper.includes('BLOB') || Buffer.isBuffer(raw) || raw instanceof Uint8Array || (typeof v === 'string' && /^0x[0-9a-f]{8,}$/i.test(v));
+        let isJson = false;
+        let isImage = false;
+        let isUrl = false;
+        let isColor = false;
+        let blobSize = '';
+        let blobMime = '';
+        let blobExt = '';
+        let blobUrl = '';
+
+        if (!isNull) {
+          const str = String(v);
+          if (isBlob) {
+            let buf: Buffer;
+            if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
+              buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+            } else if (typeof v === 'string' && /^0x[0-9a-f]*$/i.test(v)) {
+              buf = Buffer.from(v.slice(2), 'hex');
+            } else {
+              buf = Buffer.from(str, 'utf8');
+            }
+            const mimeInfo = sniffMimeType(buf);
+            blobSize = formatBytes(buf.length);
+            blobMime = mimeInfo.mime;
+            blobExt = mimeInfo.ext;
+            isImage = mimeInfo.isImage;
+            if (table && pkEncoded) {
+              blobUrl = `${basePath}/api/tables/${encodeURIComponent(table)}/row/${encodeURIComponent(pkEncoded)}/blob/${encodeURIComponent(c.name)}`;
+            }
+          } else if (isJsonString(v) || typeUpper.includes('JSON')) {
+            isJson = isJsonString(v);
+          } else {
+            if (/^https?:\/\/[^\s$.?#].[^\s]*$/i.test(str)) {
+              isUrl = true;
+            } else if (/^#(?:[0-9a-fA-F]{3}){1,2}$|^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/i.test(str)) {
+              isColor = true;
+            }
+          }
+        }
+
+        return {
+          name: c.name,
+          value: v,
+          isNull,
+          display: isNull ? '' : String(v),
+          type: c.type,
+          isBlob,
+          isJson,
+          isImage,
+          isUrl,
+          isColor,
+          blobSize,
+          blobMime,
+          blobExt,
+          blobUrl,
+        };
+      }),
+      pkEncoded,
+    };
+  });
 }
 
 export function registerPages(router: Router, ctx: PageContext): void {
@@ -153,7 +225,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
       );
       const countMap = new Map(countEntries);
 
-      const rows = buildDisplayRows(rawRows, info.data).map((dr, i) => {
+      const rows = buildDisplayRows(rawRows, info.data, table, basePath).map((dr, i) => {
         const raw = rawRows[i];
         const refs = refColumns.map((col) => {
           const v = raw[col.to];

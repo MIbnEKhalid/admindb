@@ -80,6 +80,17 @@
       (palette[type] || palette.info) + '"><span>' + escapeHtml(text) + '</span></div>';
   }
 
+  function isJsonStr(s) {
+    if (typeof s !== 'string') return false;
+    const t = s.trim();
+    if (!((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')))) return false;
+    try { JSON.parse(t); return true; } catch { return false; }
+  }
+
+  function isHexBlobStr(s) {
+    return typeof s === 'string' && /^0x[0-9a-f]{4,}$/i.test(s.trim());
+  }
+
   function renderTable(columns, rows) {
     headEl.innerHTML = '<tr>' + columns.map((c) => '<th class="whitespace-nowrap font-semibold"><span class="font-mono normal-case">' + escapeHtml(c) + '</span></th>').join('') + '</tr>';
     if (!rows.length) {
@@ -93,10 +104,62 @@
           return '<td class="align-middle"><span class="chip chip-null">NULL</span></td>';
         }
         const s = String(v);
-        const short = s.length > 200 ? s.slice(0, 200) + '…' : s;
-        return '<td class="max-w-xs truncate align-middle font-mono text-[13px]" title="' + escapeHtml(s) + '">' + escapeHtml(short) + '</td>';
+        const json = isJsonStr(s);
+        const blob = isHexBlobStr(s);
+        const short = s.length > 140 ? s.slice(0, 140) + '…' : s;
+
+        if (json) {
+          return '<td class="max-w-xs align-middle js-query-cell" data-col="' + escapeHtml(c) + '" data-value="' + escapeHtml(s) + '" data-json="true">' +
+            '<div class="flex items-center gap-1.5">' +
+            '<span class="inline-flex items-center gap-1 rounded-md bg-info/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-info">{ } JSON</span>' +
+            '<span class="block max-w-[120px] truncate font-mono text-[12px] text-base-content/70">' + escapeHtml(short) + '</span>' +
+            '<button type="button" class="btn btn-ghost btn-xs btn-circle js-query-inspect" title="Inspect JSON"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>' +
+            '</div></td>';
+        }
+
+        if (blob) {
+          return '<td class="max-w-xs align-middle js-query-cell" data-col="' + escapeHtml(c) + '" data-value="' + escapeHtml(s) + '" data-blob="true">' +
+            '<div class="flex items-center gap-1.5">' +
+            '<span class="inline-flex items-center gap-1 rounded-md bg-secondary/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-secondary">🗃️ BLOB</span>' +
+            '<span class="block max-w-[120px] truncate font-mono text-[12px] text-base-content/70">' + escapeHtml(short) + '</span>' +
+            '<button type="button" class="btn btn-ghost btn-xs btn-circle js-query-inspect" title="Inspect BLOB"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>' +
+            '</div></td>';
+        }
+
+        return '<td class="max-w-xs align-middle js-query-cell" data-col="' + escapeHtml(c) + '" data-value="' + escapeHtml(s) + '">' +
+          '<div class="flex items-center justify-between gap-1 group/cell">' +
+          '<span class="truncate font-mono text-[13px]" title="' + escapeHtml(s) + '">' + escapeHtml(short) + '</span>' +
+          (s.length > 25 ? '<button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover/cell:opacity-100 transition-opacity js-query-inspect shrink-0" title="Inspect text"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>' : '') +
+          '</div></td>';
       }).join('') + '</tr>',
     ).join('');
+  }
+
+  // Delegate inspection click
+  if (bodyEl) {
+    bodyEl.addEventListener('click', function (e) {
+      const inspectBtn = e.target.closest('.js-query-inspect');
+      const cell = e.target.closest('.js-query-cell');
+      if (!inspectBtn && (!cell || e.detail < 2)) return;
+      const targetCell = inspectBtn ? inspectBtn.closest('.js-query-cell') : cell;
+      if (!targetCell) return;
+
+      const col = targetCell.dataset.col || 'result';
+      const val = targetCell.dataset.value || '';
+      const isBlob = targetCell.dataset.blob === 'true';
+      const isJson = targetCell.dataset.json === 'true';
+
+      if (window.Inspector && window.Inspector.open) {
+        window.Inspector.open({
+          col: col,
+          value: val,
+          isNull: false,
+          isBlob: isBlob,
+          isJson: isJson,
+          readonly: true,
+        });
+      }
+    });
   }
 
   function renderMessageRow(text, kindLabel) {

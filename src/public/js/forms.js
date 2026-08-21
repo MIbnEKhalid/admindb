@@ -151,11 +151,111 @@
       control.className = 'field-input';
       control.dataset.column = col.name;
       if (iv != null) control.value = String(iv);
+    } else if (isBlob) {
+      const blobContainer = document.createElement('div');
+      blobContainer.className = 'space-y-2';
+
+      control = document.createElement('input');
+      control.type = 'text';
+      control.className = 'field-input font-mono text-xs';
+      control.placeholder = '0x… hex or plain text';
+      control.dataset.column = col.name;
+      if (iv != null) control.value = String(iv);
+
+      const fileRow = document.createElement('div');
+      fileRow.className = 'flex flex-wrap items-center gap-2';
+
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.className = 'file-input file-input-bordered file-input-xs w-full max-w-xs';
+
+      const previewThumb = document.createElement('img');
+      previewThumb.className = 'h-7 max-w-12 rounded object-cover border border-base-300 bg-base-200 hidden';
+
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const arrBuffer = reader.result;
+          const bytes = new Uint8Array(arrBuffer);
+          let hex = '0x';
+          for (let i = 0; i < bytes.length; i++) {
+            hex += ('00' + bytes[i].toString(16)).slice(-2);
+          }
+          control.value = hex;
+
+          if (file.type.startsWith('image/')) {
+            const dataUrlReader = new FileReader();
+            dataUrlReader.onload = () => {
+              previewThumb.src = dataUrlReader.result;
+              previewThumb.classList.remove('hidden');
+            };
+            dataUrlReader.readAsDataURL(file);
+          } else {
+            previewThumb.classList.add('hidden');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      fileRow.appendChild(fileInput);
+      fileRow.appendChild(previewThumb);
+      blobContainer.appendChild(control);
+      blobContainer.appendChild(fileRow);
+      if (isPk && cfg.mode === 'edit') control.disabled = true;
+      wrapper.appendChild(blobContainer);
+      return wrapper;
     } else {
+      const isJsonField = type.includes('JSON') || col.name.toLowerCase().includes('json') || (iv && typeof iv === 'string' && (iv.startsWith('{') || iv.startsWith('[')));
+
+      if (isJsonField) {
+        const jsonContainer = document.createElement('div');
+        jsonContainer.className = 'space-y-1.5';
+
+        control = document.createElement('textarea');
+        control.rows = 3;
+        control.className = 'field-input font-mono text-[13px]';
+        control.placeholder = '{\n  "key": "value"\n}';
+        control.dataset.column = col.name;
+        if (iv != null) control.value = typeof iv === 'object' ? JSON.stringify(iv, null, 2) : String(iv);
+
+        const btnRow = document.createElement('div');
+        btnRow.className = 'flex justify-end';
+
+        const inspectBtn = document.createElement('button');
+        inspectBtn.type = 'button';
+        inspectBtn.className = 'btn btn-ghost btn-xs gap-1 text-primary';
+        inspectBtn.innerHTML = '🧩 Inspect & Format JSON';
+        inspectBtn.addEventListener('click', () => {
+          if (window.Inspector && window.Inspector.open) {
+            window.Inspector.open({
+              table: cfg.table,
+              pk: cfg.pk || '',
+              col: col.name,
+              colType: col.type,
+              value: control.value,
+              isNull: !control.value,
+              isJson: true,
+              readonly: false,
+              onSave: (newVal) => {
+                control.value = newVal;
+              },
+            });
+          }
+        });
+
+        btnRow.appendChild(inspectBtn);
+        jsonContainer.appendChild(control);
+        jsonContainer.appendChild(btnRow);
+        if (isPk && cfg.mode === 'edit') control.disabled = true;
+        wrapper.appendChild(jsonContainer);
+        return wrapper;
+      }
+
       control = document.createElement('input');
       control.type = 'text';
       control.className = 'field-input';
-      control.placeholder = isBlob ? '0x… hex or text' : '';
       control.dataset.column = col.name;
       if (iv != null) control.value = String(iv);
     }

@@ -77,34 +77,47 @@ Runtime operations produce crisp, color-coded status logs:
 ## 🌟 Core Features
 
 ### 🔍 Browse & Edit Rows
-* **Table Browser:** Paginated grid, column-header sorting, sticky headers, and per-row action menus. Composite primary keys are fully supported.
-* **Inline Spreadsheet Editing:** Double-click any cell to edit in place (FK dropdowns, boolean toggles, date pickers, numeric inputs). Staged changes are highlighted and committed atomically in a single transaction.
+* **Table Browser:** High-density compact grid by default, column-header sorting, sticky headers, and pinned right-aligned sticky action columns. Composite primary keys are fully supported.
+* **Spreadsheet-Style Inline Editing & Keyboard Navigation:**
+  * **Full Grid Navigation:** Navigate cells with <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> or <kbd>Tab</kbd> / <kbd>Shift+Tab</kbd>.
+  * **In-Place Type-Aware Controls:** Double-click or press <kbd>Enter</kbd> to edit in place (FK dropdowns, boolean toggles, date pickers, numeric inputs). Pressing <kbd>Enter</kbd> commits and shifts focus to the cell below. Pressing <kbd>Space</kbd> on boolean cells toggles immediately.
+  * **Quick Copy Shortcut:** Press <kbd>Ctrl+C</kbd> / <kbd>Cmd+C</kbd> on any focused cell to copy its raw value to the clipboard.
+  * **Granular Staging & Single-Cell Revert:** Staged edits are marked with amber indicators (`.cell-dirty`). Hovering reveals an individual undo button (`↺`) to revert a single field without losing the rest of your pending batch.
+  * **Staged Changes Diff & Review Drawer:** Floating dock displays pending edit count; click **Review Diff** to inspect a side-by-side comparison of original vs staged values across all modified rows before applying atomically in a single transaction.
+* **Universal Data Inspector:** Rich interactive modal for deep data inspection:
+  * **JSON Viewer & Editor:** Interactive syntax-highlighted tree viewer, expandable nodes, real-time JSON editor, and format **Beautify** & **Minify** tools.
+  * **BLOB & Media Previews:** Automatic MIME sniffing (PNG, JPEG, WebP, GIF, SVG, PDF, audio/video), inline image thumbnails, direct binary download, and drag-and-drop file upload.
+  * **3-Column Hex Dump:** Professional byte offset, hexadecimal, and printable ASCII viewer for raw binary blobs.
+  * **Text & Code Inspector:** Full-height editor for lengthy text fields, SQL strings, markdown, and config blobs with copy shortcuts.
+* **Row Quick Actions:** 3-dots dropdown menu on each row for *Edit*, *Duplicate Row*, *Copy as JSON*, *Copy SQL INSERT*, and *Delete Row*.
 * **Type-Aware Filters:** Filter by exact match, comparison (`>5`, `<=10`), prefix (`pre*`), substring, boolean state, or date/numeric ranges.
 * **Bulk Operations:** Select rows to delete in one transaction (with foreign-key impact previews) or export selected rows as CSV/JSON.
 * **Related Rows:** Cross-table foreign key indicators show how many child records reference each row, with one-click nested table exploration.
+* **Universal Destructive Action Safeguards:** Zero destructive operations without explicit confirmation modals (`UI.confirm`) featuring impact warnings and typed confirmation verification for high-risk actions (dropping tables, databases).
 
 ### ⚡ Query Runner & SQL Tools
-* **Arbitrary SQL Runner:** Execute queries with results formatted as clean tables; `COUNT` queries display a concise summary, and mutations report affected row counts.
+* **Arbitrary SQL Runner:** Execute queries with results formatted as clean tables; `COUNT` queries display a concise summary, and mutations report affected row counts. Double-click or click inspect on any cell in query results to open the universal inspector.
 * **Saved Named Queries:** Save frequently used queries in the database and reload them from a dropdown menu.
 * **Safe SQL Preview:** Generate `CREATE`, `INSERT`, or `UPDATE` SQL without executing it.
 * **Full Database Dump:** Download the entire database as a standard SQL file (`CREATE TABLE` + `INSERT` statements).
 
 ### 🗂️ Visual Schema Designer & Indexes
 * **Visual Table Designer:** Create tables interactively with column types, primary keys, autoincrement, nullable/unique constraints, default values, and foreign keys.
-* **Relationship-Safe Schema Editor:** Rename tables, add columns, rename columns, and drop columns/tables with safety checks to protect active foreign keys and unique constraints.
+* **Relationship-Safe Schema Editor:** Rename tables, add columns, modify column types, rename columns, and drop columns/tables with safety checks to protect active foreign keys and unique constraints.
 * **Index Manager:** Create single or multi-column indexes (plain or unique) with live SQL previews, and drop existing indexes safely.
 
 ### 🔄 Import, Export & Seed Data Generation
 * **CSV Import:** Upload or paste CSV files with column matching, executed transactionally.
 * **Data Export:** Download table data or arbitrary SQL query results as CSV or JSON.
-* **Intelligent Seed Generator:** Populate tables with up to 5,000 realistic rows using intelligent heuristic strategy detection (names, emails, phones, addresses, dates, UUIDs, custom templates, or sampled foreign keys).
+* **Intelligent Seed Generator:** Populate tables with up to 5,000 realistic rows using intelligent heuristic strategy detection (names, emails, phones, addresses, dates, UUIDs, custom templates, or sampled foreign keys). Includes live table preview before execution.
 
 ### 📁 Multi-Database Manager
 * Manage directories of SQLite files or configure explicit file lists.
 * Dedicated landing page with an in-browser filesystem browser to open, create, and delete databases.
 
-### 🛡️ Strict Read-Only Mode
+### 🛡️ Strict Read-Only & Serverless Mode
 * Open databases with `SQLITE_OPEN_READONLY` + `PRAGMA query_only = ON`.
+* **Serverless Ready:** Auto-detects ephemeral environments (Vercel, AWS Lambda, Cloudflare Pages, Netlify, GCP Cloud Functions) and enforces read-only safety to prevent database corruption. Includes ready-to-use `createServerlessHandler` and `createLambdaHandler` wrappers.
 * Rejects all mutation endpoints (`403 Forbidden`) and automatically hides write controls in the UI.
 
 ---
@@ -213,18 +226,23 @@ ADMINDB_AUTH=false npx admindb
 AdminDB exposes a comprehensive REST API under `basePath` returning `{ success, data?, error? }`:
 
 ```text
-GET    /api/tables                          List tables
-GET    /api/tables/:table/rows              Paginated rows (with filtering & sorting)
-POST   /api/tables/:table/rows              Insert a new row
-PUT    /api/tables/:table/row/:id           Update an existing row
-DELETE /api/tables/:table/row/:id           Delete a row
-POST   /api/tables/:table/rows/bulk-update  Apply staged inline edits atomically
-POST   /api/tables/:table/rows/bulk-delete  Delete selected rows atomically
-POST   /api/tables/:table/seed              Generate and insert seed rows
-POST   /api/tables                          Create a new table
-GET    /api/tables/:table/schema            Inspect full table schema & constraints
-POST   /api/query                           Execute arbitrary SQL
-GET    /api/databases                       List managed database files
+GET    /api/tables                                 List tables
+GET    /api/tables/:table/rows                     Paginated rows (with filtering & sorting)
+GET    /api/tables/:table/row/:id                  Get a single row
+GET    /api/tables/:table/row/:id/blob/:column     Stream raw BLOB binary data
+GET    /api/tables/:table/row/:id/blob/:col/meta   BLOB metadata, MIME analysis & hex dump
+PUT    /api/tables/:table/row/:id/blob/:column     Upload / update BLOB binary content
+POST   /api/tables/:table/rows                     Insert row (single or batch)
+PUT    /api/tables/:table/row/:id                  Update row
+DELETE /api/tables/:table/row/:id                  Delete row
+POST   /api/tables/:table/rows/bulk-update         Apply staged inline edits atomically
+POST   /api/tables/:table/rows/bulk-delete         Delete selected rows atomically
+POST   /api/tables/:table/seed                     Generate & insert realistic seed rows
+POST   /api/tables                                 Create a new table
+GET    /api/tables/:table/schema                   Inspect table schema & constraints
+GET    /api/tables/:table/ddl                      Get table CREATE SQL & indexes
+POST   /api/query                                  Execute arbitrary SQL
+GET    /api/databases                              List managed database files
 ```
 
 > 📖 **Full API Reference:** See [**`docs/API.md`**](docs/API.md) for detailed documentation of all 30+ endpoints, query parameters, payload schemas, and TypeScript types.

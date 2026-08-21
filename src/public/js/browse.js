@@ -293,7 +293,40 @@
     if (clearBtn) clearBtn.addEventListener('click', () => navigate({}));
   }
 
-  // ---- Inline (spreadsheet-style) cell editing ----------------------------
+  // ---- Inline (spreadsheet-style) cell editing & Keyboard Navigation --------
+
+  let focusedCell = null;
+
+  function clearFocusedCell() {
+    if (focusedCell) {
+      focusedCell.classList.remove('cell-focused');
+      focusedCell = null;
+    }
+  }
+
+  function setFocusedCell(td) {
+    if (!td || td === focusedCell || td.classList.contains('js-editing')) return;
+    clearFocusedCell();
+    focusedCell = td;
+    td.classList.add('cell-focused');
+    td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function revertCell(td) {
+    const tr = td.closest('tr');
+    const pk = tr && tr.dataset.pk;
+    const col = td.dataset.col;
+    if (!pk || !col) return;
+    const origVal = td.dataset.origValue;
+    const origNull = td.dataset.origNull === 'true';
+    renderCellValue(td, origNull ? null : origVal);
+    td.classList.remove('cell-dirty');
+    delete td.dataset.origValue;
+    delete td.dataset.origNull;
+    pendingChanges.delete(pk + '::' + col);
+    updateChangesBar();
+    UI.showToast('Reverted edit in column "' + col + '".', 'info');
+  }
 
   function renderCellValue(td, value) {
     const isNull = value === null || value === undefined;
@@ -301,10 +334,66 @@
     td.dataset.null = String(isNull);
     td.dataset.value = display;
     td.classList.remove('js-editing', 'opacity-60');
-    td.innerHTML = isNull
-      ? '<span class="chip chip-null js-cell-value">NULL</span>'
-      : '<span class="js-cell-value block max-w-xs truncate font-mono text-[13px]" title="' +
-        escapeHtml(display) + '">' + escapeHtml(display.length > 120 ? display.slice(0, 120) + '…' : display) + '</span>';
+
+    const isDirty = td.dataset.origValue !== undefined;
+    const origVal = td.dataset.origValue;
+    const origNull = td.dataset.origNull === 'true';
+    const dirtyTitle = isDirty
+      ? 'Staged edit: ' + (isNull ? 'NULL' : display) + ' (Saved: ' + (origNull ? 'NULL' : origVal) + ')'
+      : display;
+
+    const revertBtnHtml = isDirty
+      ? '<button type="button" class="cell-revert-btn js-revert-cell" title="Revert this field to saved value">↺</button>'
+      : '';
+
+    if (isNull) {
+      td.innerHTML = '<div class="flex items-center justify-between gap-1"><span class="chip chip-null js-cell-value">NULL</span>' + revertBtnHtml + '</div>';
+      return;
+    }
+
+    const col = td.dataset.col;
+    const c = colInfo(col);
+    const colType = (c?.type || td.dataset.type || '').toUpperCase();
+    const isBlob = td.dataset.blob === 'true' || colType.includes('BLOB') || /^0x[0-9a-f]{8,}$/i.test(display);
+    const isJson = td.dataset.json === 'true' || ((display.startsWith('{') && display.endsWith('}')) || (display.startsWith('[') && display.endsWith(']')));
+
+    if (isBlob) {
+      const bytesLen = display.startsWith('0x') ? Math.floor((display.length - 2) / 2) : display.length;
+      td.innerHTML =
+        '<div class="flex items-center justify-between gap-1 js-cell-value">' +
+        '<div class="flex items-center gap-1.5 min-w-0">' +
+        '<span class="inline-flex items-center gap-1 rounded-md bg-secondary/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-secondary">🗃️ BLOB · ' + bytesLen + ' B</span>' +
+        '<button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Inspect BLOB">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>' +
+        '</button>' +
+        '</div>' +
+        revertBtnHtml +
+        '</div>';
+    } else if (isJson) {
+      td.innerHTML =
+        '<div class="flex items-center justify-between gap-1 js-cell-value">' +
+        '<div class="flex items-center gap-1.5 min-w-0">' +
+        '<span class="inline-flex items-center gap-1 rounded-md bg-info/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-info">{ } JSON</span>' +
+        '<span class="block max-w-[140px] truncate font-mono text-[12px] text-base-content/70" title="' + escapeHtml(dirtyTitle) + '">' + escapeHtml(display) + '</span>' +
+        '<button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Inspect JSON">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>' +
+        '</button>' +
+        '</div>' +
+        revertBtnHtml +
+        '</div>';
+    } else {
+      td.innerHTML =
+        '<div class="flex items-center justify-between gap-1 group/cell">' +
+        '<span class="js-cell-value block max-w-xs truncate font-mono text-[13px]" title="' + escapeHtml(dirtyTitle) + '">' + escapeHtml(display.length > 120 ? display.slice(0, 120) + '…' : display) + '</span>' +
+        '<div class="flex items-center gap-0.5 shrink-0">' +
+        revertBtnHtml +
+        (display.length > 30 ?
+          '<button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover/cell:opacity-100 transition-opacity js-inspect-btn shrink-0" title="Inspect text">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>' +
+          '</button>' : '') +
+        '</div>' +
+        '</div>';
+    }
   }
 
   function currentCellValue(td) {
@@ -364,11 +453,7 @@
     td.classList.remove('js-editing');
   }
 
-  // ---- Staged (Neon-style) cell edits --------------------------------------
-  // Edits are buffered locally and marked in the grid; nothing is written to
-  // the database until "Apply" sends every pending cell change to the
-  // bulk-update endpoint in a single transaction. "Discard" reverts everything
-  // back to the values loaded from the server.
+  // ---- Staged cell edits --------------------------------------------------
 
   const pendingChanges = new Map(); // key: `${pk}::${col}` → staged change
 
@@ -389,13 +474,11 @@
       else rawValue = v;
     }
 
-    // Remember the server-loaded value the first time this cell is edited.
     if (td.dataset.origValue === undefined) {
       td.dataset.origValue = td.dataset.value;
       td.dataset.origNull = td.dataset.null === 'true' ? 'true' : 'false';
     }
 
-    // Reflect the staged value in the cell immediately.
     renderCellValue(td, setNull ? null : rawValue);
 
     pendingChanges.set(pk + '::' + col, {
@@ -467,19 +550,116 @@
     UI.showToast('Pending edits discarded.', 'info');
   }
 
+  function openReviewChangesModal() {
+    if (!pendingChanges.size) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 opacity-0 transition-opacity duration-200';
+    var card = document.createElement('div');
+    card.className = 'app-card w-full max-w-3xl overflow-hidden shadow-2xl border border-base-300 transform scale-95 transition-transform duration-200 max-h-[85vh] flex flex-col';
+
+    var rowsHtml = '';
+    pendingChanges.forEach((ch, key) => {
+      var oldDisplay = ch.origNull ? '<span class="chip chip-null text-[10px]">NULL</span>' : escapeHtml(ch.origValue);
+      var newDisplay = ch.setNull ? '<span class="chip chip-null text-[10px]">NULL</span>' : escapeHtml(ch.rawValue);
+      rowsHtml += '<tr class="hover:bg-base-200/50">' +
+        '<td class="font-mono text-xs font-semibold">' + escapeHtml(ch.pk) + '</td>' +
+        '<td class="font-mono text-xs text-primary font-medium">' + escapeHtml(ch.col) + '</td>' +
+        '<td class="font-mono text-xs text-error line-through opacity-80 max-w-xs truncate">' + oldDisplay + '</td>' +
+        '<td class="font-mono text-xs text-success font-medium max-w-xs truncate">' + newDisplay + '</td>' +
+        '<td class="text-right">' +
+        '<button type="button" class="btn btn-ghost btn-xs text-warning js-modal-revert-item" data-key="' + escapeHtml(key) + '">Revert</button>' +
+        '</td>' +
+        '</tr>';
+    });
+
+    card.innerHTML =
+      '<div class="flex items-center justify-between border-b border-base-200 px-6 py-4">' +
+      '  <div class="flex items-center gap-2">' +
+      '    <h3 class="text-base font-bold text-base-content">Staged Changes Diff</h3>' +
+      '    <span class="chip bg-warning/15 text-warning font-mono">' + pendingChanges.size + ' edit(s)</span>' +
+      '  </div>' +
+      '  <button type="button" class="btn btn-ghost btn-xs btn-circle js-diff-close text-base-content/40 hover:text-base-content">&times;</button>' +
+      '</div>' +
+      '<div class="flex-1 overflow-y-auto p-4">' +
+      '  <table class="table table-sm">' +
+      '    <thead><tr class="text-xs uppercase text-base-content/50"><th>Row PK</th><th>Column</th><th>Original Value</th><th>Staged Value</th><th class="text-right">Action</th></tr></thead>' +
+      '    <tbody id="diff-rows-body">' + rowsHtml + '</tbody>' +
+      '  </table>' +
+      '</div>' +
+      '<div class="flex items-center justify-between border-t border-base-200 bg-base-200/30 px-6 py-4">' +
+      '  <button type="button" id="diff-modal-discard" class="btn btn-ghost btn-sm text-error">Discard All</button>' +
+      '  <div class="flex gap-2">' +
+      '    <button type="button" class="btn btn-ghost btn-sm js-diff-close">Cancel</button>' +
+      '    <button type="button" id="diff-modal-apply" class="btn btn-primary btn-sm gap-1">' +
+      '      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>' +
+      '      Apply ' + pendingChanges.size + ' Change(s)' +
+      '    </button>' +
+      '  </div>' +
+      '</div>';
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+      overlay.classList.remove('opacity-0');
+      overlay.classList.add('opacity-100');
+      card.classList.remove('scale-95');
+      card.classList.add('scale-100');
+    });
+
+    function closeDiff() {
+      overlay.classList.remove('opacity-100');
+      overlay.classList.add('opacity-0');
+      card.classList.remove('scale-100');
+      card.classList.add('scale-95');
+      setTimeout(() => overlay.remove(), 180);
+    }
+
+    card.querySelectorAll('.js-diff-close').forEach((b) => b.addEventListener('click', closeDiff));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDiff(); });
+
+    card.querySelectorAll('.js-modal-revert-item').forEach((b) => {
+      b.addEventListener('click', () => {
+        const key = b.dataset.key;
+        const ch = pendingChanges.get(key);
+        if (ch) {
+          revertCell(ch.td);
+          b.closest('tr').remove();
+          if (!pendingChanges.size) closeDiff();
+        }
+      });
+    });
+
+    card.querySelector('#diff-modal-apply').addEventListener('click', () => {
+      closeDiff();
+      applyPending();
+    });
+
+    card.querySelector('#diff-modal-discard').addEventListener('click', async () => {
+      closeDiff();
+      await discardPending();
+    });
+  }
+
   function buildChangesBar() {
     const bar = document.createElement('div');
     bar.id = 'changes-bar';
     bar.className =
-      'fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-base-300 bg-base-100 px-4 py-2.5 shadow-lift hidden';
+      'fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur-md px-4 py-2.5 shadow-2xl transition-all duration-200 hidden';
     bar.innerHTML =
-      '<span class="text-sm font-medium text-base-content/80"><b id="changes-count" class="tabular-nums text-primary">0</b> pending change(s)</span>' +
-      '<span class="hidden text-sm text-base-content/40 sm:inline">edit cells, then apply</span>' +
+      '<div class="flex items-center gap-2">' +
+      '<span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-warning"></span></span>' +
+      '<span class="text-sm font-medium text-base-content"><b id="changes-count" class="tabular-nums text-warning font-bold">0</b> pending edit(s)</span>' +
+      '</div>' +
+      '<div class="h-4 w-px bg-base-300"></div>' +
       '<div class="flex items-center gap-1.5">' +
-      '<button type="button" id="changes-apply" class="btn btn-primary btn-sm gap-1">' +
-      '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>' +
+      '<button type="button" id="changes-review" class="btn btn-ghost btn-sm gap-1.5 text-xs font-medium">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>' +
+      'Review Diff</button>' +
+      '<button type="button" id="changes-apply" class="btn btn-primary btn-sm gap-1 text-xs font-semibold">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>' +
       'Apply</button>' +
-      '<button type="button" id="changes-discard" class="btn btn-ghost btn-sm">Discard</button>' +
+      '<button type="button" id="changes-discard" class="btn btn-ghost btn-sm text-xs text-base-content/60 hover:text-error">Discard</button>' +
       '</div>';
     document.body.appendChild(bar);
     return bar;
@@ -497,7 +677,8 @@
     const c = colInfo(td.dataset.col);
     if (!c) return;
 
-    // Stage any currently-open editor first — same as blur would.
+    setFocusedCell(td);
+
     const open = document.querySelector('.js-editing');
     if (open && open._finish) open._finish(true);
 
@@ -511,18 +692,30 @@
     td.appendChild(el);
 
     let committed = false;
-    const finish = (commit) => {
+    const finish = (commit, navigateNext) => {
       if (committed) return;
       committed = true;
       if (commit) stageCell(tr, td, el);
       else restoreCell(td);
+      if (navigateNext === 'down') navigateCell('down');
+      else if (navigateNext === 'right') navigateCell('right');
+      else if (navigateNext === 'left') navigateCell('left');
     };
     td._finish = finish;
 
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finish(true, 'down');
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        finish(true, e.shiftKey ? 'left' : 'right');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
     });
+
     if (el.tagName === 'SELECT') {
       el.addEventListener('change', () => finish(true));
     } else if (el.type === 'checkbox') {
@@ -534,17 +727,140 @@
     if (typeof el.select === 'function') el.select();
   }
 
+  function getEditableCells() {
+    return Array.prototype.slice.call(document.querySelectorAll('#main-table tbody tr td.cell-editable'));
+  }
+
+  function navigateCell(direction) {
+    if (!focusedCell) {
+      const cells = getEditableCells();
+      if (cells.length) setFocusedCell(cells[0]);
+      return;
+    }
+
+    const tr = focusedCell.closest('tr');
+    if (!tr) return;
+    const rowCells = Array.prototype.slice.call(tr.querySelectorAll('td.cell-editable'));
+    const colIdx = rowCells.indexOf(focusedCell);
+
+    if (direction === 'right') {
+      if (colIdx < rowCells.length - 1) {
+        setFocusedCell(rowCells[colIdx + 1]);
+      } else {
+        const nextTr = tr.nextElementSibling;
+        if (nextTr) {
+          const nextCells = Array.prototype.slice.call(nextTr.querySelectorAll('td.cell-editable'));
+          if (nextCells.length) setFocusedCell(nextCells[0]);
+        }
+      }
+    } else if (direction === 'left') {
+      if (colIdx > 0) {
+        setFocusedCell(rowCells[colIdx - 1]);
+      } else {
+        const prevTr = tr.previousElementSibling;
+        if (prevTr) {
+          const prevCells = Array.prototype.slice.call(prevTr.querySelectorAll('td.cell-editable'));
+          if (prevCells.length) setFocusedCell(prevCells[prevCells.length - 1]);
+        }
+      }
+    } else if (direction === 'down') {
+      const nextTr = tr.nextElementSibling;
+      if (nextTr) {
+        const nextCells = Array.prototype.slice.call(nextTr.querySelectorAll('td.cell-editable'));
+        if (nextCells[colIdx]) setFocusedCell(nextCells[colIdx]);
+      }
+    } else if (direction === 'up') {
+      const prevTr = tr.previousElementSibling;
+      if (prevTr) {
+        const prevCells = Array.prototype.slice.call(prevTr.querySelectorAll('td.cell-editable'));
+        if (prevCells[colIdx]) setFocusedCell(prevCells[colIdx]);
+      }
+    }
+  }
+
   function initInlineEditing() {
-    if (readonly) return;
     changesBar = buildChangesBar();
     changesCount = document.getElementById('changes-count');
     applyBtn = document.getElementById('changes-apply');
     const discardBtn = document.getElementById('changes-discard');
+    const reviewBtn = document.getElementById('changes-review');
+
     if (applyBtn) applyBtn.addEventListener('click', applyPending);
     if (discardBtn) discardBtn.addEventListener('click', discardPending);
+    if (reviewBtn) reviewBtn.addEventListener('click', openReviewChangesModal);
 
-    document.querySelectorAll('.js-inline-cell').forEach((td) => {
-      td.addEventListener('dblclick', () => beginEdit(td));
+    // Global click listener for table cells and single-cell revert
+    document.addEventListener('click', (e) => {
+      const revertBtn = e.target.closest('.js-revert-cell');
+      if (revertBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const td = revertBtn.closest('td');
+        if (td) revertCell(td);
+        return;
+      }
+
+      const td = e.target.closest('td.cell-editable');
+      if (td && !td.classList.contains('js-editing')) {
+        setFocusedCell(td);
+      }
+    });
+
+    if (!readonly) {
+      document.querySelectorAll('.js-inline-cell').forEach((td) => {
+        td.addEventListener('dblclick', () => beginEdit(td));
+      });
+    }
+
+    // Grid Keyboard Navigation
+    document.addEventListener('keydown', (e) => {
+      const isEditing = document.querySelector('.js-editing');
+      if (isEditing) return;
+
+      const activeTag = document.activeElement ? document.activeElement.tagName : '';
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+
+      if (!focusedCell) return;
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigateCell('right');
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigateCell('left');
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        navigateCell('down');
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        navigateCell('up');
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        navigateCell(e.shiftKey ? 'left' : 'right');
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!readonly) beginEdit(focusedCell);
+      } else if (e.key === 'Escape') {
+        clearFocusedCell();
+      } else if (e.key === ' ' && !readonly) {
+        const col = focusedCell.dataset.col;
+        const c = colInfo(col);
+        if (c && (c.type || '').toUpperCase() === 'BOOLEAN') {
+          e.preventDefault();
+          const tr = focusedCell.closest('tr');
+          const currentVal = currentCellValue(focusedCell);
+          const nextVal = (currentVal === 1 || currentVal === '1' || currentVal === true || currentVal === 'true') ? '0' : '1';
+          const fakeEl = { value: nextVal, type: 'checkbox', checked: nextVal === '1' };
+          stageCell(tr, focusedCell, fakeEl);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        const val = currentCellValue(focusedCell);
+        if (val !== null && val !== undefined) {
+          navigator.clipboard.writeText(String(val)).then(() => {
+            UI.showToast('Cell value copied.', 'info');
+          });
+        }
+      }
     });
   }
 
@@ -729,24 +1045,26 @@
 
   function renderMiniTable(ref, basePath) {
     const href = basePath + '/tables/' + encodeURIComponent(ref.table);
+    const count = ref.count ?? ref.total ?? (ref.rows ? ref.rows.length : 0);
+    const columns = ref.columns || (ref.rows && ref.rows.length > 0 ? Object.keys(ref.rows[0]).filter((k) => k !== '_rowid_') : []);
     let html =
       '<div class="flex items-center justify-between gap-2 border-b border-base-200 px-3 py-2">' +
       '<span class="min-w-0 truncate">' +
       '<a class="link link-primary font-mono text-xs font-semibold" href="' + href + '">' + escapeHtml(ref.table) + '</a>' +
-      '<span class="ml-1.5 text-xs text-base-content/45">via <code class="font-mono">' + escapeHtml(ref.from) + '</code> = <code class="font-mono">' + escapeHtml(String(ref.value)) + '</code></span>' +
+      '<span class="ml-1.5 text-xs text-base-content/45">via <code class="font-mono">' + escapeHtml(ref.from) + '</code>' + (ref.value !== undefined ? ' = <code class="font-mono">' + escapeHtml(String(ref.value)) + '</code>' : '') + '</span>' +
       '</span>' +
-      '<span class="chip ' + (ref.count ? 'chip-pk' : 'chip-type') + '">' + escapeHtml(ref.count + ' row' + (ref.count === 1 ? '' : 's')) + '</span>' +
+      '<span class="chip ' + (count ? 'chip-pk' : 'chip-type') + '">' + escapeHtml(count + ' row' + (count === 1 ? '' : 's')) + '</span>' +
       '</div>';
 
-    if (!ref.rows.length) {
+    if (!ref.rows || !ref.rows.length || !columns.length) {
       return html + '<div class="px-3 py-3 text-xs text-base-content/45">No matching rows.</div>';
     }
 
-    const thead = '<tr>' + ref.columns.map(function (c) {
+    const thead = '<tr>' + columns.map(function (c) {
       return '<th class="whitespace-nowrap px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-base-content/50"><span class="font-mono normal-case">' + escapeHtml(c) + '</span></th>';
     }).join('') + '</tr>';
     const tbody = ref.rows.map(function (r) {
-      return '<tr class="border-t border-base-200/60 hover:bg-primary/[0.04]">' + ref.columns.map(function (c) {
+      return '<tr class="border-t border-base-200/60 hover:bg-primary/[0.04]">' + columns.map(function (c) {
         const v = r[c];
         if (v === null || v === undefined) return '<td class="px-2.5 py-1.5 align-middle"><span class="text-[11px] text-base-content/40">NULL</span></td>';
         const s = String(v);
@@ -846,6 +1164,122 @@
     });
   }
 
+  // ---- Cell Inspector Trigger --------------------------------------------
+
+  function initCellInspector() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-inspect-btn');
+      if (!btn) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const td = btn.closest('td');
+      const tr = btn.closest('tr');
+      if (!td || !tr) return;
+
+      const col = td.dataset.col;
+      const isNull = td.dataset.null === 'true';
+      const val = td.dataset.value;
+      const pk = tr.dataset.pk;
+      const table = tr.dataset.table || cfg.table;
+      const isBlob = td.dataset.blob === 'true';
+      const isJson = td.dataset.json === 'true';
+      const colType = td.dataset.type || (colInfo(col)?.type ?? '');
+
+      if (window.Inspector && window.Inspector.open) {
+        window.Inspector.open({
+          table,
+          pk,
+          col,
+          colType,
+          value: val,
+          isNull,
+          isBlob,
+          isJson,
+          readonly,
+          onSave: (newVal) => {
+            if (!readonly) {
+              const fakeEl = { value: newVal, type: 'text' };
+              stageCell(tr, td, fakeEl);
+            }
+          },
+        });
+      }
+    });
+  }
+
+
+
+  // ---- Row Quick Actions --------------------------------------------------
+
+  function initRowActions() {
+    // Copy Row as JSON
+    document.querySelectorAll('.js-row-copy-json').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tr = btn.closest('tr');
+        if (!tr) return;
+        const rowData = {};
+        tr.querySelectorAll('td.cell-editable').forEach((td) => {
+          const col = td.dataset.col;
+          if (col) {
+            rowData[col] = td.dataset.null === 'true' ? null : td.dataset.value;
+          }
+        });
+        navigator.clipboard.writeText(JSON.stringify(rowData, null, 2)).then(() => {
+          UI.showToast('Row copied as JSON.', 'success');
+        });
+      });
+    });
+
+    // Copy Row as SQL INSERT
+    document.querySelectorAll('.js-row-copy-sql').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tr = btn.closest('tr');
+        if (!tr) return;
+        const cols = [];
+        const vals = [];
+        tr.querySelectorAll('td.cell-editable').forEach((td) => {
+          const col = td.dataset.col;
+          if (col) {
+            cols.push('"' + col.replace(/"/g, '""') + '"');
+            if (td.dataset.null === 'true') {
+              vals.push('NULL');
+            } else {
+              const v = td.dataset.value;
+              vals.push("'" + String(v).replace(/'/g, "''") + "'");
+            }
+          }
+        });
+        const sql = 'INSERT INTO "' + cfg.table.replace(/"/g, '""') + '" (' + cols.join(', ') + ') VALUES (' + vals.join(', ') + ');';
+        navigator.clipboard.writeText(sql).then(() => {
+          UI.showToast('SQL INSERT copied to clipboard.', 'success');
+        });
+      });
+    });
+
+    // Duplicate Row
+    document.querySelectorAll('.js-row-duplicate').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pk = btn.dataset.pk;
+        if (!pk) return;
+        window.location.href = base + '/tables/' + t + '/rows/new?duplicate=' + encodeURIComponent(pk);
+      });
+    });
+
+    // Auto-position dropdown (dropdown-top if near bottom)
+    document.querySelectorAll('.dropdown').forEach((dd) => {
+      const btn = dd.querySelector('label[role="button"]') || dd.querySelector('button');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        const rect = btn.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        dd.classList.toggle('dropdown-top', spaceBelow < 220);
+      });
+    });
+  }
+
   // ---- Init ---------------------------------------------------------------
 
   async function init() {
@@ -860,7 +1294,9 @@
       fkOptions = {};
     }
     initFilters();
+    initRowActions();
     initInlineEditing();
+    initCellInspector();
     initBulk();
     initRowDelete();
     initPageSize();

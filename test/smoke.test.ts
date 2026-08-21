@@ -28,7 +28,8 @@ function startSingleDbApp(): Promise<TestContext> {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         email TEXT,
-        role TEXT DEFAULT 'member'
+        role TEXT DEFAULT 'member',
+        avatar BLOB
       );
       CREATE TABLE posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -288,6 +289,39 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean };
     assert.equal(json.success, true);
+  });
+
+  await t.test('PUT /api/tables/:table/row/:id/blob/:column updates BLOB data with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/api/tables/users/row/1/blob/avatar`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: '0x89504e470d0a1a0a0000000d49484452', format: 'hex' }),
+    });
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { success: boolean; data: { size: number } };
+    assert.equal(json.success, true);
+    assert.equal(json.data.size, 16);
+  });
+
+  await t.test('GET /api/tables/:table/row/:id/blob/:column/meta returns BLOB metadata with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/api/tables/users/row/1/blob/avatar/meta`);
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { success: boolean; data: { mime: string; isImage: boolean; size: number; hexDump: { lines: unknown[] } } };
+    assert.equal(json.success, true);
+    assert.equal(json.data.mime, 'image/png');
+    assert.equal(json.data.isImage, true);
+    assert.equal(json.data.size, 16);
+    assert.ok(json.data.hexDump.lines.length > 0);
+  });
+
+  await t.test('GET /api/tables/:table/row/:id/blob/:column streams binary data with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/api/tables/users/row/1/blob/avatar`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/png');
+    const buf = Buffer.from(await res.arrayBuffer());
+    assert.equal(buf.length, 16);
+    assert.equal(buf[0], 0x89);
+    assert.equal(buf[1], 0x50);
   });
 
   await t.test('POST /api/tables/:table/rows/bulk-update applies batch updates with 200 OK', async () => {

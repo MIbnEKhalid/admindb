@@ -169,6 +169,45 @@ export interface DeleteRowResponseData {
 }
 export type DeleteRowResponse = ApiResponse<DeleteRowResponseData>;
 
+/** GET /api/tables/:table/row/:id/blob/:column/meta */
+export interface BlobMetaResponseData {
+  isNull: boolean;
+  mime?: string;
+  ext?: string;
+  isImage?: boolean;
+  isText?: boolean;
+  isPdf?: boolean;
+  isAudio?: boolean;
+  isVideo?: boolean;
+  size: number;
+  sizeFormatted: string;
+  hexDump?: {
+    lines: { offset: string; hex: string; ascii: string }[];
+    totalBytes: number;
+    truncated: boolean;
+  };
+  textPreview?: string | null;
+}
+export type BlobMetaResponse = ApiResponse<BlobMetaResponseData>;
+
+/** PUT /api/tables/:table/row/:id/blob/:column */
+export interface UpdateBlobRequestBody {
+  data: string;
+  format?: 'base64' | 'hex' | 'text';
+}
+export interface UpdateBlobResponseData {
+  message: string;
+  size: number;
+}
+export type UpdateBlobResponse = ApiResponse<UpdateBlobResponseData>;
+
+/** GET /api/tables/:table/ddl */
+export interface TableDdlResponseData {
+  table: string;
+  ddl: string;
+}
+export type TableDdlResponse = ApiResponse<TableDdlResponseData>;
+
 // ============================================================================
 // Bulk Operations
 // ============================================================================

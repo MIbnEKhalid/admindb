@@ -1,5 +1,6 @@
 import type { Router, Request, Response } from 'express';
 import { parseFilters, normalizeRow } from '../../utils/common';
+import { sniffMimeType, analyzeBlob } from '../../utils/datatype';
 import { toCsv, toJson } from '../../utils/csv';
 import { generateInsert, generateUpdate } from '../../sql/generator';
 import {
@@ -60,6 +61,98 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!r.success) return fail(res, r.error ?? 'Failed to load row.');
     if (!r.data) return fail(res, 'Row not found.', 404);
     ok(res, normalizeRow(r.data));
+  }));
+
+  // Serve raw BLOB binary data with auto-detected Content-Type and download support
+  router.get('/api/tables/:table/row/:id/blob/:column', wrap(async (req, res) => {
+    const info = await requireTable(db, req.params.table);
+    if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+    const where = pkWhere(info, req.params.id);
+    if (!where) return fail(res, 'Invalid primary key.', 400);
+
+    const r = await db.getRow(req.params.table, where);
+    if (!r.success) return fail(res, r.error ?? 'Failed to load row.');
+    if (!r.data) return fail(res, 'Row not found.', 404);
+
+    const colName = req.params.column;
+    const rawVal = r.data[colName];
+    if (rawVal === null || rawVal === undefined) {
+      return fail(res, 'Column value is NULL.', 404);
+    }
+
+    let buf: Buffer;
+    if (Buffer.isBuffer(rawVal) || rawVal instanceof Uint8Array) {
+      buf = Buffer.isBuffer(rawVal) ? rawVal : Buffer.from(rawVal);
+    } else if (typeof rawVal === 'string' && (/^0x[0-9a-f]*$/i.test(rawVal))) {
+      buf = Buffer.from(rawVal.slice(2), 'hex');
+    } else {
+      buf = Buffer.from(String(rawVal), 'utf8');
+    }
+
+    const mimeInfo = sniffMimeType(buf);
+
+    res.setHeader('Content-Type', mimeInfo.mime);
+    res.setHeader('Content-Length', buf.length);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    if (req.query.download === '1' || req.query.download === 'true') {
+      const filename = `${req.params.table}_${colName}_${req.params.id}.${mimeInfo.ext}`;
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    }
+
+    res.end(buf);
+  }));
+
+  // Return BLOB metadata and formatted hex dump
+  router.get('/api/tables/:table/row/:id/blob/:column/meta', wrap(async (req, res) => {
+    const info = await requireTable(db, req.params.table);
+    if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+    const where = pkWhere(info, req.params.id);
+    if (!where) return fail(res, 'Invalid primary key.', 400);
+
+    const r = await db.getRow(req.params.table, where);
+    if (!r.success) return fail(res, r.error ?? 'Failed to load row.');
+    if (!r.data) return fail(res, 'Row not found.', 404);
+
+    const colName = req.params.column;
+    const rawVal = r.data[colName];
+    if (rawVal === null || rawVal === undefined) {
+      return ok(res, { isNull: true, size: 0, sizeFormatted: '0 B' });
+    }
+
+    const meta = analyzeBlob(rawVal as Uint8Array | Buffer | string);
+    ok(res, { isNull: false, ...meta });
+  }));
+
+  // Update BLOB binary value directly (accepts Base64 or Hex payload)
+  router.put('/api/tables/:table/row/:id/blob/:column', wrap(async (req, res) => {
+    const info = await requireTable(db, req.params.table);
+    if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
+    const where = pkWhere(info, req.params.id);
+    if (!where) return fail(res, 'Invalid primary key.', 400);
+
+    const colName = req.params.column;
+    let buf: Buffer;
+
+    if (req.body?.data !== undefined) {
+      const format = req.body.format || 'base64';
+      if (format === 'base64') {
+        // Strip data:image/...;base64, prefix if present
+        const base64Str = String(req.body.data).replace(/^data:[^;]+;base64,/, '');
+        buf = Buffer.from(base64Str, 'base64');
+      } else if (format === 'hex') {
+        const hexStr = String(req.body.data).replace(/^0x/i, '');
+        buf = Buffer.from(hexStr, 'hex');
+      } else {
+        buf = Buffer.from(String(req.body.data), 'utf8');
+      }
+    } else {
+      return fail(res, 'Payload data is required.');
+    }
+
+    const updateRes = await db.updateRow(req.params.table, [{ column: colName, value: buf }], where);
+    if (!updateRes.success) return fail(res, updateRes.error ?? 'Failed to update BLOB.');
+    ok(res, { message: `Updated BLOB in column "${colName}".`, size: buf.length });
   }));
 
   // Preview generated INSERT SQL without executing
@@ -191,7 +284,7 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
 
     const refInfoR = await db.getReferencingTables(req.params.table);
     const referencing = refInfoR.data ?? [];
-    const results: { table: string; from: string; to: string; rows: Record<string, unknown>[]; total: number }[] = [];
+    const results: { table: string; from: string; to: string; value?: unknown; columns?: string[]; rows: Record<string, unknown>[]; count?: number; total: number }[] = [];
 
     for (const item of referencing) {
       for (const ref of item.refs) {
@@ -201,11 +294,16 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
         if (val == null) continue;
         const fkR = await db.getRowsByFk(item.table, ref.from, val);
         if (fkR.success && fkR.data) {
+          const rows = fkR.data.rows.map(normalizeRow);
+          const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
           results.push({
             table: item.table,
             from: ref.from,
             to: targetCol,
-            rows: fkR.data.rows.map(normalizeRow),
+            value: val,
+            columns,
+            rows,
+            count: fkR.data.total,
             total: fkR.data.total,
           });
         }

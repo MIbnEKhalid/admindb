@@ -56,7 +56,11 @@
         {{#if browseRoot}}
           <span class="font-medium text-base-content/60">Browsing is limited to <code class="font-mono">{{browseRoot}}</code>.</span>
         {{/if}}
-        <span class="font-medium text-warning">This server has no authentication — treat it like a remote filesystem &amp; database shell.</span>
+        {{#if authEnabled}}
+          <span class="font-medium text-success/80">Protected by AdminDB authentication.</span>
+        {{else}}
+          <span class="font-medium text-warning">Authentication is disabled — ensure access is restricted in untrusted networks.</span>
+        {{/if}}
       </p>
     </div>
   {{else}}

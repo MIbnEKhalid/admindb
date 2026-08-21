@@ -12,9 +12,13 @@ database, e.g. `/api/app.db/tables`.
 | GET    | `/api/tables/:table/info`                | Column + FK metadata, PK columns |
 | GET    | `/api/tables/:table/fk-options`          | Values for FK dropdowns          |
 | GET    | `/api/tables/:table/rows?page&limit&f`   | Paginated rows (`f` = URL-encoded JSON filters — legacy strings like `{"age":">35"}` or structured conditions like `{"balance":{"op":"gte","value":"100"}}`) |
+| GET    | `/api/tables/:table/rows/count?f=`       | Filtered row count               |
 | GET    | `/api/tables/:table/row/:id`             | Single row by (encoded) PK       |
 | GET    | `/api/tables/:table/rows/:id/references` | Rows in other tables whose foreign keys reference this row |
-| POST   | `/api/tables/:table/rows`                | Insert row                       |
+| GET    | `/api/tables/:table/row/:id/blob/:column` | Stream binary BLOB with MIME detection (add `?download=1` to force download) |
+| GET    | `/api/tables/:table/row/:id/blob/:column/meta` | Inspect BLOB metadata, MIME sniffing & 3-column hex dump |
+| PUT    | `/api/tables/:table/row/:id/blob/:column` | Update BLOB binary value (`{ data: base64/hex, format?: 'base64'|'hex'|'text' }`) |
+| POST   | `/api/tables/:table/rows`                | Insert row (or batch of rows with `{ rows: [...] }`) |
 | POST   | `/api/tables/:table/rows/generate`       | Generate INSERT SQL (no execute) |
 | POST   | `/api/tables/:table/rows/import`         | Import CSV (`{ csv }`, header row must match columns) |
 | GET    | `/api/tables/:table/export?format=`      | Download all rows as `csv` or `json` |
@@ -26,8 +30,10 @@ database, e.g. `/api/app.db/tables`.
 | POST   | `/api/tables/:table/rows/bulk-export`    | Export only the selected rows as `csv`/`json` (`{ ids, format }`) |
 | POST   | `/api/tables/:table/rows/bulk-update`    | Apply staged inline edits (`{ updates: [{ id, values?, nulls? }] }`; transactional) |
 | GET    | `/api/tables/:table/seed/config`         | Per-column generator strategies + detected defaults |
+| GET    | `/api/tables/:table/seed/plan`           | Detect intelligent seed plan heuristics |
+| POST   | `/api/tables/:table/seed/preview`        | Generate preview sample rows for grid without executing |
 | POST   | `/api/tables/:table/seed/generate`       | Generate seed INSERT SQL without executing (`{ count, plan }`) |
-| POST   | `/api/tables/:table/seed`                | Generate and insert seed rows transactionally (`{ count, plan }`) |
+| POST   | `/api/tables/:table/seed`                | Generate and insert seed rows transactionally (`{ count, plan, truncate? }`) |
 
 ## Schema & indexes
 
@@ -36,9 +42,10 @@ database, e.g. `/api/app.db/tables`.
 | POST   | `/api/tables`                        | Create table                     |
 | POST   | `/api/tables/generate`               | Generate CREATE SQL (no execute) |
 | GET    | `/api/tables/:table/schema`          | Full schema (constraints, indexes, FK refs) |
+| GET    | `/api/tables/:table/ddl`             | Get formatted SQLite `CREATE TABLE` and `INDEX` DDL |
 | POST   | `/api/tables/:table/rename`          | Rename the table                 |
 | POST   | `/api/tables/:table/columns`         | Add a column                     |
-| PUT    | `/api/tables/:table/columns/:column` | Rename a column                  |
+| PUT    | `/api/tables/:table/columns/:column` | Modify/rename a column           |
 | DELETE | `/api/tables/:table/columns/:column` | Drop a column (safety-checked)   |
 | DELETE | `/api/tables/:table`                 | Drop the table (safety-checked)  |
 | POST   | `/api/tables/:table/indexes`         | Create an index (`{ name?, columns[], unique? }`) |
@@ -94,36 +101,36 @@ Pass `auth: false`, CLI `--no-auth`, or `ADMINDB_AUTH=false` to turn off built-i
 
 > ⚠️ **Notice**: The native authentication system is designed for basic protection. In production environments, place AdminDB behind an authenticated gateway or use custom authentication middleware.
 
-## TypeScript API Types
+## TypeScript API Types & Helpers
 
-All request and response types are exported by the package entry point for client/SDK consumers:
+All request and response types, data inspection helpers, and serverless handlers are exported by the package entry point:
 
 ```ts
-import type {
-  ApiResponse,
-  ApiSuccessResponse,
-  ApiErrorResponse,
-  GetRowsResponse,
-  GetRowsResponseData,
-  TableInfoResponse,
-  TableInfoResponseData,
-  ExecuteQueryResponse,
-  ExecuteQueryResponseData,
-  BulkDeleteResponse,
-  BulkUpdateResponse,
-  SeedConfigResponse,
-  SeedGenerateResponse,
-  ListDatabasesResponse,
-  ListFsResponse,
+import {
+  createRouter,
+  createServerlessHandler,
+  createLambdaHandler,
+  sniffMimeType,
+  generateHexDump,
+  analyzeBlob,
+  isJsonString,
+  formatJsonSafely,
+  type ApiResponse,
+  type GetRowsResponseData,
+  type BlobMetaResponseData,
+  type TableDdlResponseData,
 } from 'admindb';
 
-async function fetchTableRows(table: string): Promise<GetRowsResponseData> {
-  const res = await fetch(`/api/tables/${table}/rows`);
-  const json: GetRowsResponse = await res.json();
-  if (!json.success) {
-    throw new Error(json.error);
-  }
-  return json.data;
-}
+// 1. Sniff MIME type from binary magic bytes
+const analysis = sniffMimeType(imageBuffer);
+console.log(analysis.mime, analysis.ext, analysis.isImage);
+
+// 2. Generate a 3-column hex dump
+const dump = generateHexDump(binaryBuffer, 1024);
+dump.lines.forEach((l) => console.log(`${l.offset}  ${l.hex}  |${l.ascii}|`));
+
+// 3. Serverless request handler (Vercel, AWS Lambda, Cloudflare, etc.)
+export default createServerlessHandler({ dbPath: './app.db' });
 ```
+
 

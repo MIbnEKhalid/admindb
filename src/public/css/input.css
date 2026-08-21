@@ -88,16 +88,23 @@
 
   /* Inline (spreadsheet-style) cell editing */
   .js-inline-cell {
-    cursor: text;
+    cursor: cell;
     position: relative;
+    transition: background-color 0.12s ease, box-shadow 0.12s ease;
   }
   .js-inline-cell:hover {
     box-shadow: inset 0 0 0 1px oklch(var(--p) / 0.45);
   }
+  .js-inline-cell.cell-focused {
+    box-shadow: inset 0 0 0 2px oklch(var(--p) / 0.95);
+    background: color-mix(in oklab, oklch(var(--b1)) 85%, oklch(var(--p) / 0.14));
+    z-index: 5;
+  }
   .js-inline-cell.js-editing {
-    box-shadow: inset 0 0 0 2px oklch(var(--p) / 0.85);
+    box-shadow: inset 0 0 0 2px oklch(var(--p) / 0.95);
     cursor: default;
-    background: color-mix(in oklab, oklch(var(--b1)) 88%, oklch(var(--p) / 0.16));
+    background: color-mix(in oklab, oklch(var(--b1)) 88%, oklch(var(--p) / 0.18));
+    z-index: 10;
   }
   .js-inline-cell.js-editing .js-cell-value {
     display: none;
@@ -106,22 +113,78 @@
     opacity: 0.55;
   }
 
-  /* Pending (staged) edit — highlighted until the user presses Apply.
-     Uses the theme's base color (--b1) + a primary tint so it renders
-     correctly in both the light and dark (black) themes. */
+  /* Pending (staged) edit — highlighted until the user presses Apply. */
   .js-inline-cell.cell-dirty {
-    background: color-mix(in oklab, oklch(var(--b1)) 90%, oklch(var(--p) / 0.14));
-    box-shadow: inset 0 0 0 1px oklch(var(--p) / 0.75);
+    background: color-mix(in oklab, oklch(var(--b1)) 88%, oklch(var(--wa) / 0.18));
+    box-shadow: inset 0 0 0 1.5px oklch(var(--wa) / 0.85);
   }
   .js-inline-cell.cell-dirty::after {
     content: '';
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: 2px;
+    right: 2px;
     width: 6px;
     height: 6px;
     border-radius: 999px;
-    background: oklch(var(--p));
+    background: oklch(var(--wa));
+    box-shadow: 0 0 6px oklch(var(--wa) / 0.8);
+  }
+
+  .cell-revert-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    color: oklch(var(--wa));
+    background: transparent;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+    border: none;
+    cursor: pointer;
+  }
+  .cell-revert-btn:hover {
+    background: oklch(var(--wa) / 0.2);
+  }
+  td:hover .cell-revert-btn,
+  tr:hover .cell-revert-btn {
+    opacity: 1;
+  }
+
+  /* Compact table mode */
+  .table-compact th,
+  .table-compact td {
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+    font-size: 12px !important;
+  }
+
+  /* Sticky Actions Column */
+  .sticky-col-actions {
+    @apply sticky right-0 bg-base-100/95 backdrop-blur-sm;
+    box-shadow: -3px 0 6px -2px rgba(0,0,0,0.06);
+    z-index: 10;
+  }
+  [data-theme='admindbDark'] .sticky-col-actions {
+    box-shadow: -3px 0 8px -2px rgba(0,0,0,0.35);
+  }
+
+  /* Elevate table row and action cell stacking context when dropdown is active */
+  tr:has(.dropdown:focus-within),
+  tr:focus-within {
+    position: relative;
+    z-index: 40;
+  }
+  td.sticky-col-actions:has(.dropdown:focus-within),
+  td.sticky-col-actions:focus-within {
+    z-index: 50;
+  }
+  .dropdown:focus-within {
+    z-index: 50;
+  }
+  .dropdown:focus-within > .dropdown-content {
+    z-index: 100 !important;
   }
 
   /* Sortable column headers */
