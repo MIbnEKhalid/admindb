@@ -1,10 +1,10 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import type { SqliteDatabase, TableInfoData } from '../db/database';
-import type { Logger } from '../logger';
+import type { Logger } from '../utils/logger';
 import { generateSqlDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
-import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS } from '../util';
-import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/generator';
+import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS } from '../utils/common';
+import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/index';
 
 interface PageContext {
   db: SqliteDatabase;
@@ -28,7 +28,7 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
   return rawRows.map((row) => ({
     cells: info.columns.map((c) => {
       const v = normalizeCell(row[c.name]);
-      return { name: c.name, value: v, isNull: v === null || v === undefined, display: v == null ? '' : String(v) };
+      return { name: c.name, value: v, isNull: v == null, display: v == null ? '' : String(v) };
     }),
     pkEncoded: encodePk(pkCols.map((c) => row[c])),
   }));
@@ -42,23 +42,34 @@ export function registerPages(router: Router, ctx: PageContext): void {
   };
 
   // Home / browse overview.
-  router.get('/', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const tables = await db.listTables();
       const allNames = (tables.data ?? []).map((t) => t.name);
       const names = allNames.filter((n) => !n.startsWith('_'));
       const internalNames = allNames.filter((n) => n.startsWith('_'));
+
+      const [stats, saved] = await Promise.all([
+        Promise.all(names.map(async (name) => {
+          const [c, info] = await Promise.all([db.getRowCount(name), db.getTableInfo(name)]);
+          return {
+            name,
+            count: c.success ? (c.data as number) : 0,
+            cols: info.success ? (info.data?.columns.length ?? 0) : 0,
+          };
+        })),
+        db.listSavedQueries(),
+      ]);
+
       const counts: Record<string, number> = {};
       const cols: Record<string, number> = {};
       let totalRows = 0;
-      for (const name of names) {
-        const c = await db.getRowCount(name);
-        counts[name] = c.success ? (c.data as number) : 0;
-        totalRows += counts[name];
-        const info = await db.getTableInfo(name);
-        cols[name] = info.success ? (info.data?.columns.length ?? 0) : 0;
+      for (const s of stats) {
+        counts[s.name] = s.count;
+        cols[s.name] = s.cols;
+        totalRows += s.count;
       }
-      const saved = await db.listSavedQueries();
+
       res.render('pages/home', {
         title: 'Home',
         tables: names,
@@ -90,13 +101,18 @@ export function registerPages(router: Router, ctx: PageContext): void {
       const filters = parseFilters(req.query.f);
       const filterQS = filtersToQS(filters);
 
-      const countR = await db.getRowCount(table, filters);
-      const rowsR = await db.getRows(table, { page, limit: pageSize, orderBy, orderDir, filters });
+      const [countR, rowsR, refsR] = await Promise.all([
+        db.getRowCount(table, filters),
+        db.getRows(table, { page, limit: pageSize, orderBy, orderDir, filters }),
+        db.getReferencingTables(table),
+      ]);
+
       const count = countR.success ? (countR.data as number) : 0;
       const rawRows = (rowsR.data ?? []) as Record<string, unknown>[];
       const pages = Math.max(1, Math.ceil(count / pageSize));
       const basePath = String(res.locals.basePath ?? '');
       const sizes = [25, 50, 100, 250];
+
       const colHeaders = info.data.columns.map((c) => {
         const active = c.name === orderBy;
         const nextDir = active ? (orderDir === 'asc' ? 'desc' : 'asc') : 'asc';
@@ -111,10 +127,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
         };
       });
 
-      // Every table with a foreign key pointing at this one gets its own column
-      // at the end of the grid; each cell shows how many of its rows reference
-      // that particular row (click to expand the referencing rows inline).
-      const refsR = await db.getReferencingTables(table);
       const refColumns = (refsR.data ?? [])
         .filter((r) => !r.table.startsWith('_'))
         .map((rt) => {
@@ -122,22 +134,24 @@ export function registerPages(router: Router, ctx: PageContext): void {
           return { table: rt.table, from: ref?.from ?? '', to: ref?.to ?? '' };
         });
 
-      // Per-row reference counts: one grouped query per referencing table.
-      const countMap = new Map<string, Map<string, number>>();
-      for (const col of refColumns) {
-        const values = rawRows
-          .map((r) => r[col.to])
-          .filter((v): v is string | number => v !== null && v !== undefined);
-        if (!values.length) continue;
-        const placeholders = values.map(() => '?').join(', ');
-        const cR = await db.all(
-          `SELECT ${quoteIdentifier(col.from)} AS fk, COUNT(*) AS c FROM ${quoteIdentifier(col.table)} WHERE ${quoteIdentifier(col.from)} IN (${placeholders}) GROUP BY ${quoteIdentifier(col.from)}`,
-          values,
-        );
-        const map = new Map<string, number>();
-        for (const row of (cR.data ?? []) as Record<string, unknown>[]) map.set(String(row.fk), Number(row.c));
-        countMap.set(col.table, map);
-      }
+      // Per-row reference counts: parallel query per referencing table.
+      const countEntries = await Promise.all(
+        refColumns.map(async (col) => {
+          const values = rawRows
+            .map((r) => r[col.to])
+            .filter((v): v is string | number => v !== null && v !== undefined);
+          if (!values.length) return [col.table, new Map<string, number>()] as const;
+          const placeholders = values.map(() => '?').join(', ');
+          const cR = await db.all(
+            `SELECT ${quoteIdentifier(col.from)} AS fk, COUNT(*) AS c FROM ${quoteIdentifier(col.table)} WHERE ${quoteIdentifier(col.from)} IN (${placeholders}) GROUP BY ${quoteIdentifier(col.from)}`,
+            values,
+          );
+          const map = new Map<string, number>();
+          for (const row of (cR.data ?? []) as Record<string, unknown>[]) map.set(String(row.fk), Number(row.c));
+          return [col.table, map] as const;
+        }),
+      );
+      const countMap = new Map(countEntries);
 
       const rows = buildDisplayRows(rawRows, info.data).map((dr, i) => {
         const raw = rawRows[i];
@@ -147,8 +161,8 @@ export function registerPages(router: Router, ctx: PageContext): void {
             table: col.table,
             from: col.from,
             to: col.to,
-            value: v === null || v === undefined ? '' : String(v),
-            count: v === null || v === undefined ? 0 : (countMap.get(col.table)?.get(String(v)) ?? 0),
+            value: v == null ? '' : String(v),
+            count: v == null ? 0 : (countMap.get(col.table)?.get(String(v)) ?? 0),
           };
         });
         return { ...dr, refs };
@@ -193,11 +207,10 @@ export function registerPages(router: Router, ctx: PageContext): void {
   router.get('/tables/:table/schema', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
-      const info = await db.getTableInfo(table);
+      const [info, schema] = await Promise.all([db.getTableInfo(table), db.getSchema(table)]);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
       }
-      const schema = await db.getSchema(table);
       if (!schema.success || !schema.data) {
         return notFound(res, schema.error ?? 'Failed to load schema.');
       }
@@ -214,17 +227,15 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Data generator / seeder: pick per-column strategies and row count, then
-  // insert generated rows (or preview the SQL).
+  // Data generator / seeder.
   router.get('/tables/:table/seed', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
-      const info = await db.getTableInfo(table);
+      const [info, countRes] = await Promise.all([db.getTableInfo(table), db.getRowCount(table)]);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
       }
-      const countRes = await db.all(`SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)}`);
-      const rowCount = countRes.success && countRes.data && countRes.data[0] ? (countRes.data[0] as { c?: number }).c ?? 0 : 0;
+      const rowCount = countRes.success ? countRes.data : 0;
       const columns = buildColumnConfigs(info.data);
       res.locals.currentTable = table;
       res.render('pages/seed', {
@@ -241,7 +252,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Insert form (dynamic form is built client-side from API metadata).
+  // Insert form.
   router.get('/tables/:table/rows/new', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;

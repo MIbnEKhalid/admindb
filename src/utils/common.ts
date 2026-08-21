@@ -1,4 +1,6 @@
-/** Small shared helpers used across the server. */
+/**
+ * Common shared utility functions used across AdminDB.
+ */
 
 import path from 'node:path';
 
@@ -18,8 +20,17 @@ export function isPathWithinRoot(root: string, p: string): boolean {
 
 /** Operators understood by the structured (type-aware) filter conditions. */
 export type FilterOp =
-  | 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte'
-  | 'like' | 'prefix' | 'between' | 'null' | 'notnull';
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'like'
+  | 'prefix'
+  | 'between'
+  | 'null'
+  | 'notnull';
 
 /** A single structured filter condition produced by the type-aware filter form. */
 export interface FilterCondition {
@@ -160,4 +171,19 @@ export function coerceFormValue(raw: unknown, columnType: string): unknown {
   const s = String(raw);
   if (s === '') return null;
   return s;
+}
+
+/** Format byte size to human readable string (e.g. 1.2 MB). */
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+/** Truncate a string with an ellipsis if it exceeds maxLength. */
+export function truncate(str: string, maxLength: number): string {
+  if (!str || str.length <= maxLength) return str;
+  return `${str.slice(0, maxLength)}…`;
 }

@@ -11,8 +11,8 @@
  * `src/cli.ts`.
  */
 export { createRouter, type AppOptions } from './app';
-export { createLogger, type Logger, type LogLevel } from './logger';
-export { c, supportsColor } from './colors';
+export { createLogger, type Logger, type LogLevel } from './utils/logger';
+export { c, supportsColor } from './utils/colors';
 export {
   SqliteDatabase,
   type Result,
@@ -28,7 +28,7 @@ export {
   type FilterCondition,
   type FilterValue,
   type SQLInputValue,
-} from './db/database';
+} from './db/index';
 export { DbManager, type DbManagerOptions, type DatabaseEntry } from './db/manager';
 export {
   type ColumnDef,
@@ -40,7 +40,7 @@ export {
   type GeneratorStrategyId,
   type StrategyDescriptor,
   type GenerateResult,
-} from './data/generator';
+} from './data/index';
 
 export {
   type AuthConfig,
@@ -53,7 +53,7 @@ export {
   DEFAULT_USERNAME,
   DEFAULT_PASSWORD_HASH,
   SESSION_COOKIE_NAME,
-} from './auth';
+} from './auth/index';
 
 // Export all published REST API response and request types
 export * from './types/api';

@@ -3,18 +3,17 @@ import path from 'node:path';
 import { engine } from 'express-handlebars';
 import { SqliteDatabase } from './db/database';
 import { DbManager } from './db/manager';
-import { createLogger, type Logger, type LogLevel } from './logger';
+import { createLogger, type Logger, type LogLevel } from './utils/logger';
 import { registerPages } from './routes/pages';
-import { registerApi } from './routes/api';
+import { registerApi } from './routes/api/index';
 import { registerDatabasesRoutes } from './routes/databases';
-import { getPackageVersion } from './args';
-import { errorMessage } from './util';
+import { getPackageVersion } from './cli/args';
+import { errorMessage } from './utils/common';
 import {
   resolveAuthConfig,
   createAuthMiddleware,
   registerAuthRoutes,
   type AuthConfig,
-  type ResolvedAuthConfig,
 } from './auth';
 
 /** Installed package version, exposed to every template as `{{version}}`. */
@@ -75,7 +74,7 @@ export function createRouter(options: AppOptions = {}): express.Express {
   return options.manager ? createManagerApp(options) : createSingleDbApp(options);
 }
 
-function setupViewEngine(app: express.Express, logger: Logger): void {
+function setupViewEngine(app: express.Express, _logger: Logger): void {
   app.engine(
     'hbs',
     engine({
@@ -270,4 +269,3 @@ function createManagerApp(options: AppOptions): express.Express {
   addErrorHandlers(app, logger);
   return app;
 }
-

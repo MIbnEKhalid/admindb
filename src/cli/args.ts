@@ -5,9 +5,9 @@
  * manage a folder of databases, and more. Every flag has a matching
  * environment variable; flags always win over the environment.
  */
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { LogLevel } from './logger';
+import type { LogLevel } from '../utils/logger';
 
 const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
@@ -90,9 +90,19 @@ export function helpText(): string {
 
 function packageVersion(): string {
   try {
-    const raw = readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8');
-    const pkg = JSON.parse(raw) as { version?: string };
-    return pkg.version ?? '';
+    const candidates = [
+      path.join(__dirname, '..', '..', 'package.json'),
+      path.join(__dirname, '..', 'package.json'),
+      path.join(__dirname, 'package.json'),
+    ];
+    for (const p of candidates) {
+      if (existsSync(p)) {
+        const raw = readFileSync(p, 'utf8');
+        const pkg = JSON.parse(raw) as { version?: string };
+        if (pkg.version) return pkg.version;
+      }
+    }
+    return '';
   } catch {
     return '';
   }

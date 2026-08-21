@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifySql } from '../sql/classifier';
+import { classifySql } from '../src/sql/classifier';
 
 test('classifies SELECT statements as select', () => {
   assert.equal(classifySql('SELECT * FROM users').kind, 'select');

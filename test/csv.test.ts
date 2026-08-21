@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toCsv, toJson, parseCsv, csvEscape } from '../csv';
+import { toCsv, toJson, parseCsv, csvEscape } from '../src/utils/csv';
 
 test('csvEscape quotes fields with commas, quotes or newlines', () => {
   assert.equal(csvEscape('plain'), 'plain');

@@ -22,7 +22,7 @@ npm run build      # TypeScript → dist + Tailwind CSS
 ```
 
 `npm test` compiles TypeScript to `dist/` and runs the `node:test` suite
-(`src/test/*.test.ts`) covering the SQL generator (INSERT / UPDATE / CREATE
+(`test/*.test.ts`) covering the SQL generator (INSERT / UPDATE / CREATE
 output, type mapping, quoting, rejection of unsupported types), the SQL
 classifier, CSV parsing and serialization, row filters (legacy and structured
 conditions), the data generator / seeder, the database layer (pagination,
@@ -32,15 +32,16 @@ CLI argument parsing, and shared utilities.
 ## Project layout
 
 - `src/app.ts` — Express app assembly, Handlebars engine + helpers, locals.
-- `src/cli.ts` / `src/args.ts` — standalone server + CLI flag parsing.
-- `src/db/` — `database.ts` (queries, filters, transactions), `manager.ts`
-  (multi-database), `export.ts`.
-- `src/routes/` — `pages.ts` (server-rendered pages), `api.ts` (JSON API),
-  `databases.ts` (manager-mode file browser).
+- `src/cli/` — standalone server, CLI runner, argument parsing, config.
+- `src/auth/` — authentication, crypto tokens, scrypt password hashing, middleware, routes.
+- `src/db/` — database wrapper, introspection, rebuild migrations, manager, export.
+- `src/routes/` — `pages.ts` (server-rendered pages), `databases.ts` (manager-mode file browser), `api/` (modular REST API).
 - `src/sql/` — `classifier.ts`, `generator.ts` (safe SQL generation).
-- `src/data/generator.ts` — the seed data generator.
+- `src/data/` — datasets, strategies, plan detection heuristics, row generator engine.
+- `src/utils/` — common helpers, CSV serializers/parsers, ANSI colors, logger.
 - `src/public/` — frontend: vanilla JS (`js/`), Tailwind/DaisyUI CSS (`css/`).
 - `src/views/` — Handlebars templates (`layouts/`, `pages/`, `partials/`).
+- `test/` — automated test suites (`npm test`).
 
 ## Guidelines
 
@@ -52,7 +53,7 @@ CLI argument parsing, and shared utilities.
 - **Read-only mode must stay enforced.** New write routes must return `403` in
   read-only mode and be kept out of the write-control UI. "Get query" / preview
   endpoints must never execute — they only return SQL strings.
-- **Add tests.** New behaviour goes in `src/test/` so `npm test` covers it.
+- **Add tests.** New behaviour goes in `test/` so `npm test` covers it.
   Note: new files under `src/test/` may not show as untracked (see `.gitignore`)
   — stage them with `git add -f` if needed.
 - **Update the docs.** User-visible changes belong in `README.md`; endpoint

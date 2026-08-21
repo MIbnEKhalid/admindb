@@ -15,7 +15,7 @@ import {
   quoteIdentifier,
   sqlValue,
   mapColumnType,
-} from '../sql/generator';
+} from '../src/sql/generator';
 
 test('quoteIdentifier quotes and escapes double quotes', () => {
   assert.equal(quoteIdentifier('user name'), '"user name"');

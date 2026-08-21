@@ -1,4 +1,4 @@
-import type { LogLevel } from './logger';
+import type { LogLevel } from '../utils/logger';
 
 export interface Config {
   host: string;
@@ -50,7 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           .filter(Boolean)
       : undefined,
     basePath: String(basePathRaw).replace(/\/+$/, ''),
-    logLevel: (logLevelRaw as LogLevel),
+    logLevel: logLevelRaw as LogLevel,
     readonly: ['1', 'true', 'yes', 'on'].includes(String(readonlyRaw).trim().toLowerCase()),
     auth: !authDisabled,
     authUsername: (env.ADMINDB_USERNAME ?? env.ADMINDB_USER) ? String(env.ADMINDB_USERNAME ?? env.ADMINDB_USER).trim() : undefined,

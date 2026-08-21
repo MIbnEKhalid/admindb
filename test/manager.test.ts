@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DbManager } from '../db/manager';
-import { SqliteDatabase } from '../db/database';
-import { createLogger } from '../logger';
+import { DbManager } from '../src/db/manager';
+import { SqliteDatabase } from '../src/db/database';
+import { createLogger } from '../src/utils/logger';
 
 function tempRoot(): string {
   return mkdtempSync(path.join(tmpdir(), 'admindb-test-'));

@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { SqliteDatabase } from './database';
-import { createLogger, type Logger } from '../logger';
-import { errorMessage } from '../util';
+import { createLogger, type Logger } from '../utils/logger';
+import { errorMessage } from '../utils/common';
 
 const DB_EXTENSIONS = ['.db', '.sqlite', '.sqlite3'];
 

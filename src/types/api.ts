@@ -24,7 +24,7 @@ import type {
   GeneratorStrategyId,
   StrategyDescriptor,
   StrategyCategory,
-} from '../data/generator';
+} from '../data/index';
 
 // Re-export common domain types for convenience
 export type {

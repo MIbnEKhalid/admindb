@@ -1,10 +1,23 @@
+# Dependencies
 node_modules/
+
+# Build artifacts
 dist/
+
+# SQLite database files and logs
 *.db
 *.db-wal
 *.db-shm
-src/public/css/app.css
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
 *.log
-.DS_Store
 
-test/
+# Environment and OS files
+.env
+.env.*
+.DS_Store
+Thumbs.db

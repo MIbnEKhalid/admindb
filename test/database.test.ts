@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { SqliteDatabase } from '../db/database';
-import { createLogger } from '../logger';
-import { parseFilters, filtersToQS } from '../util';
+import { SqliteDatabase } from '../src/db/database';
+import { createLogger } from '../src/utils/logger';
+import { parseFilters, filtersToQS } from '../src/utils/common';
 
 function openDb(): { db: SqliteDatabase; cleanup: () => void } {
   const root = mkdtempSync(path.join(tmpdir(), 'admindb-db-test-'));
@@ -577,4 +577,3 @@ test('modifyColumn and renameColumn properly update indexes and preserve table U
     cleanup();
   }
 });
-
