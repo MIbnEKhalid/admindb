@@ -1,6 +1,6 @@
 {
   "name": "admindb",
-  "version": "1.2.1",
+  "version": "2.0.0",
   "description": "Browser-based SQLite & PostgreSQL database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
