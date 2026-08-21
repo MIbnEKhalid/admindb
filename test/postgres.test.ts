@@ -175,17 +175,155 @@ test('DbManager supports dynamic addConnection and safe removal for PostgreSQL',
 
 test('PostgresDatabase auto-enables SSL for remote cloud hosts (e.g. Neon, Supabase, AWS RDS)', () => {
   const logger = createLogger('error');
+  
+  // Neon host
   const dbNeon = new PostgresDatabase('postgresql://user:secret@ep12oler.ap-southeast-1.aws.neon.tech/mbk_db', logger, {
     readonly: true,
   });
-
-  // Verify sanitized path and initialized instance
   assert.equal(dbNeon.dialect, 'postgres');
   assert.ok(dbNeon.path.includes('ep12oler.ap-southeast-1.aws.neon.tech'));
   assert.ok(dbNeon.path.includes('****'));
-
   dbNeon.close();
+
+  // Supabase host
+  const dbSupabase = new PostgresDatabase('postgresql://postgres:secret@db.abcdefgh.supabase.co:5432/postgres', logger, {
+    readonly: true,
+  });
+  assert.equal(dbSupabase.dialect, 'postgres');
+  assert.ok(dbSupabase.path.includes('db.abcdefgh.supabase.co'));
+  assert.ok(dbSupabase.path.includes('****'));
+  dbSupabase.close();
+
+  // Explicit sslmode=disable on remote host
+  const dbDisabled = new PostgresDatabase('postgresql://user:secret@myhost.net:5432/mydb?sslmode=disable', logger, {
+    readonly: true,
+  });
+  assert.equal(dbDisabled.dialect, 'postgres');
+  dbDisabled.close();
+
+  // Explicit sslmode=require
+  const dbRequire = new PostgresDatabase('postgresql://user:secret@localhost:5432/mydb?sslmode=require', logger, {
+    readonly: true,
+  });
+  assert.equal(dbRequire.dialect, 'postgres');
+  dbRequire.close();
 });
+
+test('DbManager manages per-database Read-only state for PostgreSQL connections', () => {
+  const manager = new DbManager({});
+  const id = manager.addConnection('production', 'postgresql://postgres:pass@localhost:5432/proddb', true);
+  
+  assert.equal(manager.isDbReadOnly(id), true);
+  
+  // Toggle to writable
+  manager.setReadonly(id, false);
+  assert.equal(manager.isDbReadOnly(id), false);
+
+  // Toggle back to read-only
+  manager.setReadonly(id, true);
+  assert.equal(manager.isDbReadOnly(id), true);
+});
+
+const PG_TEST_URL =
+  process.env.TEST_POSTGRES_URL ||
+  process.env.DATABASE_URL ||
+  'postgresql://postgres:postgres@localhost:5432/postgres';
+
+async function checkPgLive(): Promise<boolean> {
+  try {
+    const { Client } = await import('pg');
+    const client = new Client({
+      connectionString: PG_TEST_URL,
+      connectionTimeoutMillis: 1500,
+      ssl:
+        PG_TEST_URL.includes('sslmode=require') ||
+        (!PG_TEST_URL.includes('localhost') && !PG_TEST_URL.includes('127.0.0.1'))
+          ? { rejectUnauthorized: false }
+          : undefined,
+    });
+    await client.connect();
+    await client.query('SELECT 1');
+    await client.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test('Live PostgreSQL: Complete Dual-Engine CRUD, Schema Inspection & Seeder Suite', async (t) => {
+  const isAvailable = await checkPgLive();
+  if (!isAvailable) {
+    t.skip(`PostgreSQL server not reachable at ${PG_TEST_URL.replace(/:([^@]+)@/, ':****@')} (skipping live integration test — tests succeed without requiring live db)`);
+    return;
+  }
+
+  const logger = createLogger('error');
+  const db = new PostgresDatabase(PG_TEST_URL, logger);
+
+  try {
+    // 1. Setup sample PostgreSQL table
+    await db.execResult(`
+      DROP TABLE IF EXISTS _admindb_test_suite CASCADE;
+      CREATE TABLE _admindb_test_suite (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(100),
+        score INT DEFAULT 100,
+        tags TEXT[] DEFAULT ARRAY['admin']::TEXT[]
+      );
+    `);
+
+    // 2. Insert rows
+    const insertRes = await db.insertRows('_admindb_test_suite', [
+      [{ column: 'name', value: 'Alice' }, { column: 'email', value: 'alice@example.com' }, { column: 'score', value: 95 }],
+      [{ column: 'name', value: 'Bob' }, { column: 'email', value: 'bob@example.com' }, { column: 'score', value: 80 }],
+      [{ column: 'name', value: 'Charlie' }, { column: 'email', value: 'charlie@example.com' }, { column: 'score', value: 60 }],
+    ]);
+    assert.equal(insertRes.success, true);
+    assert.equal(insertRes.data?.inserted, 3);
+
+    // 3. Count rows
+    const countRes = await db.getRowCount('_admindb_test_suite');
+    assert.equal(countRes.success, true);
+    assert.equal(countRes.data, 3);
+
+    // 4. Filter query
+    const filterRes = await db.getRows('_admindb_test_suite', {
+      filters: { name: '=Alice' },
+    });
+    assert.equal(filterRes.success, true);
+    assert.equal((filterRes.data ?? []).length, 1);
+    assert.equal(filterRes.data![0].name, 'Alice');
+
+    // 5. Update row
+    const updateRes = await db.updateRow(
+      '_admindb_test_suite',
+      [{ column: 'score', value: 99 }],
+      [{ column: 'name', value: 'Alice' }],
+    );
+    assert.equal(updateRes.success, true);
+
+    // 6. Schema inspection
+    const infoRes = await db.getTableInfo('_admindb_test_suite');
+    assert.equal(infoRes.success, true);
+    assert.ok(infoRes.data?.columns.some((c) => c.name === 'name'));
+    assert.ok(infoRes.data?.primaryKey.includes('id'));
+
+    // 7. Delete row
+    const deleteRes = await db.deleteRow('_admindb_test_suite', [{ column: 'name', value: 'Charlie' }]);
+    assert.equal(deleteRes.success, true);
+
+    const finalCount = await db.getRowCount('_admindb_test_suite');
+    assert.equal(finalCount.data, 2);
+
+    // Cleanup
+    await db.execResult('DROP TABLE IF EXISTS _admindb_test_suite CASCADE;');
+  } finally {
+    await db.close();
+  }
+});
+
+
 
 
 

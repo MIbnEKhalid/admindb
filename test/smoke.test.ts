@@ -557,3 +557,109 @@ test('Smoke Tests: Manager Mode API Endpoints', async (t) => {
 
   await close();
 });
+
+import { isPostgresAvailable, PG_TEST_URL } from './harness';
+import { PostgresDatabase } from '../src/db/postgres';
+
+async function startPostgresDbApp(): Promise<TestContext | null> {
+  const isLive = await isPostgresAvailable();
+  if (!isLive) return null;
+  const logger = createLogger('error');
+  const db = new PostgresDatabase(PG_TEST_URL, logger);
+
+  // Setup PostgreSQL schema
+  await db.execResult(`
+    DROP TABLE IF EXISTS _admindb_smoke_posts CASCADE;
+    DROP TABLE IF EXISTS _admindb_smoke_users CASCADE;
+    CREATE TABLE _admindb_smoke_users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(100),
+      role VARCHAR(50) DEFAULT 'member'
+    );
+    CREATE TABLE _admindb_smoke_posts (
+      id SERIAL PRIMARY KEY,
+      user_id INT REFERENCES _admindb_smoke_users(id),
+      title VARCHAR(150) NOT NULL,
+      content TEXT
+    );
+    INSERT INTO _admindb_smoke_users (name, email, role) VALUES ('Alice', 'alice@example.com', 'admin');
+    INSERT INTO _admindb_smoke_posts (user_id, title, content) VALUES (1, 'Hello PostgreSQL', 'First post content');
+  `);
+
+  const app = createRouter({ db, auth: false });
+  return new Promise((resolve) => {
+    const server: Server = app.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      const baseUrl = `http://127.0.0.1:${port}`;
+      resolve({
+        baseUrl,
+        db: db as unknown as SqliteDatabase,
+        close: async () => {
+          await new Promise<void>((r) => server.close(() => r()));
+          try {
+            await db.execResult(`
+              DROP TABLE IF EXISTS _admindb_smoke_posts CASCADE;
+              DROP TABLE IF EXISTS _admindb_smoke_users CASCADE;
+            `);
+            await db.close();
+          } catch {}
+        },
+      });
+    });
+  });
+}
+
+test('Smoke Tests: PostgreSQL API Endpoints', async (t) => {
+  const ctx = await startPostgresDbApp();
+  if (!ctx) {
+    t.skip(`PostgreSQL server not reachable at ${PG_TEST_URL.replace(/:([^@]+)@/, ':****@')} (skipping live PostgreSQL API smoke tests)`);
+    return;
+  }
+  const { baseUrl, close } = ctx;
+
+  await t.test('GET /api/tables lists PostgreSQL tables with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/api/tables`);
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { success: boolean; data: { name: string }[] };
+    assert.equal(json.success, true);
+    assert.ok(json.data.some((tb) => tb.name === '_admindb_smoke_users'));
+  });
+
+  await t.test('GET /api/tables/:table/rows returns PostgreSQL paginated rows', async () => {
+    const res = await fetch(`${baseUrl}/api/tables/_admindb_smoke_users/rows`);
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { success: boolean; data: { rows: { name: string }[]; total: number } };
+    assert.equal(json.success, true);
+    assert.equal(json.data.rows.length, 1);
+    assert.equal(json.data.rows[0].name, 'Alice');
+  });
+
+  await t.test('POST /api/tables/:table/rows inserts into PostgreSQL table', async () => {
+    const res = await fetch(`${baseUrl}/api/tables/_admindb_smoke_users/rows`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: { name: 'Bob', email: 'bob@example.com' } }),
+    });
+    assert.equal(res.status, 201);
+    const json = (await res.json()) as { success: boolean };
+    assert.equal(json.success, true);
+  });
+
+  await t.test('POST /api/query executes custom PostgreSQL query', async () => {
+    const res = await fetch(`${baseUrl}/api/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: 'SELECT count(*)::int as count FROM _admindb_smoke_users' }),
+    });
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { success: boolean; data: { rows: { count: number }[] } };
+    assert.equal(json.success, true);
+    assert.equal(json.data.rows[0].count, 2);
+  });
+
+  await close();
+});
+
+
