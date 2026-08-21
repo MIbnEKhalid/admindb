@@ -66,7 +66,10 @@ export function parseCookies(cookieHeader?: string): Record<string, string> {
     const idx = pair.indexOf('=');
     if (idx === -1) continue;
     const key = pair.slice(0, idx).trim();
-    const val = pair.slice(idx + 1).trim();
+    let val = pair.slice(idx + 1).trim();
+    if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+      val = val.slice(1, -1);
+    }
     if (key) {
       try {
         cookies[key] = decodeURIComponent(val);

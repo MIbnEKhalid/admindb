@@ -33,6 +33,8 @@ export function runCli(): void {
   const authUsername = args.authUsername ?? env.authUsername ?? 'admin';
   const authPassword = args.authPassword ?? env.authPassword;
   const authSecret = args.authSecret ?? env.authSecret;
+  const serverless = args.serverless !== undefined ? args.serverless : env.serverless;
+  const readonly = serverless || args.readonly || env.readonly;
 
   const config = {
     host: args.host ?? env.host,
@@ -42,7 +44,8 @@ export function runCli(): void {
     dbFiles: args.dbFiles ?? env.dbFiles,
     basePath: (args.basePath ?? env.basePath).replace(/\/+$/, ''),
     logLevel: args.logLevel ?? env.logLevel,
-    readonly: args.readonly || env.readonly,
+    readonly,
+    serverless,
     auth: authEnabled
       ? {
           enabled: true,
@@ -91,6 +94,7 @@ export function runCli(): void {
         basePath: config.basePath,
         logger,
         readonly: config.readonly,
+        serverless: config.serverless,
         allowBrowse,
         browseRoot,
         auth: config.auth,
@@ -100,6 +104,7 @@ export function runCli(): void {
         basePath: config.basePath,
         logger,
         readonly: config.readonly,
+        serverless: config.serverless,
         auth: config.auth,
       });
   app.use(config.basePath || '/', router);
@@ -143,7 +148,11 @@ export function runCli(): void {
 
     // Mode & Target Info
     if (useManager) {
-      const modeDesc = config.readonly ? 'Manager [Read-Only]' : 'Manager';
+      const modeDesc = config.serverless
+        ? 'Manager [Serverless Read-Only]'
+        : config.readonly
+        ? 'Manager [Read-Only]'
+        : 'Manager';
       const target = managerDir ? managerDir : managerFiles.length ? `[${managerFiles.join(', ')}]` : '';
       console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}${target ? c.dim(` (${target})`) : ''}`);
       if (!allowBrowse) {
@@ -152,7 +161,11 @@ export function runCli(): void {
         console.log(`  ${c.green('➜')}  ${c.bold('Browse:')}   ${c.dim(`Limited to ${browseRoot}`)}`);
       }
     } else {
-      const modeDesc = config.readonly ? 'Single DB [Read-Only]' : 'Single DB';
+      const modeDesc = config.serverless
+        ? 'Single DB [Serverless Read-Only]'
+        : config.readonly
+        ? 'Single DB [Read-Only]'
+        : 'Single DB';
       console.log(`  ${c.green('➜')}  ${c.bold('Mode:')}     ${modeDesc}`);
       console.log(`  ${c.green('➜')}  ${c.bold('Database:')} ${explicitFile}`);
     }

@@ -67,11 +67,12 @@ export function registerAuthRoutes(
     // Successful authentication: issue signed session cookie
     const token = createSessionToken(config.username, config.secret, config.sessionDurationMs);
     const maxAgeSec = Math.floor(config.sessionDurationMs / 1000);
+    const expiresUtc = new Date(Date.now() + config.sessionDurationMs).toUTCString();
     const cookiePath = basePath || '/';
 
     res.setHeader(
       'Set-Cookie',
-      `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=${cookiePath}; Max-Age=${maxAgeSec}; HttpOnly; SameSite=Lax`,
+      `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=${cookiePath}; Max-Age=${maxAgeSec}; Expires=${expiresUtc}; HttpOnly; SameSite=Lax`,
     );
 
     if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {

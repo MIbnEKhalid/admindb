@@ -150,6 +150,7 @@ Every setting can be configured via **CLI flags** or **Environment Variables** (
 | **Explicit Files** | `--files, --db-files <list>` | `DB_FILES`, `ADMINDB_DB_FILES` | — | Comma-separated database file paths |
 | **Base Path** | `-b, --base-path, --base <p>` | `BASE_PATH`, `ADMINDB_BASE_PATH` | `''` (`/`) | URL prefix to serve under (e.g. `/admin`) |
 | **Read-Only** | `-r, --readonly, --read-only`| `READONLY`, `ADMINDB_READONLY` | `false` | Open databases read-only (writes disabled) |
+| **Serverless**| `--serverless` | `SERVERLESS`, `ADMINDB_SERVERLESS` | `false` *(auto)* | Serverless mode (auto-detected, enforces read-only) |
 | **Auth** | `--auth` / `--no-auth` | `ADMINDB_AUTH`, `ADMINDB_NO_AUTH` | `true` | Enable or disable built-in authentication |
 | **Username** | `-u, --username, --user <user>` | `ADMINDB_USERNAME`, `ADMINDB_USER` | `admin` | Admin username |
 | **Password** | `-P, --password, --pass <pass>` | `ADMINDB_PASSWORD`, `ADMINDB_PASS` | `admin` *(hash)* | Admin password or salted `scrypt:...` hash |

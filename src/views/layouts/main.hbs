@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{basePath}}/css/app.css" />
   <script>
-    window.APP = { basePath: {{{json basePath}}}, readonly: {{{json readonly}}} };
+    window.APP = { basePath: {{{json basePath}}}, readonly: {{{json readonly}}}, serverless: {{{json serverless}}} };
     // Apply the saved theme before first paint to avoid a flash.
     (function () {
       try {
@@ -25,7 +25,11 @@
   {{#if readonly}}
     <div class="flex items-center justify-center gap-2 bg-warning/15 px-4 py-2 text-center text-sm font-semibold text-warning">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-      Read-only mode — this database is open without write access. All writes are disabled.
+      {{#if serverless}}
+        Serverless mode active — database is open in read-only mode. Writes and schema modifications are disabled.
+      {{else}}
+        Read-only mode — this database is open without write access. All writes are disabled.
+      {{/if}}
     </div>
   {{/if}}
   {{#if noSidebar}}

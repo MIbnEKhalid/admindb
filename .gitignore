@@ -19,5 +19,7 @@ dist/
 # Environment and OS files
 .env
 .env.*
+.admindb-secret
+.admindb-secret*
 .DS_Store
 Thumbs.db

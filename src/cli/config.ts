@@ -1,4 +1,5 @@
 import type { LogLevel } from '../utils/logger';
+import { isServerlessEnvironment } from '../serverless';
 
 export interface Config {
   host: string;
@@ -13,6 +14,8 @@ export interface Config {
   logLevel: LogLevel;
   /** Open the database read-only (writes disabled). */
   readonly: boolean;
+  /** Serverless environment mode (enforces read-only). */
+  serverless: boolean;
   /** Whether authentication is enabled (default: true). */
   auth: boolean;
   /** Custom admin username (default: 'admin'). */
@@ -36,7 +39,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dbPathRaw = env.ADMINDB_DB_PATH ?? env.ADMINDB_PATH ?? env.DB_PATH;
   const basePathRaw = env.ADMINDB_BASE_PATH ?? env.BASE_PATH ?? '';
   const logLevelRaw = env.ADMINDB_LOG_LEVEL ?? env.LOG_LEVEL ?? 'info';
+  const serverlessRaw = env.ADMINDB_SERVERLESS ?? env.SERVERLESS ?? env.IS_SERVERLESS ?? '';
+  const serverless =
+    ['1', 'true', 'yes', 'on'].includes(String(serverlessRaw).trim().toLowerCase()) ||
+    isServerlessEnvironment(env);
   const readonlyRaw = env.ADMINDB_READONLY ?? env.READONLY ?? '';
+  const readonly = serverless || ['1', 'true', 'yes', 'on'].includes(String(readonlyRaw).trim().toLowerCase());
 
   return {
     host: env.ADMINDB_HOST ?? env.HOST ?? '0.0.0.0',
@@ -51,7 +59,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : undefined,
     basePath: String(basePathRaw).replace(/\/+$/, ''),
     logLevel: logLevelRaw as LogLevel,
-    readonly: ['1', 'true', 'yes', 'on'].includes(String(readonlyRaw).trim().toLowerCase()),
+    readonly,
+    serverless,
     auth: !authDisabled,
     authUsername: (env.ADMINDB_USERNAME ?? env.ADMINDB_USER) ? String(env.ADMINDB_USERNAME ?? env.ADMINDB_USER).trim() : undefined,
     authPassword: (env.ADMINDB_PASSWORD ?? env.ADMINDB_PASS) ? String(env.ADMINDB_PASSWORD ?? env.ADMINDB_PASS).trim() : undefined,

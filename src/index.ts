@@ -45,8 +45,11 @@ export {
 export {
   type AuthConfig,
   type ResolvedAuthConfig,
+  resolveAuthConfig,
+  getOrCreatePersistentSecret,
   createSessionToken,
   verifySessionToken,
+  parseCookies,
   constantTimeCompare,
   hashPassword,
   verifyPassword,
@@ -54,6 +57,13 @@ export {
   DEFAULT_PASSWORD_HASH,
   SESSION_COOKIE_NAME,
 } from './auth/index';
+
+export {
+  isServerlessEnvironment,
+  createServerlessHandler,
+  createLambdaHandler,
+  type LambdaProxyResult,
+} from './serverless';
 
 // Export all published REST API response and request types
 export * from './types/api';

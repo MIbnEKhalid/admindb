@@ -9,6 +9,7 @@ import { registerApi } from './routes/api/index';
 import { registerDatabasesRoutes } from './routes/databases';
 import { getPackageVersion } from './cli/args';
 import { errorMessage } from './utils/common';
+import { isServerlessEnvironment } from './serverless';
 import {
   resolveAuthConfig,
   createAuthMiddleware,
@@ -32,6 +33,15 @@ export interface AppOptions {
   manager?: DbManager;
   /** Open the database read-only — all write routes are rejected with 403. */
   readonly?: boolean;
+  /**
+   * Serverless mode flag.
+   * When enabled (or auto-detected in Vercel/AWS Lambda/Netlify/etc.),
+   * all write operations, mutations, schema alterations, and seeder generators
+   * are disabled, enforcing strict read-only safety for ephemeral environments.
+   *
+   * Defaults to `undefined` (auto-detected via environment).
+   */
+  serverless?: boolean;
   /**
    * Authentication configuration.
    * - `true` (default): authentication enabled with default or env credentials.
@@ -124,9 +134,11 @@ function addErrorHandlers(app: express.Express, logger: Logger): void {
 
 /** Single-database app (also used as the per-database app in multi-db mode). */
 function createSingleDbApp(options: AppOptions): express.Express {
+  const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
+  const readonly = isServerless || Boolean(options.readonly);
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
-  const db = options.db ?? new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly: options.readonly });
+  const db = options.db ?? new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly });
   const databasesUrl = options.databasesUrl;
   const authConfig = resolveAuthConfig(options.auth);
 
@@ -157,6 +169,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
       res.locals.databasesUrl = databasesUrl ?? null;
       res.locals.databasesMode = false;
       res.locals.readonly = db.isReadOnly;
+      res.locals.serverless = isServerless;
       res.locals.version = APP_VERSION;
       res.locals.authEnabled = authConfig.enabled;
       res.locals.isDefaultPassword = authConfig.isDefaultPassword;
@@ -181,10 +194,11 @@ function createSingleDbApp(options: AppOptions): express.Express {
 
 /** Multi-database app: databases landing page + a per-database sub-app per file. */
 function createManagerApp(options: AppOptions): express.Express {
+  const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
+  const readonly = isServerless || Boolean(options.readonly);
   const manager = options.manager!;
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
-  const readonly = !!options.readonly;
   const authConfig = resolveAuthConfig(options.auth);
 
   const app = express();
@@ -212,6 +226,7 @@ function createManagerApp(options: AppOptions): express.Express {
       res.locals.databasesUrl = null;
       res.locals.databasesMode = true;
       res.locals.readonly = readonly;
+      res.locals.serverless = isServerless;
       res.locals.version = APP_VERSION;
       res.locals.authEnabled = authConfig.enabled;
       res.locals.isDefaultPassword = authConfig.isDefaultPassword;
@@ -232,7 +247,7 @@ function createManagerApp(options: AppOptions): express.Express {
     logger,
     basePath,
     readonly,
-    allowBrowse: options.allowBrowse,
+    allowBrowse: isServerless ? false : options.allowBrowse,
     browseRoot: options.browseRoot,
     invalidate: (id) => subApps.delete(id),
   });
@@ -259,6 +274,7 @@ function createManagerApp(options: AppOptions): express.Express {
         dbId,
         databasesUrl: `${basePath ? basePath : ''}/`,
         readonly,
+        serverless: isServerless,
         auth: authConfig,
       });
       subApps.set(dbId, sub);

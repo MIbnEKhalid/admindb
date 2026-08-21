@@ -62,6 +62,7 @@ CLI Arguments & Flags (Highest) ➔ Environment Variables ➔ Default Values (Lo
 | **Explicit DB Files** | `--files, --db-files <list>` | `DB_FILES`, `ADMINDB_DB_FILES` | `string` (CSV) | — | Comma-separated database file paths |
 | **Base URL Path** | `-b, --base-path, --base <path>` | `BASE_PATH`, `ADMINDB_BASE_PATH` | `string` | `''` (`/`) | URL prefix to serve under (e.g. `/admin`) |
 | **Read-Only Mode** | `-r, --readonly, --read-only` | `READONLY`, `ADMINDB_READONLY` | `boolean` | `false` | Disable all insert, update, delete, and DDL operations |
+| **Serverless** | `--serverless` | `SERVERLESS`, `ADMINDB_SERVERLESS` | `boolean` | `false` *(auto)* | Enforces read-only safety for serverless platforms |
 | **Authentication** | `--auth` / `--no-auth`, `--disable-auth` | `ADMINDB_AUTH`, `ADMINDB_NO_AUTH`, `ADMINDB_DISABLE_AUTH` | `boolean` | `true` | Enable or disable built-in login authentication |
 | **Admin Username** | `-u, --username, --user, --auth-username <user>` | `ADMINDB_USERNAME`, `ADMINDB_USER` | `string` | `admin` | Custom administrator username for web login & basic auth |
 | **Admin Password** | `-P, --password, --pass, --auth-password <pass>` | `ADMINDB_PASSWORD`, `ADMINDB_PASS` | `string` | `admin` (hash) | Plain text password or salted `scrypt:...` cryptographic hash |
@@ -569,4 +570,39 @@ Or via environment variables:
 
 ```bash
 ADMINDB_AUTH=false HOST=127.0.0.1 DB_DIR=./databases npx admindb
+```
+
+---
+
+### Recipe 6: Serverless Deployment (Vercel, AWS Lambda & Cloud Functions)
+
+When deploying to ephemeral, read-only serverless environments, AdminDB automatically activates **Serverless Read-Only Mode**, protecting bundled SQLite database files from corrupted or dropped writes.
+
+#### 1. Vercel API Route (`api/index.ts`):
+```ts
+import { createServerlessHandler } from 'admindb';
+
+export default createServerlessHandler({
+  dbPath: './data/production.db',
+  basePath: '/admin',
+});
+```
+
+#### 2. AWS Lambda with API Gateway (`index.ts`):
+```ts
+import { createLambdaHandler } from 'admindb';
+
+export const handler = createLambdaHandler({
+  dbPath: './data/production.db',
+  auth: {
+    username: process.env.ADMINDB_USERNAME || 'admin',
+    password: process.env.ADMINDB_PASSWORD,
+    secret: process.env.ADMINDB_SECRET,
+  },
+});
+```
+
+#### 3. CLI Serverless Flag:
+```bash
+admindb ./data/app.db --serverless
 ```

@@ -30,6 +30,8 @@ export interface CliArgs {
   logLevel?: LogLevel;
   /** Open databases read-only (`--readonly`, `-r`). */
   readonly: boolean;
+  /** Serverless mode (enforces read-only database operations) (`--serverless`). */
+  serverless?: boolean;
   /** Whether authentication is enabled (defaults to true). Set to false via `--no-auth`. */
   auth?: boolean;
   /** Custom admin username (`--username`/`--user`/`--auth-username`, `-u`). */
@@ -65,6 +67,7 @@ export function helpText(): string {
     '      --files, --db-files <list> Comma-separated database file paths [DB_FILES / ADMINDB_DB_FILES]',
     '  -b, --base-path, --base <p>    URL prefix to serve under (default: /) [BASE_PATH / ADMINDB_BASE_PATH]',
     '  -r, --readonly, --read-only    Open databases read-only (writes disabled) [READONLY / ADMINDB_READONLY]',
+    '      --serverless               Enable serverless mode (enforces read-only, disables writes) [SERVERLESS / ADMINDB_SERVERLESS]',
     '      --auth                     Enable authentication (default: on) [ADMINDB_AUTH=true]',
     '      --no-auth, --disable-auth  Disable authentication completely [ADMINDB_NO_AUTH=1 / ADMINDB_AUTH=false]',
     '  -u, --username, --user <user>  Admin username (default: admin) [ADMINDB_USERNAME / ADMINDB_USER]',
@@ -83,6 +86,7 @@ export function helpText(): string {
     '  admindb --open ~/notes.sqlite                # open a file directly',
     '  admindb -d ./dbs                             # manage a folder of databases',
     '  admindb --files a.db,b.db -r                 # open two files read-only',
+    '  admindb --serverless                         # run in serverless read-only mode',
     '',
     'See docs/EXAMPLES.md for full configuration reference and deployment recipes.',
   ].join('\n');
@@ -183,6 +187,9 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       }
       args.logLevel = v as LogLevel;
     } else if (tok === '-r' || tok === '--readonly' || tok === '--read-only') {
+      args.readonly = true;
+    } else if (tok === '--serverless') {
+      args.serverless = true;
       args.readonly = true;
     } else if (tok === '--no-auth' || tok === '--disable-auth') {
       args.auth = false;
