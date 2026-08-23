@@ -31,10 +31,19 @@
         data = null;
       }
       if (!res.ok) {
-        throw new Error((data && data.error) || 'Request failed (' + res.status + ')');
+        const msg = (data && data.error) || 'Request failed (' + res.status + ')';
+        const err = new Error(msg);
+        err.status = res.status;
+        if (data && data.details) err.details = data.details;
+        err.data = data;
+        throw err;
       }
       if (!data || data.success === false) {
-        throw new Error((data && data.error) || 'Request failed');
+        const msg = (data && data.error) || 'Request failed';
+        const err = new Error(msg);
+        if (data && data.details) err.details = data.details;
+        err.data = data;
+        throw err;
       }
       return data.data;
     },

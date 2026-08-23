@@ -10,21 +10,8 @@
   const connectPgBtn = document.getElementById('connect-pg');
   const fsRoInput = document.getElementById('fs-readonly');
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
-
-  function fmtSize(n) {
-    if (!Number.isFinite(n) || n <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let v = n;
-    let u = 0;
-    while (v >= 1024 && u < units.length - 1) {
-      v /= 1024;
-      u += 1;
-    }
-    return (u === 0 ? Math.round(v) : v.toFixed(1)) + ' ' + units[u];
-  }
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
+  const fmtSize = window.Utils ? window.Utils.formatBytes : function(n) { return (n || 0) + ' B'; };
 
   // ---- Create SQLite DB ----------------------------------------------------
 

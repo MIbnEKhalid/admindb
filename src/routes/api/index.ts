@@ -5,6 +5,7 @@ import { registerRowRoutes } from './rows';
 import { registerImportExportRoutes } from './import-export';
 import { registerSeedRoutes } from './seed';
 import { registerQueryRoutes } from './query';
+import { registerErdRoutes } from './erd';
 
 export { type ApiContext } from './helpers';
 
@@ -38,4 +39,5 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   registerImportExportRoutes(router, ctx);
   registerSeedRoutes(router, ctx);
   registerQueryRoutes(router, ctx);
+  registerErdRoutes(router, ctx);
 }

@@ -1,232 +1,544 @@
 {{!-- Page: Mock & Seed Data Generator · URL: /tables/:table/seed --}}
-<div class="space-y-6">
+<div class="max-w-5xl mx-auto space-y-8 pb-24">
 
-  <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-4 border-b border-base-200 pb-5">
-    <div class="flex items-center gap-3">
-      <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
-        {{{icon "arrowLeft" class="h-5 w-5"}}}
-      </a>
-      <div>
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="font-mono text-2xl font-bold tracking-tight">{{table}}</h1>
-          <span class="badge badge-sm badge-neutral font-mono">{{rowCount}} rows in DB</span>
-          <span class="badge badge-sm badge-ghost font-mono">{{colCount}} columns</span>
+  {{!-- Header --}}
+  <div class="flex items-center gap-4">
+    <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost bg-base-200 hover:bg-base-300 transition-colors">
+      {{{icon "arrowLeft" class="h-5 w-5"}}}
+    </a>
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 text-primary shadow-soft">
+          {{{icon "seed" class="h-6 w-6"}}}
         </div>
-        <p class="mt-0.5 text-xs text-base-content/55">Data generator — fill the table with realistic mock data, simulate sparse records, and preview in real time.</p>
+        <div>
+          <h1 class="text-2xl font-bold font-mono tracking-tight">Seed Generator <span class="text-primary">{{table}}</span></h1>
+          <p class="text-sm text-base-content/50 mt-0.5">Generate realistic mock data in three easy steps.</p>
+        </div>
       </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Presets dropdown -->
-      <div class="dropdown dropdown-end">
-        <button tabindex="0" type="button" class="btn btn-outline btn-sm gap-1.5">
-          {{{icon "seed" class="h-4 w-4"}}}
-          Presets
-          {{{icon "chevronDown" class="h-3.5 w-3.5 opacity-60"}}}
-        </button>
-        <ul tabindex="0" class="dropdown-content z-20 menu p-2 shadow-lg bg-base-100 rounded-xl w-56 border border-base-200 text-xs">
-          <li><button type="button" id="preset-realistic" class="py-2">✨ Realistic Mock Data</button></li>
-          <li><button type="button" id="preset-minimal" class="py-2">⚡ Minimal (Required Only)</button></li>
-          <li><button type="button" id="preset-sparse" class="py-2">🎲 Sparse (30% Nullables)</button></li>
-          <li><button type="button" id="preset-numbered" class="py-2">🔢 Sequential & Numbered</button></li>
-          <li class="border-t border-base-200 my-1"></li>
-          <li><button type="button" id="seed-export-config" class="py-2">💾 Export Plan as JSON</button></li>
-          <li><button type="button" id="seed-import-config" class="py-2">📥 Import Plan JSON…</button></li>
-        </ul>
-      </div>
-
-      <button id="seed-preview" type="button" class="btn btn-outline btn-sm gap-1.5">
-        {{{icon "inspect" class="h-4 w-4 text-primary"}}}
-        Preview Data
-      </button>
-
-      {{#unless readonly}}
-        <button id="seed-insert" type="button" class="btn btn-primary btn-sm gap-1.5 shadow-sm">
-          {{{icon "plus" class="h-4 w-4"}}}
-          Insert Rows
-        </button>
-      {{else}}
-        <span class="inline-flex items-center gap-1.5 text-xs font-medium text-warning bg-warning/10 px-2.5 py-1.5 rounded-lg">
-          {{{icon "lock" class="h-4 w-4"}}}
-          Read-only database
-        </span>
-      {{/unless}}
     </div>
   </div>
 
-  <!-- Configuration Bar -->
-  <div class="app-card p-5 bg-base-100">
-    <div class="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-end">
-      <!-- Row count control -->
-      <div class="lg:col-span-4 space-y-1.5">
-        <label class="field-label !mb-0 font-medium" for="seed-count">
-          <span>Rows to generate</span>
-          <span class="text-xs text-base-content/45 font-normal">(max {{maxRows}})</span>
-        </label>
-        <div class="flex items-center gap-2">
-          <input id="seed-count" type="number" min="1" max="{{maxRows}}" value="10" class="field-input w-28 font-mono font-medium" />
-          <div class="flex flex-wrap items-center gap-1">
-            {{#each quickCounts}}
-              <button type="button" class="seed-quick btn btn-outline btn-xs px-2.5" data-n="{{this}}">{{this}}</button>
-            {{/each}}
+  {{!-- Wizard Steps Indicator --}}
+  <div class="app-card p-4">
+    <div class="flex items-center justify-between relative">
+      {{!-- Progress line --}}
+      <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-base-300 mx-16 z-0">
+        <div id="wizard-progress-bar" class="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500 ease-out" style="width: 0%"></div>
+      </div>
+
+      {{!-- Step 1 --}}
+      <div id="step-nav-1" class="seed-step relative z-10 flex flex-col items-center gap-2 cursor-pointer group">
+        <div class="seed-step-circle w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-primary border-primary text-primary-content shadow-[0_0_12px_rgba(109,93,246,0.4)]">
+          <span class="seed-step-num">1</span>
+          <span class="seed-step-check hidden">{{{icon "check" class="h-4 w-4"}}}</span>
+        </div>
+        <span class="text-xs font-semibold text-primary">Choose Mode</span>
+      </div>
+
+      {{!-- Step 2 --}}
+      <div id="step-nav-2" class="seed-step relative z-10 flex flex-col items-center gap-2 cursor-pointer group">
+        <div class="seed-step-circle w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-base-200 border-base-300 text-base-content/40">
+          <span class="seed-step-num">2</span>
+          <span class="seed-step-check hidden">{{{icon "check" class="h-4 w-4"}}}</span>
+        </div>
+        <span class="text-xs font-semibold text-base-content/40">Configure</span>
+      </div>
+
+      {{!-- Step 3 --}}
+      <div id="step-nav-3" class="seed-step relative z-10 flex flex-col items-center gap-2 cursor-pointer group">
+        <div class="seed-step-circle w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-base-200 border-base-300 text-base-content/40">
+          <span class="seed-step-num">3</span>
+          <span class="seed-step-check hidden">{{{icon "check" class="h-4 w-4"}}}</span>
+        </div>
+        <span class="text-xs font-semibold text-base-content/40">Preview & Run</span>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Step 1: Mode Selection --}}
+  <div id="step-content-1" class="space-y-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      {{!-- Single Mode Card --}}
+      <button id="btn-select-single" class="seed-mode-card app-card p-6 text-left group transition-all duration-200 border-2 border-transparent hover:border-primary/40 hover:-translate-y-0.5">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="relative shrink-0">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-200 shadow-soft">
+              {{{icon "table" class="h-7 w-7"}}}
+            </div>
+          </div>
+          <div class="min-w-0">
+            <h3 class="text-lg font-bold leading-tight">Single Table</h3>
+            <p class="text-xs text-base-content/50 mt-1">Generate data for this table only</p>
+          </div>
+          <div class="ml-auto shrink-0 w-5 h-5 rounded-full border-2 border-base-300 transition-all duration-200 seed-mode-radio flex items-center justify-center">
+            <div class="w-2.5 h-2.5 rounded-full bg-primary scale-0 transition-transform duration-200 seed-mode-dot"></div>
+          </div>
+        </div>
+        <p class="text-sm text-base-content/60 leading-relaxed mb-5">
+          Manually control mock values for each column with full strategy control.
+        </p>
+        <ul class="space-y-1.5">
+          <li class="flex items-center gap-2 text-xs text-base-content/60">
+            <span class="w-4 h-4 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">{{{icon "check" class="h-2.5 w-2.5"}}}</span>
+            Manual column strategies (fixed, list, pattern, etc.)
+          </li>
+          <li class="flex items-center gap-2 text-xs text-base-content/60">
+            <span class="w-4 h-4 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">{{{icon "check" class="h-2.5 w-2.5"}}}</span>
+            Live sample value preview per column
+          </li>
+          <li class="flex items-center gap-2 text-xs text-base-content/60">
+            <span class="w-4 h-4 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">{{{icon "check" class="h-2.5 w-2.5"}}}</span>
+            Up to 5,000 rows in one pass
+          </li>
+        </ul>
+      </button>
+
+      {{!-- Chain Mode Card --}}
+      <button id="btn-select-chain" class="seed-mode-card app-card p-6 text-left group transition-all duration-200 border-2 border-transparent hover:border-secondary/40 hover:-translate-y-0.5">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="relative shrink-0">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-secondary/20 to-secondary/5 flex items-center justify-center text-secondary group-hover:scale-110 transition-transform duration-200 shadow-soft">
+              {{{icon "diagram" class="h-7 w-7"}}}
+            </div>
+          </div>
+          <div class="min-w-0">
+            <h3 class="text-lg font-bold leading-tight">ER Relational Chain</h3>
+            <p class="text-xs text-base-content/50 mt-1">Synchronized relational seeding</p>
+          </div>
+          <div class="ml-auto shrink-0 w-5 h-5 rounded-full border-2 border-base-300 transition-all duration-200 seed-mode-radio flex items-center justify-center">
+            <div class="w-2.5 h-2.5 rounded-full bg-secondary scale-0 transition-transform duration-200 seed-mode-dot"></div>
+          </div>
+        </div>
+        <p class="text-sm text-base-content/60 leading-relaxed mb-5">
+          Builds a dependency graph and inserts parent records before children to prevent FK errors.
+        </p>
+        <ul class="space-y-1.5">
+          <li class="flex items-center gap-2 text-xs text-base-content/60">
+            <span class="w-4 h-4 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">{{{icon "check" class="h-2.5 w-2.5"}}}</span>
+            Auto FK dependency resolution
+          </li>
+          <li class="flex items-center gap-2 text-xs text-base-content/60">
+            <span class="w-4 h-4 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">{{{icon "check" class="h-2.5 w-2.5"}}}</span>
+            Topologically-ordered execution pipeline
+          </li>
+          <li class="flex items-center gap-2 text-xs text-base-content/60">
+            <span class="w-4 h-4 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">{{{icon "check" class="h-2.5 w-2.5"}}}</span>
+            Configurable per-table row counts
+          </li>
+        </ul>
+      </button>
+    </div>
+
+    <div class="flex justify-end pt-2">
+      <button id="btn-next-1" class="btn btn-primary gap-2 px-8 transition-all duration-200" disabled>
+        Next Step
+        {{{icon "arrowRight" class="h-4 w-4"}}}
+      </button>
+    </div>
+  </div>
+
+  {{!-- Step 2: Configuration --}}
+  <div id="step-content-2" class="hidden space-y-6">
+
+    {{!-- SINGLE MODE CONFIGURATION --}}
+    <div id="config-single" class="hidden space-y-5">
+
+      {{!-- Control bar --}}
+      <div class="app-card p-5">
+        <div class="flex flex-wrap gap-6 items-end justify-between">
+          <div class="flex items-end gap-4">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-base-content/50 mb-2">Rows to Generate</label>
+              <div class="flex items-center gap-0">
+                <button type="button" id="seed-count-dec" class="btn btn-sm btn-outline rounded-r-none border-r-0 px-3 font-mono text-lg leading-none hover:bg-primary hover:text-primary-content hover:border-primary transition-colors">−</button>
+                <input id="seed-count" type="number" value="10" min="1" max="5000"
+                  class="field-input !rounded-none border-x-0 !py-1.5 font-mono w-24 font-bold text-lg text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                <button type="button" id="seed-count-inc" class="btn btn-sm btn-outline rounded-l-none border-l-0 px-3 font-mono text-lg leading-none hover:bg-primary hover:text-primary-content hover:border-primary transition-colors">+</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-end gap-3">
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wider text-base-content/50 mb-2">Quick Presets</span>
+              <div class="flex gap-2">
+                <button type="button" class="preset-pill btn btn-sm btn-outline rounded-full gap-1.5" id="preset-realistic" data-count="50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+                  Realistic
+                </button>
+                <button type="button" class="preset-pill btn btn-sm btn-outline rounded-full gap-1.5" id="preset-minimal" data-count="5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-info"></span>
+                  Minimal
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Column Search Filter -->
-      <div class="lg:col-span-4 space-y-1.5">
-        <label class="field-label !mb-0 font-medium" for="seed-search">
-          <span>Filter columns</span>
-        </label>
-        <div class="relative">
-          <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-base-content/40">
-            {{{icon "search" class="h-4 w-4"}}}
-          </span>
-          <input id="seed-search" type="text" placeholder="Search column by name or type..." class="field-input pl-9 text-xs" />
+      {{!-- Column strategy cards --}}
+      <div class="app-card p-6">
+        <div class="flex items-center justify-between mb-5">
+          <h3 class="text-base font-bold">Column Strategies</h3>
+          <span class="badge badge-ghost text-xs">Configure per column</span>
+        </div>
+        <div id="seed-columns" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {{!-- Populated by JS --}}
+        </div>
+      </div>
+    </div>
+
+    {{!-- CHAIN MODE CONFIGURATION --}}
+    <div id="config-chain" class="hidden space-y-5">
+
+      {{!-- Options bar --}}
+      <div class="app-card p-5">
+        <div class="flex flex-wrap gap-6 items-end justify-between">
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-base-content/50 mb-2">Scope</label>
+            <select id="chain-scope" class="field-select !py-1.5 w-64 font-medium">
+              <option value="chain">Full Connected Chain</option>
+              <option value="ancestors">Parents Only</option>
+              <option value="descendants">Children Only</option>
+            </select>
+          </div>
+
+          <div>
+            <span class="block text-xs font-bold uppercase tracking-wider text-base-content/50 mb-2">Scale Multiplier</span>
+            <div class="join shadow-soft">
+              <button type="button" class="chain-scale-btn btn btn-sm join-item font-mono" data-scale="0.5">0.5×</button>
+              <button type="button" class="chain-scale-btn btn btn-sm join-item btn-neutral font-mono" data-scale="1">1×</button>
+              <button type="button" class="chain-scale-btn btn btn-sm join-item font-mono" data-scale="2">2×</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Seeding options (truncate / clear) -->
-      <div class="lg:col-span-4 flex flex-col justify-end space-y-2">
-        {{#unless readonly}}
-          <label class="cursor-pointer flex items-center gap-2 text-xs font-medium text-base-content/80 hover:text-base-content transition-colors">
-            <input id="seed-truncate" type="checkbox" class="checkbox checkbox-xs checkbox-error rounded" />
-            <span class="flex items-center gap-1 text-error/90">
-              {{{icon "trash" class="h-3.5 w-3.5"}}}
-              Clear table before inserting (DELETE all rows)
+      {{!-- Pipeline --}}
+      <div class="app-card p-6">
+        <div class="flex items-center justify-between mb-5 pb-4 border-b border-base-200">
+          <div>
+            <h3 class="text-base font-bold">Execution Pipeline</h3>
+            <p class="text-xs text-base-content/50 mt-0.5">Tables are inserted in topological order</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+            <span id="chain-summary-badge" class="badge badge-primary font-bold">0 Tables</span>
+          </div>
+        </div>
+        <div id="chain-pipeline-container" class="space-y-3">
+          {{!-- Populated by JS --}}
+        </div>
+      </div>
+    </div>
+
+    {{!-- Nav --}}
+    <div class="flex justify-between pt-2">
+      <button id="btn-prev-2" type="button" class="btn btn-ghost gap-2 px-6">
+        {{{icon "arrowLeft" class="h-4 w-4"}}}
+        Back
+      </button>
+      <button id="btn-next-2" type="button" class="btn btn-primary gap-2 px-8">
+        Preview Data
+        {{{icon "arrowRight" class="h-4 w-4"}}}
+      </button>
+    </div>
+  </div>
+
+  {{!-- Step 3: Preview & Execute --}}
+  <div id="step-content-3" class="hidden space-y-5">
+
+    {{!-- Preview card --}}
+    <div class="app-card overflow-hidden">
+      <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-base-200">
+        <div>
+          <h3 class="text-base font-bold">Data Preview</h3>
+          <p class="text-xs text-base-content/50 mt-0.5">Sample of what will be inserted</p>
+        </div>
+        <button id="seed-refresh-preview" type="button" class="btn btn-sm btn-ghost gap-1.5 hover:bg-primary/10 hover:text-primary transition-colors">
+          {{{icon "refresh" class="h-4 w-4"}}}
+          Regenerate
+        </button>
+      </div>
+
+      {{!-- Chain table tabs --}}
+      <div class="w-full overflow-x-auto border-b border-base-200 bg-base-200/30">
+        <div id="seed-chain-table-tabs" class="tabs tabs-bordered flex-nowrap w-max min-w-full hidden px-4"></div>
+      </div>
+
+      {{!-- Row count + table --}}
+      <div class="px-4 pt-3 pb-1 flex items-center justify-between">
+        <span id="seed-row-count-badge" class="text-xs text-base-content/40 font-mono"></span>
+      </div>
+
+      <div class="overflow-x-auto max-h-[460px] shadow-inner">
+        <table class="table table-zebra table-pin-rows table-sm w-full">
+          <thead id="seed-preview-thead" class="bg-base-200/80 text-[10px] uppercase tracking-widest font-bold text-base-content/60 backdrop-blur sticky top-0 z-10"></thead>
+          <tbody id="seed-preview-tbody" class="font-mono text-[11px] leading-relaxed">
+            <tr>
+              <td colspan="100" class="text-center py-16 opacity-40">
+                <div class="flex flex-col items-center gap-3">
+                  <span class="loading loading-spinner loading-md"></span>
+                  <span class="text-xs">Generating preview…</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {{!-- Execute bar --}}
+    <div id="seed-execute-bar" class="app-card overflow-hidden transition-all duration-300">
+      {{!-- Truncate warning banner (hidden by default, shown when checkbox checked) --}}
+      <div id="seed-truncate-banner" class="hidden px-6 py-3 bg-error/10 border-b border-error/20 flex items-center gap-3">
+        <span class="text-error shrink-0">{{{icon "warning" class="h-4 w-4"}}}</span>
+        <p class="text-xs font-semibold text-error/80">
+          <strong>Destructive action:</strong> Existing rows will be permanently deleted before new data is inserted.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-4 p-5">
+        <button id="btn-prev-3" type="button" class="btn btn-ghost gap-2 px-5">
+          {{{icon "arrowLeft" class="h-4 w-4"}}}
+          Back to Config
+        </button>
+
+        <div class="flex items-center gap-5">
+          <label class="cursor-pointer flex items-center gap-2.5 group select-none" for="seed-truncate">
+            <input id="seed-truncate" type="checkbox" class="checkbox checkbox-error checkbox-sm" />
+            <span class="text-sm font-semibold text-base-content/70 group-hover:text-error transition-colors">
+              Clear tables first
             </span>
           </label>
-        {{/unless}}
-        <p class="text-[11px] text-base-content/45 leading-tight">Rows are inserted in a single atomic transaction. Any constraint failure safely rolls back.</p>
-      </div>
-    </div>
-  </div>
 
-  <!-- Column strategies section -->
-  <div class="space-y-3">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">Column Strategies</h2>
-        <span id="seed-col-count-badge" class="badge badge-sm badge-ghost font-mono"></span>
-      </div>
-      <div class="flex flex-wrap items-center gap-1.5">
-        <button id="seed-refresh-samples" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/60" title="Refresh live sample previews">
-          {{{icon "refresh" class="h-3.5 w-3.5"}}}
-          Refresh Samples
-        </button>
-        <button id="seed-apply-all" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/60">
-          {{{icon "duplicate" class="h-3.5 w-3.5"}}}
-          Apply strategy to all…
-        </button>
-        <button id="seed-reset" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/60">
-          {{{icon "refresh" class="h-3.5 w-3.5"}}}
-          Reset Defaults
-        </button>
-      </div>
-    </div>
-
-    <!-- Cards Grid -->
-    <div id="seed-columns" class="grid grid-cols-1 gap-3.5 md:grid-cols-2 2xl:grid-cols-3"></div>
-    <div id="seed-empty-search" class="hidden p-8 text-center app-card">
-      <p class="text-sm text-base-content/50">No columns match the current search query.</p>
-    </div>
-  </div>
-
-  <!-- Feedback / Warnings Alert -->
-  <div id="seed-feedback" class="hidden"></div>
-
-  <!-- Interactive Dual-Mode Preview Section -->
-  <div id="seed-preview-card" class="hidden app-card overflow-hidden transition-all duration-200">
-    <div class="flex flex-wrap items-center justify-between border-b border-base-200 bg-base-200/40 px-5 py-3 gap-3">
-      <div class="flex items-center gap-3">
-        <div class="tabs tabs-boxed bg-base-300/40 p-0.5 rounded-lg">
-          <button id="tab-table-view" type="button" class="tab tab-sm tab-active font-medium gap-1.5">
-            {{{icon "table" class="h-3.5 w-3.5"}}}
-            Table Preview
-          </button>
-          <button id="tab-sql-view" type="button" class="tab tab-sm font-medium gap-1.5">
-            {{{icon "sql" class="h-3.5 w-3.5"}}}
-            SQL Statements
+          <button id="seed-insert" type="button"
+            class="btn btn-primary btn-lg gap-2 px-10 shadow-lg hover:shadow-primary/30 hover:shadow-xl transition-all duration-200 hover:scale-[1.02] active:scale-100">
+            {{{icon "play" class="h-5 w-5"}}}
+            Execute Seed
           </button>
         </div>
-        <span id="preview-summary-badge" class="badge badge-sm badge-ghost font-mono"></span>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-1.5">
-        <button id="seed-export-csv" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          {{{icon "export" class="h-3.5 w-3.5"}}}
-          Export CSV
-        </button>
-        <button id="seed-export-json" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          {{{icon "export" class="h-3.5 w-3.5"}}}
-          Export JSON
-        </button>
-        <button id="seed-copy-sql" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          {{{icon "copy" class="h-3.5 w-3.5"}}}
-          Copy SQL
-        </button>
-        <button id="seed-download-sql" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
-          {{{icon "export" class="h-3.5 w-3.5"}}}
-          Download .sql
-        </button>
       </div>
     </div>
 
-    <!-- View 1: Interactive Table View -->
-    <div id="seed-table-view-container" class="overflow-x-auto max-h-[32rem]">
-      <table class="table table-sm table-pin-rows table-zebra w-full text-xs">
-        <thead id="seed-preview-thead" class="bg-base-200 font-mono text-[11px] text-base-content/70"></thead>
-        <tbody id="seed-preview-tbody"></tbody>
-      </table>
-    </div>
-
-    <!-- View 2: SQL View -->
-    <div id="seed-sql-view-container" class="hidden p-4">
-      <pre class="code-panel max-h-[32rem] overflow-auto"><code id="seed-sql-code"></code></pre>
-    </div>
+    <div id="seed-feedback" class="hidden"></div>
   </div>
+
 </div>
 
-<!-- Config JSON Modal -->
-<dialog id="seed-config-dialog" class="modal">
-  <div class="modal-box app-card max-w-lg">
-    <h3 id="seed-config-dialog-title" class="text-base font-bold">Seed Plan Configuration</h3>
-    <p class="mt-1 text-xs text-base-content/60">Export or paste a JSON configuration for column generator settings.</p>
-    <textarea id="seed-config-textarea" rows="12" class="field-input mt-3 w-full font-mono text-xs" spellcheck="false"></textarea>
-    <div class="mt-4 flex justify-end gap-2">
-      <button id="seed-config-dialog-cancel" type="button" class="btn btn-ghost btn-sm">Close</button>
-      <button id="seed-config-dialog-apply" type="button" class="btn btn-primary btn-sm">Apply Configuration</button>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
-
-<!-- Truncate Confirmation Modal -->
+{{!-- Truncate Confirmation Dialog --}}
 <dialog id="seed-truncate-dialog" class="modal">
-  <div class="modal-box app-card max-w-md border border-error/30">
-    <div class="flex items-center gap-3 text-error">
-      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-error/10">
-        {{{icon "warning" class="h-6 w-6"}}}
-      </span>
-      <div>
-        <h3 class="text-base font-bold text-base-content">Clear table before inserting?</h3>
-        <p class="text-xs text-error font-medium">All existing rows in "{{table}}" will be permanently deleted.</p>
+  <div class="modal-box p-0 overflow-hidden max-w-md">
+    {{!-- Dialog header --}}
+    <div class="px-6 pt-6 pb-4 bg-error/5 border-b border-error/15">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-error/15 flex items-center justify-center text-error shrink-0">
+          {{{icon "warning" class="h-5 w-5"}}}
+        </div>
+        <div>
+          <h3 class="font-bold text-lg text-error leading-tight">Confirm Destructive Action</h3>
+          <p class="text-xs text-base-content/50 mt-0.5">This operation cannot be undone</p>
+        </div>
       </div>
     </div>
-    <p class="mt-3 text-xs text-base-content/60 leading-relaxed">
-      This will execute <code>DELETE FROM "{{table}}"</code> before inserting the newly generated seed rows. This action cannot be undone.
-    </p>
-    <div class="mt-5 flex justify-end gap-2">
-      <button id="seed-truncate-cancel" type="button" class="btn btn-ghost btn-sm">Cancel</button>
-      <button id="seed-truncate-confirm" type="button" class="btn btn-error btn-sm">Yes, Clear & Insert</button>
+
+    {{!-- Dialog body --}}
+    <div class="px-6 py-5 space-y-4">
+      <p class="text-sm text-base-content/80 leading-relaxed">
+        You have selected to <strong class="text-error">clear the tables</strong> before generating mock data.
+        This will <strong>permanently delete all existing rows</strong> in the affected tables.
+      </p>
+      <div class="rounded-xl bg-base-200 border border-base-300 p-4">
+        <p class="text-xs font-bold uppercase tracking-wider text-base-content/40 mb-2">What will happen</p>
+        <ul class="space-y-1.5">
+          <li class="flex items-center gap-2 text-xs text-base-content/70">
+            <span class="text-error">{{{icon "warning" class="h-3.5 w-3.5"}}}</span>
+            All existing rows will be truncated
+          </li>
+          <li class="flex items-center gap-2 text-xs text-base-content/70">
+            <span class="text-primary">{{{icon "play" class="h-3.5 w-3.5"}}}</span>
+            New mock data will be inserted
+          </li>
+          <li class="flex items-center gap-2 text-xs text-base-content/70">
+            <span class="text-error">{{{icon "warning" class="h-3.5 w-3.5"}}}</span>
+            This action is irreversible
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    {{!-- Dialog actions --}}
+    <div class="px-6 pb-6 flex items-center justify-end gap-3">
+      <button type="button" class="btn btn-ghost" id="seed-truncate-cancel">Cancel</button>
+      <button type="button" class="btn btn-error gap-2" id="seed-truncate-confirm">
+        {{{icon "warning" class="h-4 w-4"}}}
+        Yes, Delete & Seed
+      </button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
+  <form method="dialog" class="modal-backdrop bg-base-300/80 backdrop-blur-sm"><button>close</button></form>
 </dialog>
 
 <script id="seed-config" type="application/json">{{{json seedConfig}}}</script>
 <script src="{{basePath}}/js/seed.js" defer></script>
+
+{{!-- Enhanced seed-page UX micro-interactions --}}
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+
+    // +/- count buttons
+    var countInput = document.getElementById('seed-count');
+    var decBtn = document.getElementById('seed-count-dec');
+    var incBtn = document.getElementById('seed-count-inc');
+    if (decBtn && incBtn && countInput) {
+      decBtn.addEventListener('click', function () {
+        var v = Math.max(1, (parseInt(countInput.value, 10) || 10) - 1);
+        countInput.value = v;
+        countInput.dispatchEvent(new Event('input'));
+      });
+      incBtn.addEventListener('click', function () {
+        var v = Math.min(5000, (parseInt(countInput.value, 10) || 10) + 1);
+        countInput.value = v;
+        countInput.dispatchEvent(new Event('input'));
+      });
+    }
+
+    // Preset pills: sync count
+    document.querySelectorAll('.preset-pill').forEach(function (pill) {
+      pill.addEventListener('click', function () {
+        document.querySelectorAll('.preset-pill').forEach(function (p) {
+          p.classList.remove('btn-primary', 'btn-secondary');
+          p.classList.add('btn-outline');
+        });
+        pill.classList.remove('btn-outline');
+        pill.classList.add('btn-primary');
+        if (countInput && pill.dataset.count) {
+          countInput.value = pill.dataset.count;
+          countInput.dispatchEvent(new Event('input'));
+        }
+      });
+    });
+
+    // Truncate checkbox → warning banner toggle
+    var truncateChk = document.getElementById('seed-truncate');
+    var truncateBanner = document.getElementById('seed-truncate-banner');
+    if (truncateChk && truncateBanner) {
+      truncateChk.addEventListener('change', function () {
+        if (truncateChk.checked) {
+          truncateBanner.classList.remove('hidden');
+          truncateBanner.classList.add('flex');
+        } else {
+          truncateBanner.classList.add('hidden');
+          truncateBanner.classList.remove('flex');
+        }
+      });
+    }
+
+    // Wizard progress bar + step label color sync (mirrors seed.js goToStep)
+    var progressBar = document.getElementById('wizard-progress-bar');
+    var stepNavEls = [
+      document.getElementById('step-nav-1'),
+      document.getElementById('step-nav-2'),
+      document.getElementById('step-nav-3')
+    ];
+
+    function syncStepStyles(activeStep) {
+      var pct = { 1: '0%', 2: '50%', 3: '100%' };
+      if (progressBar) progressBar.style.width = pct[activeStep] || '0%';
+
+      stepNavEls.forEach(function (el, i) {
+        if (!el) return;
+        var stepNum = i + 1;
+        var circle = el.querySelector('.seed-step-circle');
+        var numSpan = el.querySelector('.seed-step-num');
+        var checkSpan = el.querySelector('.seed-step-check');
+        var label = el.querySelector('span:last-child');
+
+        if (stepNum < activeStep) {
+          // Completed
+          circle.className = 'seed-step-circle w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-success border-success text-success-content';
+          if (numSpan) numSpan.classList.add('hidden');
+          if (checkSpan) checkSpan.classList.remove('hidden');
+          if (label) label.className = 'text-xs font-semibold text-success';
+        } else if (stepNum === activeStep) {
+          // Active
+          circle.className = 'seed-step-circle w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-primary border-primary text-primary-content shadow-[0_0_12px_rgba(109,93,246,0.4)]';
+          if (numSpan) numSpan.classList.remove('hidden');
+          if (checkSpan) checkSpan.classList.add('hidden');
+          if (label) label.className = 'text-xs font-semibold text-primary';
+        } else {
+          // Inactive
+          circle.className = 'seed-step-circle w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-base-200 border-base-300 text-base-content/40';
+          if (numSpan) numSpan.classList.remove('hidden');
+          if (checkSpan) checkSpan.classList.add('hidden');
+          if (label) label.className = 'text-xs font-semibold text-base-content/40';
+        }
+      });
+    }
+
+    // Patch seed.js goToStep to also sync our UI
+    var origGoToStep = window._seedGoToStep;
+    // We'll observe mutation / use a MutationObserver on step content visibility
+    var observer = new MutationObserver(function () {
+      var contents = [
+        document.getElementById('step-content-1'),
+        document.getElementById('step-content-2'),
+        document.getElementById('step-content-3')
+      ];
+      for (var i = 0; i < contents.length; i++) {
+        if (contents[i] && !contents[i].classList.contains('hidden')) {
+          syncStepStyles(i + 1);
+          return;
+        }
+      }
+    });
+    ['step-content-1', 'step-content-2', 'step-content-3'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // Initial sync
+    syncStepStyles(1);
+
+    // Mode card radio dot sync (complement seed.js selectMode)
+    var btnSingle = document.getElementById('btn-select-single');
+    var btnChain  = document.getElementById('btn-select-chain');
+
+    function syncModeCards(selected) {
+      [btnSingle, btnChain].forEach(function (btn) {
+        if (!btn) return;
+        var radio = btn.querySelector('.seed-mode-radio');
+        var dot   = btn.querySelector('.seed-mode-dot');
+        var isSelected = btn === selected;
+        if (radio) radio.classList.toggle('border-primary', isSelected && btn === btnSingle);
+        if (radio) radio.classList.toggle('border-secondary', isSelected && btn === btnChain);
+        if (radio) radio.classList.toggle('border-base-300', !isSelected);
+        if (dot) dot.classList.toggle('scale-100', isSelected);
+        if (dot) dot.classList.toggle('scale-0', !isSelected);
+        btn.classList.toggle('seed-mode-card--selected-single', isSelected && btn === btnSingle);
+        btn.classList.toggle('seed-mode-card--selected-chain', isSelected && btn === btnChain);
+      });
+    }
+
+    if (btnSingle) btnSingle.addEventListener('click', function () { syncModeCards(btnSingle); });
+    if (btnChain)  btnChain.addEventListener('click',  function () { syncModeCards(btnChain); });
+
+    // Row count badge updater for step 3
+    var origTbody = document.getElementById('seed-preview-tbody');
+    if (origTbody) {
+      var rowObserver = new MutationObserver(function () {
+        var badge = document.getElementById('seed-row-count-badge');
+        if (!badge) return;
+        var rows = origTbody.querySelectorAll('tr');
+        var isPlaceholder = origTbody.querySelector('td[colspan]');
+        if (isPlaceholder) { badge.textContent = ''; return; }
+        badge.textContent = rows.length + ' row' + (rows.length !== 1 ? 's' : '') + ' generated';
+      });
+      rowObserver.observe(origTbody, { childList: true, subtree: true });
+    }
+  });
+})();
+</script>

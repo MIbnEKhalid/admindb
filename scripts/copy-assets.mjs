@@ -55,13 +55,16 @@ async function processJsFiles(dir) {
     if (stat.isDirectory()) {
       await processJsFiles(fullPath);
     } else if (entry.endsWith('.js')) {
-      const code = readFileSync(fullPath, 'utf8');
       const isClient = fullPath.includes(path.join('dist', 'public'));
+      if (!isClient) {
+        continue; // Skip minifying server files to preserve Node's CJS static lexer compatibility
+      }
+      const code = readFileSync(fullPath, 'utf8');
       try {
         const minified = await minify(code, {
-          module: !isClient,
-          compress: isClient ? true : { defaults: true },
-          mangle: isClient ? true : false,
+          module: false,
+          compress: true,
+          mangle: true,
           format: {
             comments: false,
             beautify: false,
@@ -211,5 +214,3 @@ await processJsFiles(distDir);
 processDtsFiles(distDir);
 
 console.log('[copy-assets] Processed views, minified JS, and minified .d.ts into dist/ (comment-free, minimalist format).');
-
-

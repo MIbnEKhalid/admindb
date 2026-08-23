@@ -5,7 +5,7 @@ import { PostgresDatabase } from './postgres';
 import type { IDatabase } from './types';
 
 import { createLogger, type Logger } from '../utils/logger';
-import { errorMessage } from '../utils/common';
+import { errorMessage, isPostgresConnectionString, sanitizeConnectionString } from '../utils/common';
 
 const DB_EXTENSIONS = ['.db', '.sqlite', '.sqlite3'];
 
@@ -111,8 +111,7 @@ export class DbManager {
     for (const f of files ?? []) {
       const raw = String(f ?? '').trim();
       if (!raw) continue;
-      const isPg = raw.startsWith('postgres://') || raw.startsWith('postgresql://');
-      if (isPg) {
+      if (isPostgresConnectionString(raw)) {
         let name = 'postgres';
         try {
           const u = new URL(raw);
@@ -171,20 +170,11 @@ export class DbManager {
       if (seen.has(id)) continue;
       seen.add(id);
 
-      const isPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
-      if (isPg) {
-        let sanitized = target;
-        try {
-          const u = new URL(target);
-          if (u.password) u.password = '****';
-          sanitized = u.toString();
-        } catch {
-          sanitized = target.replace(/:([^:@]+)@/, ':****@');
-        }
+      if (isPostgresConnectionString(target)) {
         entries.push({
           id,
           name: this.nameById.get(id) ?? id,
-          path: sanitized,
+          path: sanitizeConnectionString(target),
           dialect: 'postgres',
           size: 0,
           modified: 'Connected',
@@ -259,8 +249,7 @@ export class DbManager {
       db = undefined;
     }
     if (!db) {
-      const isPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
-      if (isPg) {
+      if (isPostgresConnectionString(target)) {
         db = new PostgresDatabase(target, this.logger.child(`db:${id}`), { readonly: isRo });
       } else {
         db = new SqliteDatabase(target, this.logger.child(`db:${id}`), { readonly: isRo });
@@ -373,9 +362,7 @@ export class DbManager {
     this.readonlyById.delete(id);
     this.files = this.files.filter((p) => p !== target);
 
-
-    const isPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
-    if (!isPg) {
+    if (!isPostgresConnectionString(target)) {
       for (const suffix of ['', '-wal', '-shm']) {
         try {
           unlinkSync(target + suffix);

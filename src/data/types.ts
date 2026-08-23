@@ -144,5 +144,52 @@ export interface GenerateResult {
   warnings: string[];
 }
 
+/** Scope for resolving ER chain dependencies. */
+export type ErChainScope = 'chain' | 'ancestors' | 'descendants' | 'all' | 'single';
+
+/** A node in the ER dependency execution pipeline. */
+export interface ErChainTableNode {
+  name: string;
+  order: number;
+  depth: number;
+  parents: { table: string; from: string; to: string }[];
+  children: { table: string; from: string; to: string }[];
+  columns: ColumnGeneratorConfig[];
+  suggestedCount: number;
+  rowCount: number;
+  isRoot: boolean;
+  hasSelfRef: boolean;
+}
+
+/** Complete ER chain schema and dependency setup payload. */
+export interface ErChainConfig {
+  rootTable: string;
+  scope: ErChainScope;
+  tables: ErChainTableNode[];
+  cycleDetected: boolean;
+  cycleTables?: string[];
+  maxTotalRows: number;
+}
+
+/** Result of generating seed data across an entire ER chain. */
+export interface ErChainResult {
+  rootTable: string;
+  scope: ErChainScope;
+  executionOrder: string[];
+  tableResults: Record<
+    string,
+    {
+      count: number;
+      rows: WhereClause[][];
+      previewRows: Record<string, unknown>[];
+      warnings: string[];
+    }
+  >;
+  totalRows: number;
+  sql: string;
+  warnings: string[];
+}
+
 /** Sentinel returned by value generation when the column should be omitted from the row. */
 export const SKIP = Symbol('skip');
+

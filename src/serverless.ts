@@ -1,6 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
 import { createRouter, type AppOptions } from './app';
+import { isPostgresConnectionString } from './utils/common';
 
 /**
  * Detects if the current process is running in a serverless environment
@@ -67,7 +68,7 @@ export function createServerlessHandler(
   const rawTarget = options.connection || options.dbPath || '';
   const isPg =
     Boolean(options.pgOptions) ||
-    (typeof rawTarget === 'string' && (rawTarget.startsWith('postgres://') || rawTarget.startsWith('postgresql://'))) ||
+    isPostgresConnectionString(rawTarget) ||
     options.db?.dialect === 'postgres';
 
   const defaultReadonly = isPg ? false : true;
@@ -107,7 +108,7 @@ export function createLambdaHandler(options: AppOptions = {}) {
   const rawTarget = options.connection || options.dbPath || '';
   const isPg =
     Boolean(options.pgOptions) ||
-    (typeof rawTarget === 'string' && (rawTarget.startsWith('postgres://') || rawTarget.startsWith('postgresql://'))) ||
+    isPostgresConnectionString(rawTarget) ||
     options.db?.dialect === 'postgres';
 
   const defaultReadonly = isPg ? false : true;

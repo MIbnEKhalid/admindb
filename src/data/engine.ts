@@ -32,20 +32,6 @@ function stringifyKey(v: unknown): string {
   return `${typeof v}:${String(v)}`;
 }
 
-function uniqueSuffix(base: unknown, seen: Set<string>): unknown {
-  if (typeof base === 'number' && Number.isFinite(base)) {
-    let n = Number(base);
-    while (seen.has(stringifyKey(n))) n += 1;
-    return n;
-  }
-  let i = 1;
-  let cand = `${String(base)}-${i}`;
-  while (seen.has(stringifyKey(cand))) {
-    i += 1;
-    cand = `${String(base)}-${i}`;
-  }
-  return cand;
-}
 
 function orderedValue(value: unknown, base: unknown, dir: 'after' | 'before', orEqual: boolean): unknown {
   const v = value;
@@ -79,6 +65,29 @@ function orderedValue(value: unknown, base: unknown, dir: 'after' | 'before', or
   return v;
 }
 
+function fitStringLength(val: unknown, len?: { min?: number; max?: number; exact?: number }): unknown {
+  if (!len || typeof val !== 'string') return val;
+  let v = val;
+  if (len.exact != null) {
+    if (v.length > len.exact) v = v.slice(0, len.exact);
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    while (v.length < len.exact) {
+      v += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return v;
+  }
+  if (len.max != null && v.length > len.max) {
+    v = v.slice(0, len.max);
+  }
+  if (len.min != null && v.length < len.min) {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    while (v.length < len.min) {
+      v += chars[Math.floor(Math.random() * chars.length)];
+    }
+  }
+  return v;
+}
+
 function applyOrdering(fields: WhereClause[], ordering: Map<string, OrderingConstraint>): void {
   if (!ordering.size) return;
   const byCol = new Map(fields.map((f) => [f.column, f]));
@@ -105,6 +114,7 @@ export async function generateRows(
   configs: ColumnGeneratorConfig[],
   count: number,
   plan: Record<string, ColumnPlan> = {},
+  truncate = false
 ): Promise<GenerateResult> {
 
   const fkByColumn = new Map<string, ForeignKeyInfo>();
@@ -165,39 +175,79 @@ export async function generateRows(
   const previewRows: Record<string, unknown>[] = [];
   const uniqueSeen = new Map<string, Set<string>>();
 
+  if (!truncate) {
+    for (const col of uniqueCols) {
+      try {
+        const existing = await db.all(`SELECT ${quoteIdentifier(col)} AS v FROM ${quoteIdentifier(info.table)} WHERE ${quoteIdentifier(col)} IS NOT NULL LIMIT 10000`);
+        const seen = new Set<string>();
+        for (const r of (existing.data ?? []) as {v?: unknown}[]) {
+          if (r.v != null) seen.add(stringifyKey(r.v));
+        }
+        uniqueSeen.set(col, seen);
+      } catch { /* ignore */ }
+    }
+  }
+
   for (let i = 0; i < count; i++) {
     const fields: WhereClause[] = [];
     const previewRow: Record<string, unknown> = {};
+    let rowValid = true;
+    let attempt = 0;
 
-    for (const { col, plan: p } of prepared) {
-      if (p.strategy === 'fk' && fkOmit.has(col.name)) {
-        previewRow[col.name] = null;
-        continue;
-      }
-      let v = generateOne(col, p, fkPools.get(col.name), i);
-      if (v === SKIP) {
-        previewRow[col.name] = '(default)';
-        continue;
-      }
+    while (attempt < 100 && rowValid) {
+      fields.length = 0;
+      let allColsValid = true;
 
-      if (uniqueCols.has(col.name)) {
-        const seen = uniqueSeen.get(col.name) ?? new Set<string>();
-        let attempts = 0;
-        while (seen.has(stringifyKey(v)) && attempts < 20) {
-          v = generateOne(col, p, fkPools.get(col.name), i);
-          attempts += 1;
+      for (const { col, plan: p } of prepared) {
+        if (p.strategy === 'fk' && fkOmit.has(col.name)) {
+          previewRow[col.name] = null;
+          continue;
         }
-        if (seen.has(stringifyKey(v))) {
-          warnings.push(`Column "${col.name}" is UNIQUE but the generator kept colliding — appended a suffix to keep rows insertable.`);
-          v = uniqueSuffix(v, seen);
+        
+        let v = generateOne(col, p, fkPools.get(col.name), i + attempt * count);
+        if (v === SKIP) {
+          previewRow[col.name] = '(default)';
+          continue;
         }
-        seen.add(stringifyKey(v));
-        uniqueSeen.set(col.name, seen);
+
+        if (uniqueCols.has(col.name)) {
+          const seen = uniqueSeen.get(col.name) ?? new Set<string>();
+          let singleAtt = 0;
+          while (seen.has(stringifyKey(v)) && singleAtt < 100) {
+            v = generateOne(col, p, fkPools.get(col.name), i + attempt * count + singleAtt * 100);
+            singleAtt += 1;
+          }
+          if (seen.has(stringifyKey(v))) {
+            allColsValid = false;
+            break;
+          }
+        }
+
+        v = fitStringLength(v, findInMap(checkInfo.columnLength, col.name));
+        fields.push({ column: col.name, value: v });
+        previewRow[col.name] = v;
       }
 
-      fields.push({ column: col.name, value: v });
-      previewRow[col.name] = v;
+      if (allColsValid) {
+        break; // Successfully generated all columns
+      }
+      attempt += 1;
     }
+
+    if (attempt >= 100) {
+      warnings.push(`Stopped generating rows early at row ${i} because unique generator exhausted possible values without collision.`);
+      break;
+    }
+
+    // Register generated unique values
+    for (const f of fields) {
+      if (uniqueCols.has(f.column)) {
+        const seen = uniqueSeen.get(f.column) ?? new Set<string>();
+        seen.add(stringifyKey(f.value));
+        uniqueSeen.set(f.column, seen);
+      }
+    }
+
     // Honor CHECK ordering constraints
     applyOrdering(fields, checkInfo.ordering);
     for (const f of fields) {

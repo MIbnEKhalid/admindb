@@ -25,9 +25,7 @@
     : { table: '', filters: {}, pkCols: [], hasPk: false, readonly: readonly };
   const t = encodeURIComponent(cfg.table);
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
 
   let info = null; // TableInfoData from /api/tables/:table/info
   let fkOptions = {}; // { [from]: [{ value, label }] }

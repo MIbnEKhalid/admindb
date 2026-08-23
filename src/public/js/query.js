@@ -1,9 +1,17 @@
-/* Query editor: run arbitrary SQL, save/load named queries, render results. */
+/* Query editor: Fast, zero-desync SQL IDE with real-time token syntax coloring,
+ * Undo/Redo history stack (Ctrl+Z / Ctrl+Y), line numbers gutter, smart indentation,
+ * error analysis & visual pointers, save/load, and results table. */
 (function () {
   'use strict';
+
   const editor = document.getElementById('query-sql');
   const gutter = document.getElementById('query-gutter');
+  const cursorPosEl = document.getElementById('editor-cursor-pos');
+  const statsEl = document.getElementById('editor-stats');
   const runBtn = document.getElementById('run-query');
+  const formatBtn = document.getElementById('format-query');
+  const copyBtn = document.getElementById('copy-query');
+  const clearBtn = document.getElementById('clear-query');
   const messageEl = document.getElementById('query-message');
   const resultEl = document.getElementById('query-result');
   const headEl = document.getElementById('query-result-head');
@@ -17,16 +25,581 @@
   const exportJsonBtn = document.getElementById('export-json');
 
   let queriesCache = [];
+  let errorLineNum = null;
+  let isUpdatingHighlight = false;
+
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
+  const highlightSql = window.Utils ? window.Utils.highlightSql : function(s) { return escapeHtml(s); };
+
+  // ---------------------------------------------------------------------------
+  // History Manager (Undo / Redo Stack)
+  // ---------------------------------------------------------------------------
+
+  class HistoryManager {
+    constructor(limit = 100) {
+      this.stack = [];
+      this.index = -1;
+      this.limit = limit;
+      this.lastRecordTime = 0;
+    }
+
+    record(text, selection, debounceMs = 250) {
+      const now = Date.now();
+      const current = this.index >= 0 ? this.stack[this.index] : null;
+
+      if (current && current.text === text) {
+        current.selection = selection;
+        return;
+      }
+
+      // Group rapid character typing into same snapshot unless whitespace/punctuation
+      if (current && now - this.lastRecordTime < debounceMs && Math.abs(text.length - current.text.length) === 1 && !/\s|[;(),]/.test(text.slice(-1))) {
+        current.text = text;
+        current.selection = selection;
+        this.lastRecordTime = now;
+        return;
+      }
+
+      // Truncate redo stack when new edits happen
+      this.stack = this.stack.slice(0, this.index + 1);
+      this.stack.push({ text: text, selection: selection });
+
+      if (this.stack.length > this.limit) {
+        this.stack.shift();
+      } else {
+        this.index++;
+      }
+      this.lastRecordTime = now;
+    }
+
+    undo() {
+      if (this.index > 0) {
+        this.index--;
+        return this.stack[this.index];
+      }
+      return null;
+    }
+
+    redo() {
+      if (this.index < this.stack.length - 1) {
+        this.index++;
+        return this.stack[this.index];
+      }
+      return null;
+    }
+  }
+
+  const history = new HistoryManager(100);
+
+  // ---------------------------------------------------------------------------
+  // Editor Text & Selection Management
+  // ---------------------------------------------------------------------------
+
+  function getEditorText() {
+    if (!editor) return '';
+    let text = editor.innerText || editor.textContent || '';
+    return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
+  function saveSelection(containerEl) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return { start: 0, end: 0 };
+    const range = sel.getRangeAt(0);
+    const preSelectionRange = range.cloneRange();
+    preSelectionRange.selectNodeContents(containerEl);
+    preSelectionRange.setEnd(range.startContainer, range.startOffset);
+    const start = preSelectionRange.toString().length;
+    return {
+      start: start,
+      end: start + range.toString().length,
+    };
+  }
+
+  function restoreSelection(containerEl, savedSel) {
+    const sel = window.getSelection();
+    if (!sel) return;
+    let charIndex = 0;
+    const range = document.createRange();
+    range.setStart(containerEl, 0);
+    range.collapse(true);
+    const nodeStack = [containerEl];
+    let node, foundStart = false, stop = false;
+
+    while (!stop && (node = nodeStack.pop())) {
+      if (node.nodeType === 3) {
+        const nextCharIndex = charIndex + node.length;
+        if (!foundStart && savedSel.start >= charIndex && savedSel.start <= nextCharIndex) {
+          range.setStart(node, savedSel.start - charIndex);
+          foundStart = true;
+        }
+        if (foundStart && savedSel.end >= charIndex && savedSel.end <= nextCharIndex) {
+          range.setEnd(node, savedSel.end - charIndex);
+          stop = true;
+        }
+        charIndex = nextCharIndex;
+      } else {
+        let i = node.childNodes.length;
+        while (i--) {
+          nodeStack.push(node.childNodes[i]);
+        }
+      }
+    }
+
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function setEditorValue(val, recordHistory = true) {
+    if (!editor) return;
+    isUpdatingHighlight = true;
+    if (!val) {
+      editor.innerHTML = '';
+    } else {
+      editor.innerHTML = highlightSql(val);
+    }
+    isUpdatingHighlight = false;
+    updateGutter();
+    updateCursorStats();
+    if (recordHistory) {
+      const len = (val || '').length;
+      history.record(val || '', { start: len, end: len }, 0);
+    }
+  }
+
+  function applyHighlightPreservingSelection(recordHistory = true) {
+    if (!editor || isUpdatingHighlight) return;
+    isUpdatingHighlight = true;
+    const sel = saveSelection(editor);
+    const text = getEditorText();
+    if (!text) {
+      editor.innerHTML = '';
+    } else {
+      editor.innerHTML = highlightSql(text);
+      restoreSelection(editor, sel);
+    }
+    isUpdatingHighlight = false;
+    updateGutter();
+    updateCursorStats();
+    if (recordHistory) {
+      history.record(text, sel);
+    }
+  }
+
+  function insertTextAtSelection(insertStr) {
+    if (!editor) return;
+    const text = getEditorText();
+    const sel = saveSelection(editor);
+    const newText = text.slice(0, sel.start) + insertStr + text.slice(sel.end);
+    const newPos = sel.start + insertStr.length;
+    isUpdatingHighlight = true;
+    editor.innerHTML = highlightSql(newText);
+    restoreSelection(editor, { start: newPos, end: newPos });
+    isUpdatingHighlight = false;
+    updateGutter();
+    updateCursorStats();
+    history.record(newText, { start: newPos, end: newPos }, 0);
+  }
+
+  function doUndo() {
+    const item = history.undo();
+    if (!item) return;
+    isUpdatingHighlight = true;
+    editor.innerHTML = highlightSql(item.text);
+    restoreSelection(editor, item.selection || { start: 0, end: 0 });
+    isUpdatingHighlight = false;
+    errorLineNum = null;
+    updateGutter();
+    updateCursorStats();
+  }
+
+  function doRedo() {
+    const item = history.redo();
+    if (!item) return;
+    isUpdatingHighlight = true;
+    editor.innerHTML = highlightSql(item.text);
+    restoreSelection(editor, item.selection || { start: 0, end: 0 });
+    isUpdatingHighlight = false;
+    errorLineNum = null;
+    updateGutter();
+    updateCursorStats();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Gutter & Cursor Stats
+  // ---------------------------------------------------------------------------
+
+  function updateGutter() {
+    if (!editor || !gutter) return;
+    const text = getEditorText();
+    const lines = text.split('\n');
+    const lineCount = Math.max(1, lines.length);
+
+    let gutterHtml = '';
+    for (let i = 1; i <= lineCount; i++) {
+      const isErr = errorLineNum != null && i === errorLineNum;
+      gutterHtml += '<div class="sql-gutter-line' + (isErr ? ' has-error' : '') + '" data-line="' + i + '" title="' + (isErr ? 'Error on line ' + i : 'Line ' + i) + '">' + i + '</div>';
+    }
+    gutter.innerHTML = gutterHtml;
+    gutter.scrollTop = editor.scrollTop;
+  }
+
+  function updateCursorStats() {
+    if (!editor || !cursorPosEl) return;
+    const text = getEditorText();
+    const sel = saveSelection(editor);
+    const textBefore = text.slice(0, sel.start);
+    const lines = textBefore.split('\n');
+    const line = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+
+    cursorPosEl.textContent = 'Ln ' + line + ', Col ' + col;
+
+    if (statsEl) {
+      const totalLen = text.length;
+      const totalLines = text.split('\n').length;
+      const selLen = Math.abs(sel.end - sel.start);
+      if (selLen > 0) {
+        statsEl.textContent = totalLen + ' chars (' + selLen + ' selected) · ' + totalLines + ' lines';
+      } else {
+        statsEl.textContent = totalLen + ' chars · ' + totalLines + ' lines';
+      }
+    }
+  }
+
+  function jumpToLine(line, col) {
+    if (!editor) return;
+    const text = getEditorText();
+    const lines = text.split('\n');
+    const targetLine = Math.max(1, Math.min(lines.length, line || 1));
+    let charPos = 0;
+    for (let i = 0; i < targetLine - 1; i++) {
+      charPos += lines[i].length + 1;
+    }
+    if (col && col > 1) {
+      charPos += Math.min(lines[targetLine - 1].length, col - 1);
+    }
+    editor.focus();
+    restoreSelection(editor, { start: charPos, end: charPos });
+    const lineHeight = 21;
+    editor.scrollTop = Math.max(0, (targetLine - 3) * lineHeight);
+    updateGutter();
+    updateCursorStats();
+  }
+
+  // ---------------------------------------------------------------------------
+  // SQL Formatter (Beautify)
+  // ---------------------------------------------------------------------------
+
+  function formatSql(raw) {
+    if (!raw) return '';
+    let sql = raw.trim().replace(/\r\n/g, '\n').replace(/\t/g, '  ');
+
+    const clauseKeywords = [
+      'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'GROUP BY', 'HAVING', 'ORDER BY',
+      'LIMIT', 'OFFSET', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'CROSS JOIN',
+      'FULL JOIN', 'JOIN', 'UNION ALL', 'UNION', 'INSERT INTO', 'VALUES',
+      'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE'
+    ];
+
+    clauseKeywords.forEach(function (kw) {
+      const reg = new RegExp('\\b' + kw.replace(' ', '\\s+') + '\\b', 'gi');
+      sql = sql.replace(reg, '\n' + kw.toUpperCase());
+    });
+
+    const formattedLines = sql.split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+
+    const indented = formattedLines.map(function (line) {
+      const upper = line.toUpperCase();
+      if (upper.startsWith('WHERE') || upper.startsWith('AND') || upper.startsWith('OR') ||
+          upper.startsWith('JOIN') || upper.startsWith('LEFT') || upper.startsWith('RIGHT') ||
+          upper.startsWith('INNER') || upper.startsWith('ON') || upper.startsWith('SET') ||
+          upper.startsWith('VALUES') || upper.startsWith('HAVING') || upper.startsWith('ORDER') ||
+          upper.startsWith('GROUP') || upper.startsWith('LIMIT') || upper.startsWith('OFFSET')) {
+        return '  ' + line;
+      }
+      return line;
+    });
+
+    return indented.join('\n');
+  }
+
+  if (formatBtn) {
+    formatBtn.addEventListener('click', function () {
+      const text = getEditorText();
+      if (!text.trim()) return;
+      setEditorValue(formatSql(text));
+      if (window.UI && UI.showToast) UI.showToast('SQL formatted.', 'info');
+    });
+  }
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      const text = getEditorText();
+      if (!text.trim()) return;
+      navigator.clipboard.writeText(text).then(function () {
+        if (window.UI && UI.showToast) UI.showToast('SQL copied to clipboard.', 'success');
+      });
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      setEditorValue('');
+      errorLineNum = null;
+      setMessage('', 'info');
+      editor.focus();
+    });
+  }
+
+  document.querySelectorAll('.js-snippet').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      const snippet = a.getAttribute('data-snippet');
+      if (!snippet) return;
+      setEditorValue(snippet.replace(/\\n/g, '\n'));
+      errorLineNum = null;
+      setMessage('', 'info');
+      editor.focus();
+    });
+  });
+
+  if (gutter) {
+    gutter.addEventListener('click', function (e) {
+      const lineEl = e.target.closest('.sql-gutter-line');
+      if (!lineEl) return;
+      const l = parseInt(lineEl.dataset.line, 10);
+      if (l) jumpToLine(l, 1);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Editor Event Listeners
+  // ---------------------------------------------------------------------------
+
+  if (editor) {
+    editor.addEventListener('input', function () {
+      errorLineNum = null;
+      applyHighlightPreservingSelection(true);
+    });
+
+    editor.addEventListener('paste', function (e) {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      if (text) insertTextAtSelection(text);
+    });
+
+    editor.addEventListener('scroll', function () {
+      if (gutter) gutter.scrollTop = editor.scrollTop;
+    });
+
+    editor.addEventListener('click', function () {
+      updateCursorStats();
+    });
+
+    editor.addEventListener('keyup', function () {
+      updateCursorStats();
+    });
+
+    editor.addEventListener('keydown', function (e) {
+      // 1. Undo: Ctrl+Z / Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        doUndo();
+        return;
+      }
+
+      // 2. Redo: Ctrl+Y / Cmd+Y / Ctrl+Shift+Z / Cmd+Shift+Z
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+        e.preventDefault();
+        doRedo();
+        return;
+      }
+
+      // 3. Ctrl+Enter / Cmd+Enter -> Run query
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        run();
+        return;
+      }
+
+      // 4. Enter -> Clean newline with auto-indent
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = getEditorText();
+        const sel = saveSelection(editor);
+        const textBefore = text.slice(0, sel.start);
+        const lastLine = textBefore.split('\n').pop() || '';
+        const match = lastLine.match(/^(\s+)/);
+        const indent = match ? match[1] : '';
+        insertTextAtSelection('\n' + indent);
+        return;
+      }
+
+      // 5. Ctrl+/ or Cmd+/ -> Toggle line comment
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        const sel = saveSelection(editor);
+        const text = getEditorText();
+        const lineStart = text.lastIndexOf('\n', sel.start - 1) + 1;
+        let lineEnd = text.indexOf('\n', sel.end);
+        if (lineEnd === -1) lineEnd = text.length;
+
+        const selBlock = text.slice(lineStart, lineEnd);
+        const lines = selBlock.split('\n');
+        const allCommented = lines.every(function (l) { return l.trim().startsWith('--'); });
+
+        const modified = lines.map(function (l) {
+          if (allCommented) {
+            return l.replace(/^(\s*)--\s?/, '$1');
+          } else {
+            return l ? '-- ' + l : l;
+          }
+        }).join('\n');
+
+        const newText = text.slice(0, lineStart) + modified + text.slice(lineEnd);
+        setEditorValue(newText);
+        restoreSelection(editor, { start: lineStart, end: lineStart + modified.length });
+        return;
+      }
+
+      // 6. Tab / Shift+Tab -> Indentation
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const sel = saveSelection(editor);
+        const text = getEditorText();
+
+        if (sel.start === sel.end) {
+          if (!e.shiftKey) {
+            insertTextAtSelection('  ');
+          }
+        } else {
+          const lineStart = text.lastIndexOf('\n', sel.start - 1) + 1;
+          let lineEnd = text.indexOf('\n', sel.end);
+          if (lineEnd === -1) lineEnd = text.length;
+          const selLines = text.slice(lineStart, lineEnd).split('\n');
+
+          const transformed = selLines.map(function (l) {
+            if (e.shiftKey) {
+              return l.replace(/^(  |\t| )/, '');
+            } else {
+              return '  ' + l;
+            }
+          }).join('\n');
+
+          const newText = text.slice(0, lineStart) + transformed + text.slice(lineEnd);
+          setEditorValue(newText);
+          restoreSelection(editor, { start: lineStart, end: lineStart + transformed.length });
+        }
+        return;
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Error Explainer Card
+  // ---------------------------------------------------------------------------
+
+  function setDetailedError(err) {
+    if (!messageEl) return;
+    const details = err && err.details;
+    const msg = (err && err.message) || (details && details.message) || 'Query failed.';
+
+    if (!details || (!details.snippet && !details.cause && !details.suggestion)) {
+      setMessage(msg, 'error');
+      return;
+    }
+
+    errorLineNum = details.line || null;
+    updateGutter();
+
+    let html = '<div class="sql-error-card space-y-3">';
+
+    // Header
+    html += '<div class="flex flex-wrap items-center justify-between gap-2 border-b border-error/20 pb-2.5">';
+    html += '<div class="flex items-center gap-2">';
+    html += '<span class="grid h-6 w-6 place-items-center rounded-lg bg-error/15 text-error font-bold">✕</span>';
+    html += '<span class="font-bold text-sm text-error">' + escapeHtml(msg) + '</span>';
+    html += '</div>';
+
+    if (details.line) {
+      html += '<div class="flex items-center gap-1.5">';
+      html += '<span class="badge badge-sm badge-error font-mono font-bold">Line ' + details.line + (details.column ? ', Col ' + details.column : '') + '</span>';
+      html += '<button type="button" class="btn btn-xs btn-outline btn-error js-jump-err-line" data-line="' + details.line + '" data-col="' + (details.column || 1) + '">Jump to line</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Snippet with pointer
+    if (details.snippet) {
+      html += '<div>';
+      html += '<p class="text-[11px] font-bold uppercase tracking-wider text-base-content/45 mb-1.5">Code Snippet</p>';
+      html += '<pre class="sql-error-snippet">' + escapeHtml(details.snippet) + '</pre>';
+      html += '</div>';
+    }
+
+    // Possible Cause & Suggested Fix
+    if (details.cause || details.suggestion) {
+      html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">';
+      if (details.cause) {
+        html += '<div class="rounded-lg border border-base-300 bg-base-100/90 p-3 shadow-xs">';
+        html += '<div class="flex items-center gap-1.5 text-xs font-bold text-base-content/80 mb-1">';
+        html += '<span>💡</span><span>Possible Cause</span>';
+        html += '</div>';
+        html += '<p class="text-xs text-base-content/70 leading-relaxed">' + escapeHtml(details.cause) + '</p>';
+        html += '</div>';
+      }
+      if (details.suggestion) {
+        html += '<div class="rounded-lg border border-primary/30 bg-primary/5 p-3 shadow-xs">';
+        html += '<div class="flex items-center gap-1.5 text-xs font-bold text-primary mb-1">';
+        html += '<span>🔧</span><span>Suggested Fix</span>';
+        html += '</div>';
+        html += '<p class="text-xs text-base-content/80 font-medium leading-relaxed">' + escapeHtml(details.suggestion) + '</p>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    messageEl.innerHTML = html;
+
+    const jumpBtn = messageEl.querySelector('.js-jump-err-line');
+    if (jumpBtn) {
+      jumpBtn.addEventListener('click', function () {
+        const l = parseInt(jumpBtn.dataset.line, 10);
+        const c = parseInt(jumpBtn.dataset.col, 10);
+        jumpToLine(l, c);
+      });
+    }
+  }
+
+  function setMessage(text, type) {
+    if (!messageEl) return;
+    if (!text) {
+      messageEl.innerHTML = '';
+      return;
+    }
+    const palette = {
+      error: 'border-error/40 bg-error/10 text-error',
+      success: 'border-success/40 bg-success/10 text-success',
+      info: 'border-info/40 bg-info/10 text-info',
+      warning: 'border-warning/40 bg-warning/10 text-warning',
+    };
+    messageEl.innerHTML = '<div class="flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium ' +
+      (palette[type] || palette.info) + '"><span>' + escapeHtml(text) + '</span></div>';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export & Results Table
+  // ---------------------------------------------------------------------------
 
   function setExportEnabled(enabled) {
     if (exportCsvBtn) exportCsvBtn.disabled = !enabled;
     if (exportJsonBtn) exportJsonBtn.disabled = !enabled;
   }
 
-  // ---- Export results ------------------------------------------------------
-
   async function exportResults(format) {
-    const sql = editor.value.trim();
+    const sql = getEditorText().trim();
     if (!sql) return;
     try {
       const res = await fetch(Api.url('/api/query/export'), {
@@ -43,16 +616,11 @@
         throw new Error(msg);
       }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.href = url;
-      a.download = 'query-' + stamp + '.' + format;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      UI.showToast('Exported as ' + format.toUpperCase() + '.', 'success');
+      if (window.Utils && window.Utils.downloadBlob) {
+        window.Utils.downloadBlob(blob, 'query-' + stamp + '.' + format);
+      }
+      if (window.UI && UI.showToast) UI.showToast('Exported as ' + format.toUpperCase() + '.', 'success');
     } catch (e) {
       setMessage(e.message, 'error');
     }
@@ -61,35 +629,8 @@
   if (exportCsvBtn) exportCsvBtn.addEventListener('click', () => exportResults('csv'));
   if (exportJsonBtn) exportJsonBtn.addEventListener('click', () => exportResults('json'));
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
-
-  function setMessage(text, type) {
-    if (!text) {
-      messageEl.innerHTML = '';
-      return;
-    }
-    const palette = {
-      error: 'border-error/40 bg-error/10 text-error',
-      success: 'border-success/40 bg-success/10 text-success',
-      info: 'border-info/40 bg-info/10 text-info',
-      warning: 'border-warning/40 bg-warning/10 text-warning',
-    };
-    messageEl.innerHTML = '<div class="flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium ' +
-      (palette[type] || palette.info) + '"><span>' + escapeHtml(text) + '</span></div>';
-  }
-
-  function isJsonStr(s) {
-    if (typeof s !== 'string') return false;
-    const t = s.trim();
-    if (!((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')))) return false;
-    try { JSON.parse(t); return true; } catch { return false; }
-  }
-
-  function isHexBlobStr(s) {
-    return typeof s === 'string' && /^0x[0-9a-f]{4,}$/i.test(s.trim());
-  }
+  const isJsonStr = window.Utils ? window.Utils.isJson : function(s) { return false; };
+  const isHexBlobStr = window.Utils ? window.Utils.isHexBlob : function(s) { return false; };
 
   function renderTable(columns, rows) {
     headEl.innerHTML = '<tr>' + columns.map((c) => '<th class="whitespace-nowrap font-semibold"><span class="font-mono normal-case">' + escapeHtml(c) + '</span></th>').join('') + '</tr>';
@@ -135,7 +676,6 @@
     ).join('');
   }
 
-  // Delegate inspection click
   if (bodyEl) {
     bodyEl.addEventListener('click', function (e) {
       const inspectBtn = e.target.closest('.js-query-inspect');
@@ -180,7 +720,7 @@
   }
 
   async function run() {
-    const sql = editor.value.trim();
+    const sql = getEditorText().trim();
     if (!sql) {
       setMessage('Enter a SQL statement first.', 'warning');
       return;
@@ -195,6 +735,8 @@
       });
       if (!confirmed) return;
     }
+    errorLineNum = null;
+    updateGutter();
     messageEl.innerHTML = '';
     resultEl.classList.add('hidden');
     setExportEnabled(false);
@@ -216,36 +758,13 @@
       }
     } catch (e) {
       resultEl.classList.add('hidden');
-      setMessage(e.message, 'error');
+      setDetailedError(e);
     }
   }
 
-  // ---- Line numbers ------------------------------------------------------
-
-  function updateGutter() {
-    if (!gutter) return;
-    const lines = editor.value.split('\n').length;
-    let html = '';
-    for (let i = 1; i <= lines; i++) html += i + '\n';
-    gutter.textContent = html;
-    gutter.scrollTop = editor.scrollTop;
-  }
-
-  if (editor && gutter) {
-    editor.addEventListener('scroll', () => {
-      gutter.scrollTop = editor.scrollTop;
-    });
-    editor.addEventListener('input', updateGutter);
-    editor.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        run();
-      }
-    });
-    updateGutter();
-  }
-
-  // ---- Saved queries -----------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Saved Queries
+  // ---------------------------------------------------------------------------
 
   async function refreshQueries(selectName) {
     try {
@@ -260,7 +779,7 @@
   }
 
   async function saveQuery() {
-    const sql = editor.value.trim();
+    const sql = getEditorText().trim();
     const name = saveName.value.trim();
     if (!sql) {
       setMessage('Write some SQL before saving.', 'warning');
@@ -272,7 +791,7 @@
     }
     try {
       await Api.post('/api/queries', { name, sql });
-      UI.showToast('Query saved.', 'success');
+      if (window.UI && UI.showToast) UI.showToast('Query saved.', 'success');
       await refreshQueries(name);
     } catch (e) {
       setMessage(e.message, 'error');
@@ -295,7 +814,7 @@
     if (!confirmed) return;
     try {
       await Api.del('/api/queries/' + id);
-      UI.showToast('Query deleted.', 'success');
+      if (window.UI && UI.showToast) UI.showToast('Query deleted.', 'success');
       await refreshQueries();
     } catch (e) {
       setMessage(e.message, 'error');
@@ -311,12 +830,22 @@
       if (!id) return;
       const q = queriesCache.find((x) => String(x.id) === String(id));
       if (q) {
-        editor.value = q.sql;
+        setEditorValue(q.sql);
         saveName.value = q.name;
-        updateGutter();
+        errorLineNum = null;
         setMessage('Loaded "' + q.name + '".', 'info');
       }
     });
   }
   if (deleteBtn) deleteBtn.addEventListener('click', deleteQuery);
+
+  // Initialize
+  const initialText = getEditorText();
+  if (initialText) {
+    setEditorValue(initialText, true);
+  } else {
+    history.record('', { start: 0, end: 0 }, 0);
+  }
+  updateGutter();
+  updateCursorStats();
 })();

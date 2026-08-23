@@ -20,44 +20,10 @@
   let record = null;
   let fkOptions = {};
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
 
-  function toLocalInput(v, type) {
-    if (v == null || v === '') return '';
-    const s = String(v);
-    const t = (type || '').toUpperCase();
-
-    // Date only
-    if (t === 'DATE') {
-      const dm = s.match(/^(\d{4}-\d{2}-\d{2})/);
-      return dm ? dm[1] : s;
-    }
-
-    // Time only
-    if (t === 'TIME' || t === 'TIMETZ' || t.startsWith('TIME ') || t.startsWith('TIME(')) {
-      const tm = s.match(/(\d{2}:\d{2}(?::\d{2})?)/);
-      return tm ? tm[1] : s;
-    }
-
-    // Datetime / Timestamp
-    const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
-    if (m) return m[1] + 'T' + m[2] + ':' + m[3] + (m[4] ? ':' + m[4] : '');
-    return s;
-  }
-
-  function toLocalNow(dateOnly, timeOnly) {
-    const d = new Date();
-    const p = (n) => String(n).padStart(2, '0');
-    if (dateOnly) {
-      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-    }
-    if (timeOnly) {
-      return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-    }
-    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-  }
+  const toLocalInput = window.Utils && window.Utils.toLocalInput ? window.Utils.toLocalInput : function(v) { return v == null ? '' : String(v); };
+  const toLocalNow = window.Utils && window.Utils.toLocalNow ? window.Utils.toLocalNow : function() { return new Date().toISOString(); };
 
   function generateUuidV4() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {

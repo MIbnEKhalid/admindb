@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { DbManager, DatabaseEntry } from '../db/manager';
 import type { Logger } from '../utils/logger';
-import { errorMessage, isPathWithinRoot, formatBytes } from '../utils/common';
+import { errorMessage, isPathWithinRoot, formatBytes, isPostgresConnectionString } from '../utils/common';
 
 interface DatabasesContext {
   manager: DbManager;
@@ -189,7 +189,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     if (!connectionString) {
       return res.status(400).json({ success: false, error: 'PostgreSQL connection string is required (e.g. postgresql://user:password@localhost:5432/dbname).' });
     }
-    if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
+    if (!isPostgresConnectionString(connectionString)) {
       return res.status(400).json({ success: false, error: 'Invalid connection protocol. Connection string must start with postgres:// or postgresql://' });
     }
     let id: string;

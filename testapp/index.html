@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AdminDB · Test App</title>
+  <!-- Inter font (clean, modern) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <style>
+    /* reset & base */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc;
+      color: #0b1a33;
+      line-height: 1.6;
+      padding: 2rem 1.5rem;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      max-width: 780px;
+      width: 100%;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 32px;
+      box-shadow: 0 20px 60px -12px rgba(0, 20, 40, 0.20), 0 8px 24px -6px rgba(0, 0, 0, 0.04);
+      padding: 2.5rem 2.8rem;
+      transition: box-shadow 0.2s;
+    }
+
+    @media (max-width: 500px) {
+      .card {
+        padding: 1.8rem 1.2rem;
+        border-radius: 24px;
+      }
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-bottom: 0.3rem;
+    }
+
+    h1 span {
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.2rem 0.8rem;
+      border-radius: 40px;
+      letter-spacing: 0.3px;
+      margin-left: 0.4rem;
+    }
+
+    .subhead {
+      font-size: 1.05rem;
+      color: #334155;
+      margin-bottom: 1.6rem;
+      border-left: 4px solid #6d5df6;
+      padding-left: 1rem;
+      background: #f1f5f9;
+      border-radius: 0 12px 12px 0;
+      padding: 0.6rem 1.2rem;
+      font-weight: 450;
+    }
+
+    .action-link {
+      display: inline-block;
+      background: #6d5df6;
+      color: white;
+      font-weight: 600;
+      padding: 0.7rem 1.8rem;
+      border-radius: 60px;
+      text-decoration: none;
+      font-size: 1rem;
+      transition: 0.15s ease;
+      box-shadow: 0 4px 10px -2px rgba(109, 93, 246, 0.3);
+      letter-spacing: 0.2px;
+    }
+
+    .action-link:hover {
+      background: #5b4ad9;
+      transform: scale(1.01);
+      box-shadow: 0 8px 18px -4px rgba(109, 93, 246, 0.4);
+    }
+
+    .action-link:active {
+      transform: scale(0.97);
+    }
+
+    hr {
+      margin: 2rem 0 1.6rem;
+      border: 0;
+      height: 1px;
+      background: linear-gradient(to right, #e2e8f0, #cbd5e1, #e2e8f0);
+    }
+
+    .section-title {
+      font-weight: 600;
+      font-size: 1.1rem;
+      letter-spacing: -0.01em;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .section-title i {
+      font-style: normal;
+      background: #eef2ff;
+      color: #4f46e5;
+      border-radius: 40px;
+      padding: 0.1rem 0.7rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    pre {
+      background: #f1f5f9;
+      padding: 1rem 1.4rem;
+      border-radius: 18px;
+      font-size: 0.85rem;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+      border: 1px solid #e9edf2;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #1e293b;
+      line-height: 1.7;
+      margin: 0.5rem 0 1.2rem;
+    }
+
+    pre strong {
+      color: #6d5df6;
+      font-weight: 600;
+    }
+
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.3rem 1.5rem;
+      margin: 0.75rem 0 0.25rem;
+    }
+
+    .grid-item {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      font-size: 0.95rem;
+      padding: 0.2rem 0;
+    }
+
+    .grid-item .label {
+      font-weight: 500;
+      color: #475569;
+      min-width: 80px;
+    }
+
+    .grid-item .value {
+      font-weight: 500;
+      color: #0b1a33;
+      font-family: 'JetBrains Mono', monospace;
+      background: #f8fafc;
+      padding: 0.1rem 0.5rem;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      border: 1px solid #edf2f7;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #d9f0e1;
+      color: #0b5e3a;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.15rem 0.7rem;
+      border-radius: 40px;
+      letter-spacing: 0.2px;
+      margin-left: 0.3rem;
+    }
+
+    ul.scenario-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.5rem 0 0.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    ul.scenario-list li {
+      padding: 0.45rem 0.9rem;
+      background: #f8fafc;
+      border-radius: 40px;
+      border: 1px solid #eef2f6;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      transition: background 0.1s;
+    }
+
+    ul.scenario-list li:hover {
+      background: #f1f4f9;
+      border-color: #d0d9e6;
+    }
+
+    ul.scenario-list li a {
+      color: #4f46e5;
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 1.5px dotted transparent;
+      transition: 0.1s;
+      margin-left: auto;
+      padding: 0.1rem 0.2rem;
+    }
+
+    ul.scenario-list li a:hover {
+      border-bottom-color: #4f46e5;
+      color: #3730a3;
+    }
+
+    .scenario-icon {
+      font-size: 1.15rem;
+      line-height: 1;
+      opacity: 0.8;
+    }
+
+    .scenario-tag {
+      background: #eef2ff;
+      border-radius: 30px;
+      padding: 0.1rem 0.7rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: #4338ca;
+      letter-spacing: 0.2px;
+    }
+
+    .footer-note {
+      margin-top: 1.6rem;
+      font-size: 0.85rem;
+      color: #64748b;
+      text-align: center;
+      border-top: 1px solid #e9edf2;
+      padding-top: 1.4rem;
+      display: flex;
+      justify-content: center;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-note span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+
+    .highlight {
+      background: #fef9e7;
+      border-radius: 20px;
+      padding: 0.1rem 0.7rem;
+      font-weight: 500;
+      color: #92400e;
+    }
+
+    /* mobile tweaks */
+    @media (max-width: 550px) {
+      .grid-2col {
+        grid-template-columns: 1fr;
+        gap: 0.1rem;
+      }
+      ul.scenario-list li {
+        flex-wrap: wrap;
+      }
+      ul.scenario-list li a {
+        margin-left: 0;
+        width: 100%;
+        padding-left: 1.8rem;
+      }
+      .action-link {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+
+    <!-- header -->
+    <h1>
+      ⚡ AdminDB
+      <span>test</span>
+    </h1>
+    <div class="subhead">
+      Standalone host application · AdminDB as embedded middleware
+    </div>
+
+    <!-- primary CTA -->
+    <p style="margin: 1.2rem 0 0.6rem;">
+      <a href="{{BASE_PATH}}" class="action-link">→ Open AdminDB Dashboard</a>
+    </p>
+
+    <hr>
+
+    <!-- config section -->
+    <div class="section-title">
+      📋 Configuration
+      <i>current</i>
+    </div>
+    <pre>
+DB file   <strong>{{DB_FILE}}</strong>
+BasePath  <strong>{{BASE_PATH}}</strong>
+Port      <strong>{{PORT}}</strong>
+Mode      <strong>Embedded · createRouter</strong>
+Auth      <span class="badge">dev mode · disabled</span>
+    </pre>
+
+    <!-- test scenarios -->
+    <div class="section-title" style="margin-top: 0.6rem;">
+      🧪 Test scenarios
+      <i>explore</i>
+    </div>
+
+    <ul class="scenario-list">
+      <li>
+        <span class="scenario-icon">📊</span> Browse tables
+        <span class="scenario-tag">home</span>
+        <a href="{{BASE_PATH}}">→ {{BASE_PATH}}</a>
+      </li>
+      <li>
+        <span class="scenario-icon">✅</span> Bulk select · drop / truncate
+        <span class="scenario-tag">actions</span>
+        <a href="{{BASE_PATH}}">→ table view</a>
+      </li>
+      <li>
+        <span class="scenario-icon">🧬</span> Seed Generator
+        <span class="scenario-tag">mock data</span>
+        <a href="{{BASE_PATH}}">→ open any table</a>
+      </li>
+      <li>
+        <span class="scenario-icon">📝</span> SQL query editor
+        <span class="scenario-tag">advanced</span>
+        <a href="{{BASE_PATH}}/query">→ {{BASE_PATH}}/query</a>
+      </li>
+      <li>
+        <span class="scenario-icon">🔗</span> ER Diagram
+        <span class="scenario-tag">visual</span>
+        <a href="{{BASE_PATH}}/erd">→ {{BASE_PATH}}/erd</a>
+      </li>
+      <li>
+        <span class="scenario-icon">🧩</span> Table designer
+        <span class="scenario-tag">schema</span>
+        <a href="{{BASE_PATH}}/designer">→ {{BASE_PATH}}/designer</a>
+      </li>
+    </ul>
+
+    <!-- extra context -->
+    <div class="footer-note">
+      <span>⚙️ Embedded mode · <span class="highlight">createRouter</span></span>
+      <span>🔐 Auth disabled <span style="opacity:0.6;">(dev)</span></span>
+      <span>📁 SQLite: {{DB_FILE}}</span>
+    </div>
+
+    <!-- tiny inline note (style) -->
+    <div style="margin-top: 0.8rem; font-size: 0.75rem; color: #94a3b8; text-align: right; border-top: 1px dashed #e2e8f0; padding-top: 0.8rem;">
+      AdminDB · embedded test harness
+    </div>
+
+  </div>
+</body>
+</html>

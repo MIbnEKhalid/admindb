@@ -1,6 +1,6 @@
 {
   "name": "admindb",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "Browser-based SQLite & PostgreSQL database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -30,15 +30,16 @@
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && node scripts/copy-assets.mjs && npm run build:css",
     "build:css": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./src/public/css/input.css -o ./dist/public/css/app.css --minify",
-    "start": "node dist/cli.js",
-    "dev": "concurrently -k -n server,css \"tsx watch src/cli.ts\" \"npm run dev:css\"",
+    "start": "node dist/cli.js -d ./db",
+    "dev": "concurrently -k -n server,css \"tsx watch src/cli.ts -d ./db\" \"npm run dev:css\"",
     "dev:css": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./src/public/css/input.css -o ./src/public/css/app.css --watch",
     "prepack": "npm run build",
     "test": "tsx --test test/*.test.ts",
     "test:smoke": "tsx --test test/smoke.test.ts",
     "generatehash": "node scripts/generate-hash.mjs",
     "screenshots": "npm run build && node scripts/capture-screenshots.mjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "testapp": "node testapp/server.js"
   },
   "keywords": [
     "sqlite",

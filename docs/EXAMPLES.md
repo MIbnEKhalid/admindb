@@ -276,6 +276,9 @@ Detailed reference for every environment variable supported by AdminDB.
 
 AdminDB can be mounted directly into any existing Express application as a sub-router on the same port.
 
+> **💡 Note on ESM vs CJS:**
+> AdminDB natively supports both **ES Modules** (`import { createRouter } from 'admindb'`) and **CommonJS** (`const { createRouter } = require('admindb')`). The examples below use TypeScript/ESM syntax, but they work identically in pure Node.js CommonJS.
+
 ---
 
 ### `createRouter(options)` Reference

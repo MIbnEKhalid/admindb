@@ -4,53 +4,12 @@
   const cfgEl = document.getElementById('schema-config');
   if (!cfgEl) return;
   const cfg = JSON.parse(cfgEl.textContent);
-  const SQLITE_TYPES = [
-    'TEXT',
-    'INTEGER',
-    'REAL',
-    'BLOB',
-    'BOOLEAN',
-    'DATE',
-    'DATETIME',
-    'NUMERIC',
-    'VARCHAR(255)',
-    'JSON',
-  ];
-
-  const POSTGRES_TYPES = [
-    'TEXT',
-    'VARCHAR(255)',
-    'INTEGER',
-    'BIGINT',
-    'SMALLINT',
-    'SERIAL',
-    'BIGSERIAL',
-    'REAL',
-    'DECIMAL(10,2)',
-    'NUMERIC',
-    'BOOLEAN',
-    'DATE',
-    'DATETIME',
-    'TIMESTAMP',
-    'TIMESTAMPTZ',
-    'TIME',
-    'INTERVAL',
-    'JSON',
-    'JSONB',
-    'UUID',
-    'BYTEA',
-    'INET',
-  ];
-
-  const isPostgres = (window.APP && window.APP.dialect === 'postgres') || (cfg && cfg.dialect === 'postgres');
-  const DESIGNER_TYPES = isPostgres ? POSTGRES_TYPES : SQLITE_TYPES;
-
-  const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
+  const isPostgres = window.Utils ? window.Utils.isPostgres(cfg && cfg.dialect) : ((window.APP && window.APP.dialect === 'postgres') || (cfg && cfg.dialect === 'postgres'));
+  const DESIGNER_TYPES = window.Utils ? window.Utils.getDesignerTypes(cfg && cfg.dialect) : ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN'];
+  const NAME_RE = window.Utils ? window.Utils.NAME_REGEX : /^[A-Za-z_][A-Za-z0-9_$]*$/;
   const t = encodeURIComponent(cfg.table);
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
 
   function showError(el, msg) {
     el.classList.remove('hidden');

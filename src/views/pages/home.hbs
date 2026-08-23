@@ -69,7 +69,7 @@
     </div>
   </div>
 
-  <!-- Tables -->
+  <!-- Tables section -->
   <div>
     <div class="mb-3 flex items-center justify-between">
       <h2 class="text-lg font-bold">Tables</h2>
@@ -77,11 +77,110 @@
     </div>
 
     {{#if tables.length}}
+
+      {{!-- Bulk Action Toolbar (write mode only, hidden until selection exists) --}}
+      {{#unless readonly}}
+      <div id="home-bulk-toolbar"
+        style="max-height: 0; overflow: hidden; transition: max-height 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.18s ease; opacity: 0;"
+        aria-hidden="true">
+        <div class="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-4 py-3 shadow-soft">
+
+          <!-- Count badge -->
+          <span id="home-bulk-count"
+            class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+            <span id="home-bulk-count-num">0</span> selected
+          </span>
+
+          <div class="h-4 w-px bg-base-300"></div>
+
+          <!-- Clear Rows (truncate) group -->
+          <div class="dropdown dropdown-bottom" id="home-dd-clear">
+            <button tabindex="0" id="home-btn-clear"
+              class="btn btn-sm btn-warning gap-1.5 font-semibold">
+              {{{icon "refresh" class="h-3.5 w-3.5"}}}
+              Clear Rows
+              <svg class="h-3 w-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <ul tabindex="0"
+              class="dropdown-content menu bg-base-100 rounded-xl border border-base-300 shadow-lift z-30 mt-1 w-64 p-2 text-sm">
+              <li>
+                <button id="home-clear-normal" class="flex items-start gap-2.5 rounded-lg px-3 py-2.5 hover:bg-base-200 text-left w-full">
+                  <span class="mt-0.5 text-warning shrink-0">{{{icon "warning" class="h-4 w-4"}}}</span>
+                  <span>
+                    <span class="block font-semibold">Clear rows</span>
+                    <span class="block text-xs text-base-content/50">Deletes all rows; fails if FK references exist</span>
+                  </span>
+                </button>
+              </li>
+              <li>
+                <button id="home-clear-force" class="flex items-start gap-2.5 rounded-lg px-3 py-2.5 hover:bg-error/10 text-left w-full text-error">
+                  <span class="mt-0.5 shrink-0">{{{icon "warning" class="h-4 w-4"}}}</span>
+                  <span>
+                    <span class="block font-semibold">Force Clear <span class="text-[10px] font-bold uppercase tracking-wide rounded bg-error/15 px-1 py-0.5 ml-1">ignore FK</span></span>
+                    <span class="block text-xs text-error/60">Disables FK checks; deletes regardless of references</span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Drop Tables group -->
+          <div class="dropdown dropdown-bottom" id="home-dd-drop">
+            <button tabindex="0" id="home-btn-drop"
+              class="btn btn-sm btn-error gap-1.5 font-semibold text-white">
+              {{{icon "warning" class="h-3.5 w-3.5"}}}
+              Drop Tables
+              <svg class="h-3 w-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <ul tabindex="0"
+              class="dropdown-content menu bg-base-100 rounded-xl border border-base-300 shadow-lift z-30 mt-1 w-64 p-2 text-sm">
+              <li>
+                <button id="home-drop-normal" class="flex items-start gap-2.5 rounded-lg px-3 py-2.5 hover:bg-base-200 text-left w-full">
+                  <span class="mt-0.5 text-error shrink-0">{{{icon "warning" class="h-4 w-4"}}}</span>
+                  <span>
+                    <span class="block font-semibold">Drop tables</span>
+                    <span class="block text-xs text-base-content/50">Permanently deletes tables and all data</span>
+                  </span>
+                </button>
+              </li>
+              <li>
+                <button id="home-drop-force" class="flex items-start gap-2.5 rounded-lg px-3 py-2.5 hover:bg-error/10 text-left w-full text-error">
+                  <span class="mt-0.5 shrink-0">{{{icon "warning" class="h-4 w-4"}}}</span>
+                  <span>
+                    <span class="block font-semibold">Force Drop <span class="text-[10px] font-bold uppercase tracking-wide rounded bg-error/15 px-1 py-0.5 ml-1">ignore FK</span></span>
+                    <span class="block text-xs text-error/60">Drops with FK checks disabled; cascades on Postgres</span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div class="ml-auto">
+            <button id="home-bulk-deselect"
+              class="btn btn-ghost btn-sm gap-1 text-base-content/50 hover:text-base-content">
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              Deselect all
+            </button>
+          </div>
+        </div>
+      </div>
+      {{/unless}}
+
+      <!-- Tables card -->
       <div class="app-card overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-sm" id="home-tables-table">
             <thead>
               <tr class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50">
+                {{#unless readonly}}
+                <th class="w-10">
+                  <input type="checkbox" id="home-select-all"
+                    class="checkbox checkbox-sm checkbox-primary"
+                    title="Select all tables" />
+                </th>
+                {{/unless}}
                 <th class="font-semibold">Table</th>
                 <th class="text-right font-semibold">Columns</th>
                 <th class="text-right font-semibold">Rows</th>
@@ -90,7 +189,15 @@
             </thead>
             <tbody>
               {{#each tables}}
-                <tr class="group hover:bg-base-200/50">
+                <tr class="group hover:bg-base-200/50 home-table-row" data-table="{{this}}">
+                  {{#unless ../readonly}}
+                  <td class="w-10">
+                    <input type="checkbox"
+                      class="checkbox checkbox-sm checkbox-primary home-table-checkbox"
+                      data-table="{{this}}"
+                      title="Select {{this}}" />
+                  </td>
+                  {{/unless}}
                   <td>
                     <a href="{{../basePath}}/tables/{{this}}" class="inline-flex items-center gap-2.5 font-medium">
                       <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
@@ -130,3 +237,7 @@
     {{/if}}
   </div>
 </div>
+
+{{#unless readonly}}
+<script src="{{basePath}}/js/home.js" defer></script>
+{{/unless}}

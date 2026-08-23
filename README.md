@@ -10,10 +10,12 @@
 
 - **SQLite & PostgreSQL Multi-Engine:** Seamlessly manage local SQLite files, remote PostgreSQL connections, or multi-database environments with distinct engine badges and credentials protection.
 - **Secure JSON Config Files:** Pass database credentials securely in `.json` files (`name.postgres.json`) without exposing secrets on the CLI.
-- **Zero frontend build step:** Server-rendered Handlebars UI + vanilla JS + Tailwind/DaisyUI; a single lightweight Express process serves pages, static assets, and the REST API.
+- **Zero frontend build step:** Server-rendered Handlebars UI + vanilla JS + heavily refined DaisyUI/TailwindCSS styling; a single lightweight Express process serves pages, static assets, and the REST API.
 - **Standalone CLI or embeddable library:** Run instantly via `npx admindb` or mount it directly into your existing Express application under any subpath.
+- **Intelligent SQL Error Analyzer:** Intercepts raw SQL errors and provides human-readable explanations and suggested fixes for syntax errors, missing columns, and constraint violations.
 - **Modern terminal experience:** Clean, colorized startup banner with auto-detected local/network URLs and streamlined runtime logs.
 - **Rich Data Types & Calendar Controls:** In-place calendar pickers with presets (`Now`, `Yesterday`, `Tomorrow`, `+7 Days`, `+30 Days`), PostgreSQL Array chip managers, JSON modal inspector, UUID generators, and byte dump inspector.
+- **Interactive ER Diagram & Relationship Graph:** Interactive SVG schema visualizer with 3 layout modes (Hierarchy, Force, Circular), relationship filtering, hover edge inspectors, and clean SVG export.
 - **Safe SQL by construction:** Quoted identifiers, escaped literals, parameterized queries, and non-executing SQL preview modes.
 
 ---
@@ -73,7 +75,7 @@ admindb
 AdminDB features a clean, colorized CLI startup banner and streamlined, low-noise runtime logging:
 
 ```text
-  ⚡ AdminDB v2.1.1
+  ⚡ AdminDB v2.2.0
 
   ➜  Local:    http://localhost:45531/
   ➜  Network:  http://192.168.1.15:45531/
@@ -130,12 +132,23 @@ Runtime operations produce crisp, color-coded status logs:
 * **Relationship-Safe Schema Editor:** Rename tables, add columns, modify column types, rename columns, and drop columns/tables with safety checks to protect active foreign keys and unique constraints.
 * **Index Manager:** Create single or multi-column indexes (plain or unique) with live SQL previews, and drop existing indexes safely.
 
+### 📊 Interactive ER Diagram & Relationship Visualization
+* **3 Layout Modes:**
+  * **Hierarchy (default):** Layered topological layout organizing master/root tables on the left with dependencies progressing to the right, barycenter-sorted to minimize edge crossings.
+  * **Force-Directed:** Organic physics simulation balancing node repulsion and edge spring tension.
+  * **Circular:** Clean circular arrangement for connected tables with isolated/unreferenced tables placed cleanly in a side column.
+* **Interactive Canvas & Controls:** Smooth zoom & pan, node dragging, minimap overview, live table search filter with auto-pan, compact mode toggle, and keyboard shortcuts (<kbd>F</kbd> fit, <kbd>L</kbd> cycle layout, <kbd>C</kbd> compact).
+* **Relationship Highlighting & Inspector:** Select any table to highlight its incoming & outgoing foreign-key connections with dimmed backdrop, hover relationship curves to inspect column mappings, and access direct Schema / Browse shortcuts from the sliding side panel or right-click context menu.
+* **Standalone SVG Export:** Export clean, production-ready SVG diagrams with inlined styling and proper viewBox bounds for documentation and architecture reviews.
+
 ### 🔄 Import, Export & Seed Data Generation
 * **CSV Import:** Upload or paste CSV files with column matching, executed transactionally.
 * **Data Export:** Download table data or arbitrary SQL query results as CSV or JSON.
 * **Intelligent Seed Generator:** Populate tables with up to 5,000 realistic rows using intelligent heuristic strategy detection (names, emails, phones, addresses, dates, UUIDs, custom templates, or sampled foreign keys). Includes live table preview before execution.
+* **Cross-Table Relational Chain Seeder:** Automatically detects and resolves foreign key dependencies, allowing you to seed an entire branch of related tables in topological order in a single click.
 
-### 📁 Multi-Database Manager
+### 📁 Multi-Database Manager & Schema Operations
+* **Bulk Table Operations:** Select multiple tables from the home dashboard to bulk drop or bulk truncate them simultaneously, with force cascade options that temporarily disable and bypass foreign key checks.
 * Manage directories of SQLite files, explicit file lists, or named JSON connections.
 * Dedicated landing page with engine badges (`PostgreSQL` / `SQLite`), table counts, connection paths, and seamless database switching.
 
@@ -150,15 +163,14 @@ Runtime operations produce crisp, color-coded status logs:
 
 ## 🚀 Embed AdminDB in Express
 
-AdminDB can be mounted directly into any existing Express application under any subpath on the same port:
+AdminDB is built to work natively with both **CommonJS (`require`)** and **ES Modules (`import`)**. You can mount it directly into any existing Express application under any subpath:
 
+### ES Modules (ESM) or TypeScript
 ```ts
 import express from 'express';
 import { createRouter } from 'admindb';
 
 const app = express();
-
-app.get('/', (_req, res) => res.send('Main App'));
 
 // Mount AdminDB for SQLite
 app.use('/admin', createRouter({
@@ -166,16 +178,26 @@ app.use('/admin', createRouter({
   basePath: '/admin',
 }));
 
-// Or mount AdminDB for PostgreSQL
-app.use('/admin-pg', createRouter({
+app.listen(45531);
+```
+
+### CommonJS (CJS)
+```js
+const express = require('express');
+const { createRouter } = require('admindb');
+
+const app = express();
+
+app.use('/admin', createRouter({
   connection: 'postgresql://postgres:secret@localhost:5432/mydb',
-  basePath: '/admin-pg',
+  basePath: '/admin',
 }));
 
-app.listen(45531, () => {
-  console.log('App running on http://localhost:45531 (Admin: http://localhost:45531/admin)');
-});
+app.listen(45531);
 ```
+
+> **💡 Try the Embedded Test App:**
+> You can see a complete, working example of an embedded host application by running `npm run testapp` from the project root. This spins up a standalone Express server that imports and mounts AdminDB.
 
 > 📖 **Full Options & Advanced Embedding Recipes:**
 > See [**`docs/EXAMPLES.md`**](docs/EXAMPLES.md#-part-2-programmatic-code-examples-express--typescript) for the complete `createRouter` options reference, multi-database management (`DbManager`), custom loggers, read-only mode, and custom authentication configurations.
@@ -327,6 +349,12 @@ npm install
 npm run dev        # Live reload development server
 npm test           # Run comprehensive unit test suite
 ```
+
+---
+
+## 🙌 Credits
+
+AdminDB is built and maintained by **[Muhammad Bin Khalid](https://github.com/MIbnEKhalid)** under the umbrella of **[MBKTech.org](https://mbktech.org)**.
 
 ---
 

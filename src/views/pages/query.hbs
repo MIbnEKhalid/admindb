@@ -47,22 +47,80 @@
 
   <!-- Editor -->
   <div class="app-card overflow-hidden">
-    <div class="flex items-center justify-between border-b border-base-200 bg-base-200/40 px-4 py-2.5">
-      <span class="flex items-center gap-2 text-sm font-semibold text-base-content/60">
-        <span class="grid h-5 w-5 place-items-center rounded-md bg-primary/10 text-primary">
-          {{{icon "query" class="h-3.5 w-3.5"}}}
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-200 bg-base-200/40 px-4 py-2">
+      <div class="flex items-center gap-2">
+        <span class="flex items-center gap-1.5 text-xs font-semibold text-base-content/70">
+          <span class="grid h-5 w-5 place-items-center rounded bg-primary/10 text-primary">
+            {{{icon "query" class="h-3.5 w-3.5"}}}
+          </span>
+          query.sql
         </span>
-        query.sql
-      </span>
-      <span class="text-[11px] text-base-content/40">Ctrl/⌘ + Enter to run</span>
-    </div>
-    <div>
-      <div class="sql-editor-wrap">
-        <pre id="query-gutter" class="sql-gutter" aria-hidden="true">1</pre>
-        <textarea id="query-sql" class="sql-input" rows="10" placeholder="SELECT * FROM users WHERE …" spellcheck="false"></textarea>
+        <span class="badge badge-sm badge-ghost font-mono text-[10px] uppercase font-bold">{{#if isPostgres}}Postgres{{else}}SQLite{{/if}}</span>
       </div>
-      <div id="query-message"></div>
+
+      <!-- Editor Actions -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <!-- Quick Snippets -->
+        <div class="dropdown dropdown-end">
+          <label tabindex="0" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            Snippets
+          </label>
+          <ul tabindex="0" class="dropdown-content z-30 menu p-1.5 shadow-2xl bg-base-100 rounded-xl w-56 border border-base-300 text-xs">
+            <li class="menu-title text-[10px] uppercase tracking-wider text-base-content/40">Query Templates</li>
+            <li><a class="js-snippet" data-snippet="SELECT * FROM table_name\nWHERE condition\nORDER BY id DESC\nLIMIT 50;">SELECT rows</a></li>
+            <li><a class="js-snippet" data-snippet="SELECT COUNT(*) AS total\nFROM table_name;">COUNT summary</a></li>
+            <li><a class="js-snippet" data-snippet="SELECT a.*, b.*\nFROM table_a a\nJOIN table_b b ON b.a_id = a.id\nLIMIT 50;">JOIN tables</a></li>
+            <li><a class="js-snippet" data-snippet="INSERT INTO table_name (col1, col2)\nVALUES ('value1', 'value2');">INSERT row</a></li>
+            <li><a class="js-snippet" data-snippet="UPDATE table_name\nSET col1 = 'value1'\nWHERE id = 1;">UPDATE row</a></li>
+            <li><a class="js-snippet" data-snippet="DELETE FROM table_name\nWHERE id = 1;">DELETE row</a></li>
+            <li><a class="js-snippet" data-snippet="CREATE TABLE new_table (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  created_at TEXT DEFAULT (datetime('now'))\n);">CREATE TABLE</a></li>
+          </ul>
+        </div>
+
+        <!-- Format SQL (Beautify) -->
+        <button id="format-query" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary" title="Format SQL (Beautify)">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h10M4 18h14"/></svg>
+          Format
+        </button>
+
+        <!-- Copy SQL -->
+        <button id="copy-query" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary" title="Copy SQL to clipboard">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          Copy
+        </button>
+
+        <!-- Clear SQL -->
+        <button id="clear-query" type="button" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-error" title="Clear editor">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Clear
+        </button>
+
+        <span class="hidden sm:inline-block text-[11px] text-base-content/35 border-l border-base-300 pl-2">Ctrl/⌘ + Enter to run</span>
+      </div>
     </div>
+
+    <!-- SQL Editor Workspace -->
+    <div class="sql-editor-wrap">
+      <div id="query-gutter" class="sql-gutter" aria-hidden="true">
+        <div class="sql-gutter-line">1</div>
+      </div>
+      <div id="query-sql" class="sql-code-editor" contenteditable="plaintext-only" spellcheck="false" data-placeholder="-- Write SQL here or choose a snippet/saved query&#10;SELECT * FROM table_name WHERE …"></div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="flex items-center justify-between border-t border-base-200 bg-base-200/30 px-3.5 py-1.5 text-[11px] font-mono text-base-content/50">
+      <div class="flex items-center gap-3">
+        <span id="editor-cursor-pos">Ln 1, Col 1</span>
+        <span id="editor-stats">0 chars</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] text-base-content/40">Tab to indent · Ctrl+Z / Ctrl+Y to undo/redo · Ctrl+/ to comment</span>
+      </div>
+    </div>
+
+    <!-- Error/Notice message banner -->
+    <div id="query-message" class="p-3"></div>
   </div>
 
   <!-- Results -->

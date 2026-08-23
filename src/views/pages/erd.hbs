@@ -1,0 +1,1415 @@
+{{!-- Page: ER Diagram / Relationship Visualization --}}
+<div class="flex flex-col" style="height: calc(100vh - 120px); min-height: 500px;">
+
+  {{!-- Toolbar --}}
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    <div class="flex items-center gap-2">
+      <h1 class="text-xl font-bold">ER Diagram</h1>
+      <span id="erd-table-badge" class="hidden rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary"></span>
+      <span id="erd-fk-badge" class="hidden rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-600"></span>
+    </div>
+    <div class="ml-auto flex flex-wrap items-center gap-1.5">
+      {{!-- Search --}}
+      <div class="relative">
+        <svg class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-base-content/40" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input id="erd-search" type="search" placeholder="Find table…" autocomplete="off"
+          class="h-8 w-36 rounded-lg border border-base-300 bg-base-100 pl-7 pr-2 text-xs outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/20" />
+      </div>
+      <div class="h-5 w-px bg-base-300"></div>
+      <button id="erd-btn-compact" title="Toggle compact mode (C)" class="btn btn-sm btn-ghost gap-1.5 font-normal">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16"/></svg>
+        Compact
+      </button>
+      <button id="erd-btn-fit" title="Fit to screen (F)" class="btn btn-sm btn-ghost gap-1.5 font-normal">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5-5"/></svg>
+        Fit
+      </button>
+      {{!-- Layout mode toggle --}}
+      <div class="flex items-center rounded-lg border border-base-300 bg-base-100 p-0.5 gap-0.5" title="Layout mode (L to cycle)">
+        <button id="erd-mode-force" class="erd-mode-btn rounded-md px-2.5 py-1 text-xs font-semibold transition-all gap-1.5 flex items-center" data-mode="force" title="Force-directed (physics)">
+          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path stroke-linecap="round" d="M6 6.5l4.5 4M17.5 6.5l-4 4M6 17.5l4.5-4M17.5 17.5l-4-4"/></svg>
+          Force
+        </button>
+        <button id="erd-mode-hierarchy" class="erd-mode-btn rounded-md px-2.5 py-1 text-xs font-semibold transition-all gap-1.5 flex items-center" data-mode="hierarchy" title="Hierarchical (reference tables left)">
+          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="5" height="6" rx="1"/><rect x="9" y="4" width="5" height="6" rx="1"/><rect x="9" y="14" width="5" height="6" rx="1"/><rect x="17" y="9" width="5" height="6" rx="1"/><path stroke-linecap="round" d="M7 12h2M14 7h1l2 5-2 5h-1"/></svg>
+          Hierarchy
+        </button>
+        <button id="erd-mode-circle" class="erd-mode-btn rounded-md px-2.5 py-1 text-xs font-semibold transition-all gap-1.5 flex items-center" data-mode="circle" title="Circular layout">
+          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="3" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.2" cy="7.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.2" cy="16.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="21" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.8" cy="16.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.8" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+          Circle
+        </button>
+      </div>
+      <button id="erd-btn-export-svg" title="Download as SVG" class="btn btn-sm btn-ghost gap-1.5 font-normal">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Export
+      </button>
+      <div class="h-5 w-px bg-base-300"></div>
+      <div class="flex items-center gap-0.5 rounded-lg border border-base-300 bg-base-100 px-1.5 py-1">
+        <button id="erd-btn-zoom-out" class="rounded px-1 py-0.5 hover:bg-base-200 transition-colors text-base-content/60" title="Zoom out (−)">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"/></svg>
+        </button>
+        <span id="erd-zoom-label" class="w-12 text-center text-xs font-mono font-semibold tabular-nums">100%</span>
+        <button id="erd-btn-zoom-in" class="rounded px-1 py-0.5 hover:bg-base-200 transition-colors text-base-content/60" title="Zoom in (+)">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Main area: canvas + side panel --}}
+  <div class="flex flex-1 gap-3 min-h-0">
+
+    {{!-- Canvas --}}
+    <div id="erd-canvas-wrap" class="relative flex-1 overflow-hidden rounded-xl border border-base-300 shadow-inner" style="cursor: grab; min-width:0;">
+
+      {{!-- Loading --}}
+      <div id="erd-loading" class="absolute inset-0 flex flex-col items-center justify-center gap-3 z-20 bg-base-100/80 backdrop-blur-sm">
+        <svg class="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="text-sm text-base-content/60 font-medium">Loading schema…</span>
+      </div>
+
+      {{!-- Error --}}
+      <div id="erd-error" class="absolute inset-0 hidden flex-col items-center justify-center gap-3 z-20">
+        <div class="rounded-full bg-error/10 p-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        </div>
+        <p id="erd-error-msg" class="text-sm text-error font-medium"></p>
+      </div>
+
+      {{!-- Empty --}}
+      <div id="erd-empty" class="absolute inset-0 hidden flex-col items-center justify-center gap-3 z-20">
+        <div class="rounded-full bg-base-200 p-6">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="6" height="5" rx="1"/><rect x="16" y="3" width="6" height="5" rx="1"/><rect x="9" y="16" width="6" height="5" rx="1"/><path d="M5 8v4h14V8M12 12v4"/></svg>
+        </div>
+        <p class="text-base-content/40 text-sm font-medium">No tables found in this database</p>
+      </div>
+
+      {{!-- SVG canvas --}}
+      <svg id="erd-svg" width="100%" height="100%" style="display:none; user-select:none;" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- Arrow markers for edges -->
+          <marker id="erd-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="var(--erd-edge-color)"/>
+          </marker>
+          <marker id="erd-arrow-hl" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="var(--erd-edge-hl)"/>
+          </marker>
+          <marker id="erd-arrow-dim" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="var(--erd-edge-dim)"/>
+          </marker>
+          <!-- Crow-foot one marker -->
+          <marker id="erd-cf-one" markerWidth="12" markerHeight="12" refX="2" refY="6" orient="auto">
+            <line x1="2" y1="1" x2="2" y2="11" stroke="var(--erd-edge-color)" stroke-width="1.5"/>
+            <line x1="5" y1="1" x2="5" y2="11" stroke="var(--erd-edge-color)" stroke-width="1.5"/>
+          </marker>
+          <!-- Node glow filter -->
+          <filter id="erd-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4" result="blur"/>
+            <feFlood flood-color="var(--erd-node-header)" flood-opacity="0.35" result="color"/>
+            <feComposite in="color" in2="blur" operator="in" result="glow"/>
+            <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="erd-shadow" x="-15%" y="-15%" width="130%" height="130%">
+            <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.10"/>
+          </filter>
+          <filter id="erd-shadow-lg" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000" flood-opacity="0.20"/>
+          </filter>
+        </defs>
+        <g id="erd-viewport">
+          <g id="erd-edges"></g>
+          <g id="erd-nodes"></g>
+        </g>
+      </svg>
+
+      {{!-- Edge label tooltip --}}
+      <div id="erd-edge-tooltip" class="pointer-events-none absolute hidden z-30 rounded-lg border border-base-300 bg-base-100 px-2.5 py-1.5 shadow-xl text-xs font-mono"></div>
+
+      {{!-- Minimap --}}
+      <div id="erd-minimap" class="absolute bottom-3 right-3 hidden rounded-xl border border-base-300/80 bg-base-100/95 backdrop-blur-sm shadow-xl overflow-hidden" style="width:168px;height:108px;">
+        <div class="absolute inset-x-0 top-0 flex items-center justify-between px-2 py-0.5 bg-base-200/80 text-[9px] font-semibold uppercase tracking-wider text-base-content/40">
+          <span>Overview</span>
+        </div>
+        <svg id="erd-minimap-svg" width="168" height="108" xmlns="http://www.w3.org/2000/svg" style="margin-top:16px;height:92px;"></svg>
+      </div>
+
+      {{!-- Context menu --}}
+      <div id="erd-ctx-menu" class="absolute hidden z-50 rounded-xl border border-base-300 bg-base-100 shadow-2xl py-1.5 w-48 text-sm">
+        <div class="px-3 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-base-content/40" id="erd-ctx-title"></div>
+        <a id="erd-ctx-browse" href="#" class="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
+          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          Browse rows
+        </a>
+        <a id="erd-ctx-schema" href="#" class="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
+          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Edit schema
+        </a>
+        <a id="erd-ctx-seed" href="#" class="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-emerald-600 font-medium">
+          <svg class="h-3.5 w-3.5 shrink-0 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+          Seed ER Chain…
+        </a>
+        <div class="my-1 border-t border-base-200"></div>
+        <button id="erd-ctx-focus" class="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
+          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 8v6m-3-3h6"/></svg>
+          Focus & zoom
+        </button>
+        <button id="erd-ctx-collapse" class="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
+          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+          <span id="erd-ctx-collapse-label">Collapse table</span>
+        </button>
+      </div>
+
+      {{!-- Keyboard hint --}}
+      <div class="absolute bottom-3 left-3 flex flex-col gap-0.5 pointer-events-none select-none">
+        <span class="text-[10px] text-base-content/25 leading-relaxed">Scroll · zoom &nbsp;·&nbsp; Drag · pan &nbsp;·&nbsp; Click · select &nbsp;·&nbsp; Right-click · menu</span>
+      </div>
+    </div>
+
+    {{!-- Side panel (hidden until a table is selected) --}}
+    <div id="erd-side-panel" class="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto" style="max-height: calc(100vh - 180px);">
+      <div class="rounded-xl border border-base-300 bg-base-100 overflow-hidden">
+        {{!-- Panel header --}}
+        <div id="erd-panel-header" class="flex items-center justify-between gap-2 px-4 py-3" style="background: var(--erd-node-header); color:#fff;">
+          <div class="flex items-center gap-2 min-w-0">
+            <svg class="h-4 w-4 shrink-0 opacity-80" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <span class="font-bold text-sm truncate" id="erd-panel-name"></span>
+          </div>
+          <button id="erd-panel-close" class="shrink-0 rounded-full p-1 hover:bg-white/20 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        {{!-- Stats row --}}
+        <div id="erd-panel-stats" class="flex divide-x divide-base-200 border-b border-base-200 text-center text-xs">
+          <div class="flex-1 py-2"><div class="font-bold text-sm" id="erd-panel-col-count"></div><div class="text-base-content/40">columns</div></div>
+          <div class="flex-1 py-2"><div class="font-bold text-sm text-amber-500" id="erd-panel-fk-count"></div><div class="text-base-content/40">FK refs</div></div>
+          <div class="flex-1 py-2"><div class="font-bold text-sm text-emerald-500" id="erd-panel-ref-count"></div><div class="text-base-content/40">referenced</div></div>
+        </div>
+        {{!-- Columns list --}}
+        <div id="erd-panel-cols" class="divide-y divide-base-100 text-xs"></div>
+        {{!-- Actions --}}
+        <div class="flex gap-2 p-3 border-t border-base-200">
+          <a id="erd-panel-browse" href="#" class="btn btn-xs btn-primary flex-1 gap-1">
+            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            Browse
+          </a>
+          <a id="erd-panel-schema" href="#" class="btn btn-xs btn-ghost flex-1 gap-1 border border-base-300">
+            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Schema
+          </a>
+          <a id="erd-panel-seed" href="#" class="btn btn-xs btn-outline btn-success flex-1 gap-1">
+            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+            Seed
+          </a>
+        </div>
+      </div>
+
+      {{!-- FK relationships section --}}
+      <div id="erd-panel-rels" class="hidden rounded-xl border border-base-300 bg-base-100 overflow-hidden">
+        <div class="px-4 py-2.5 border-b border-base-200 text-[11px] font-semibold uppercase tracking-wider text-base-content/40">Relationships</div>
+        <div id="erd-panel-rels-list" class="divide-y divide-base-100 text-xs p-1"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --erd-node-bg: #ffffff;
+    --erd-node-border: #e2e8f0;
+    --erd-node-header: #6366f1;
+    --erd-node-header-text: #ffffff;
+    --erd-node-text: #1e293b;
+    --erd-node-subtext: #94a3b8;
+    --erd-node-row-odd: #f8fafc;
+    --erd-node-row-even: #ffffff;
+    --erd-node-row-pk: #eef2ff;
+    --erd-node-row-fk: #fffbeb;
+    --erd-edge-color: #818cf8;
+    --erd-edge-hl: #f59e0b;
+    --erd-edge-dim: #cbd5e1;
+    --erd-canvas-bg: #f1f5f9;
+    --erd-grid-color: rgba(148,163,184,0.18);
+    --erd-grid-dot: rgba(148,163,184,0.45);
+  }
+  [data-theme="admindbDark"] {
+    --erd-node-bg: #1e293b;
+    --erd-node-border: #334155;
+    --erd-node-header: #6366f1;
+    --erd-node-header-text: #ffffff;
+    --erd-node-text: #e2e8f0;
+    --erd-node-subtext: #64748b;
+    --erd-node-row-odd: #1a2744;
+    --erd-node-row-even: #1e293b;
+    --erd-node-row-pk: #1e1b4b;
+    --erd-node-row-fk: #1c1a0e;
+    --erd-edge-color: #818cf8;
+    --erd-edge-hl: #fbbf24;
+    --erd-edge-dim: #334155;
+    --erd-canvas-bg: #0f172a;
+    --erd-grid-color: rgba(51,65,85,0.5);
+    --erd-grid-dot: rgba(71,85,105,0.6);
+  }
+
+  #erd-canvas-wrap {
+    background-color: var(--erd-canvas-bg);
+    background-image: radial-gradient(var(--erd-grid-dot) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Node transitions */
+  .erd-node { cursor: grab; }
+  .erd-node:active { cursor: grabbing; }
+  .erd-node-rect {
+    transition: filter 0.18s ease, stroke 0.18s ease, stroke-width 0.18s ease;
+  }
+  .erd-node.dimmed .erd-node-rect { opacity: 0.28; }
+  .erd-node.dimmed .erd-node-header-rect { opacity: 0.28; }
+  .erd-node.dimmed text { opacity: 0.28; }
+  .erd-node.selected .erd-node-rect {
+    stroke: var(--erd-edge-hl) !important;
+    stroke-width: 2.5px !important;
+    filter: url(#erd-shadow-lg);
+  }
+  .erd-node.neighbor .erd-node-rect {
+    stroke: var(--erd-edge-color) !important;
+    stroke-width: 2px !important;
+  }
+
+  /* Edge transitions */
+  .erd-edge {
+    transition: stroke 0.18s ease, stroke-width 0.18s ease, opacity 0.18s ease;
+    cursor: pointer;
+  }
+  .erd-edge.dimmed { opacity: 0.08; }
+  .erd-edge.highlighted {
+    stroke: var(--erd-edge-hl) !important;
+    stroke-width: 2.5px !important;
+    opacity: 1 !important;
+  }
+  .erd-edge.neighbor-edge {
+    stroke: var(--erd-edge-color) !important;
+    stroke-width: 2px !important;
+    opacity: 0.9 !important;
+  }
+
+  /* Search highlight */
+  .erd-node.search-match .erd-node-rect {
+    stroke: #10b981 !important;
+    stroke-width: 2px !important;
+  }
+  .erd-node.search-no-match { opacity: 0.2; }
+
+  /* Side panel */
+  #erd-side-panel { display: none; }
+  #erd-side-panel.visible { display: flex; }
+
+  .erd-col-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    transition: background 0.1s;
+  }
+  .erd-col-row:hover { background: var(--erd-node-row-odd); }
+  .erd-col-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
+  .erd-col-row-type { color: var(--erd-node-subtext); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .erd-badge { display: inline-flex; align-items: center; padding: 1px 5px; border-radius: 4px; font-size: 9px; font-weight: 700; line-height: 1.4; }
+  .erd-badge-pk { background: rgba(99,102,241,0.15); color: #6366f1; }
+  .erd-badge-fk { background: rgba(245,158,11,0.15); color: #d97706; }
+  .erd-badge-nn { background: rgba(239,68,68,0.10); color: #dc2626; }
+
+  .erd-rel-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .erd-rel-row:hover { background: var(--erd-node-row-odd); }
+
+  /* Layout mode buttons */
+  .erd-mode-btn { color: oklch(var(--bc) / 0.55); }
+  .erd-mode-btn:hover { color: oklch(var(--bc) / 0.9); background: oklch(var(--b2)); }
+  .erd-mode-btn.bg-primary { color: oklch(var(--pc)); }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  const BASE = window.APP?.basePath ?? '';
+
+  // ── State ────────────────────────────────────────────────────────────────
+  let schema       = null;
+  let positions    = {};
+  let collapsed    = new Set();   // tables showing only header
+  let scale        = 1;
+  let tx = 0, ty  = 0;
+  let draggingNode = null;
+  let isPanning    = false;
+  let panStart     = { x: 0, y: 0, tx: 0, ty: 0 };
+  let selectedTable = null;
+  let compactAll   = false;
+  let searchQuery  = '';
+  let ctxTable     = null;
+  let layoutMode   = 'hierarchy'; // 'force' | 'hierarchy' | 'circle'
+
+  // ── Constants ────────────────────────────────────────────────────────────
+  const NODE_W    = 240;
+  const COL_H     = 26;
+  const HEADER_H  = 40;
+  const NODE_PAD  = 6;
+  const COMPACT_H = HEADER_H;
+
+  // ── Palette: rotate header colors per table ───────────────────────────
+  const PALETTES = [
+    { h: '#6366f1', l: '#eef2ff' }, // indigo
+    { h: '#8b5cf6', l: '#f5f3ff' }, // violet
+    { h: '#ec4899', l: '#fdf2f8' }, // pink
+    { h: '#0ea5e9', l: '#f0f9ff' }, // sky
+    { h: '#10b981', l: '#ecfdf5' }, // emerald
+    { h: '#f59e0b', l: '#fffbeb' }, // amber
+    { h: '#ef4444', l: '#fef2f2' }, // red
+    { h: '#14b8a6', l: '#f0fdfa' }, // teal
+  ];
+  function palOf(name) {
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return PALETTES[h % PALETTES.length];
+  }
+
+  // ── DOM ──────────────────────────────────────────────────────────────────
+  const wrap        = document.getElementById('erd-canvas-wrap');
+  const svgEl_      = document.getElementById('erd-svg');
+  const viewport    = document.getElementById('erd-viewport');
+  const edgesG      = document.getElementById('erd-edges');
+  const nodesG      = document.getElementById('erd-nodes');
+  const loadingEl   = document.getElementById('erd-loading');
+  const errorEl     = document.getElementById('erd-error');
+  const errorMsg    = document.getElementById('erd-error-msg');
+  const emptyEl     = document.getElementById('erd-empty');
+  const minimap     = document.getElementById('erd-minimap');
+  const minimapSvg  = document.getElementById('erd-minimap-svg');
+  const zoomLabel   = document.getElementById('erd-zoom-label');
+  const badge       = document.getElementById('erd-table-badge');
+  const fkBadge     = document.getElementById('erd-fk-badge');
+  const edgeTip     = document.getElementById('erd-edge-tooltip');
+  const ctxMenu     = document.getElementById('erd-ctx-menu');
+  const sidePanel   = document.getElementById('erd-side-panel');
+  const searchInput = document.getElementById('erd-search');
+
+  // ── Helper ───────────────────────────────────────────────────────────────
+  function svgE(tag, attrs = {}) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, String(v)));
+    return el;
+  }
+
+  function nodeHeight(t) {
+    if (collapsed.has(t.name) || compactAll) return COMPACT_H;
+    return HEADER_H + NODE_PAD * 2 + t.columns.length * COL_H;
+  }
+
+  // ── Fetch ────────────────────────────────────────────────────────────────
+  async function loadSchema() {
+    try {
+      const res  = await fetch(BASE + '/api/erd');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? 'API error');
+      schema = json.data;
+
+      if (!schema.tables || schema.tables.length === 0) {
+        loadingEl.style.display = 'none'; emptyEl.style.display = 'flex'; return;
+      }
+
+      initLayout();
+      renderAll();
+      fitView();
+      loadingEl.style.display = 'none';
+      svgEl_.style.display = '';
+      if (schema.tables.length > 3) minimap.classList.remove('hidden');
+
+      // badges
+      badge.textContent = schema.tables.length + ' table' + (schema.tables.length !== 1 ? 's' : '');
+      badge.classList.remove('hidden');
+      const totalFks = schema.tables.reduce((s, t) => s + t.foreignKeys.length, 0);
+      if (totalFks > 0) {
+        fkBadge.textContent = totalFks + ' relationship' + (totalFks !== 1 ? 's' : '');
+        fkBadge.classList.remove('hidden');
+      }
+    } catch (e) {
+      loadingEl.style.display = 'none';
+      errorEl.style.display = 'flex';
+      errorMsg.textContent = e.message;
+    }
+  }
+
+  // ── Layout dispatcher ─────────────────────────────────────────────────────
+  function initLayout() {
+    if (!schema || schema.tables.length === 0) return;
+    if      (layoutMode === 'force')     layoutForce();
+    else if (layoutMode === 'circle')    layoutCircle();
+    else                                 layoutHierarchy();
+    updateModeButtons();
+  }
+
+  function updateModeButtons() {
+    document.querySelectorAll('.erd-mode-btn').forEach(btn => {
+      const active = btn.dataset.mode === layoutMode;
+      btn.classList.toggle('bg-primary',         active);
+      btn.classList.toggle('text-primary-content', active);
+      btn.classList.toggle('shadow-sm',           active);
+      btn.classList.toggle('text-base-content',   !active);
+      btn.classList.toggle('text-opacity-60',     !active);
+    });
+  }
+
+  // ── 1. Force-directed (physics / organic) ─────────────────────────────────
+  function layoutForce() {
+    const tables = schema.tables;
+    const PAD    = 60;
+    // seed in a grid so force has a stable start
+    const cols   = Math.max(1, Math.ceil(Math.sqrt(tables.length)));
+    tables.forEach((t, i) => {
+      positions[t.name] = {
+        x: PAD + (i % cols) * (NODE_W + 180),
+        y: PAD + Math.floor(i / cols) * 280,
+      };
+    });
+
+    const tableNames = new Set(tables.map(t => t.name));
+    const REPEL  = 28000;
+    const SPRING = 0.012;
+    const REST   = NODE_W + 220;
+    const DAMP   = 0.82;
+    const vx = {}, vy = {};
+    tables.forEach(t => { vx[t.name] = 0; vy[t.name] = 0; });
+
+    for (let iter = 0; iter < 280; iter++) {
+      const fx = {}, fy = {};
+      tables.forEach(t => { fx[t.name] = 0; fy[t.name] = 0; });
+
+      // Repulsion between all pairs
+      for (let i = 0; i < tables.length; i++) {
+        for (let j = i + 1; j < tables.length; j++) {
+          const a = positions[tables[i].name], b = positions[tables[j].name];
+          let dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
+          const f    = REPEL / (dist * dist);
+          dx /= dist; dy /= dist;
+          fx[tables[i].name] -= dx * f; fy[tables[i].name] -= dy * f;
+          fx[tables[j].name] += dx * f; fy[tables[j].name] += dy * f;
+        }
+      }
+
+      // Spring attraction along FK edges
+      tables.forEach(t => {
+        t.foreignKeys.forEach(fk => {
+          if (!tableNames.has(fk.table) || fk.table === t.name) return;
+          const a = positions[t.name], b = positions[fk.table];
+          let dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
+          const f    = SPRING * (dist - REST);
+          dx /= dist; dy /= dist;
+          fx[t.name]   += dx * f; fy[t.name]   += dy * f;
+          fx[fk.table] -= dx * f; fy[fk.table] -= dy * f;
+        });
+      });
+
+      // Integrate with damping
+      tables.forEach(t => {
+        vx[t.name] = (vx[t.name] + fx[t.name]) * DAMP;
+        vy[t.name] = (vy[t.name] + fy[t.name]) * DAMP;
+        positions[t.name].x += vx[t.name];
+        positions[t.name].y += vy[t.name];
+      });
+    }
+
+    // Normalize to (PAD, PAD)
+    const minX = Math.min(...tables.map(t => positions[t.name].x));
+    const minY = Math.min(...tables.map(t => positions[t.name].y));
+    tables.forEach(t => { positions[t.name].x -= minX - PAD; positions[t.name].y -= minY - PAD; });
+  }
+
+  // ── 2. Hierarchical / layered (reference tables left) ────────────────────
+  function layoutHierarchy() {
+    const tables     = schema.tables;
+    const tableNames = new Set(tables.map(t => t.name));
+
+    const deps = {};
+    tables.forEach(t => {
+      deps[t.name] = [...new Set(
+        t.foreignKeys.map(fk => fk.table).filter(n => n !== t.name && tableNames.has(n))
+      )];
+    });
+
+    const layerOf = {};
+    function assignLayer(name, stack) {
+      if (name in layerOf) return layerOf[name];
+      if (!stack) stack = new Set();
+      if (stack.has(name)) { layerOf[name] = 0; return 0; }
+      stack.add(name);
+      const d = deps[name] || [];
+      layerOf[name] = d.length === 0 ? 0 : Math.max(...d.map(x => assignLayer(x, new Set(stack)))) + 1;
+      return layerOf[name];
+    }
+    tables.forEach(t => assignLayer(t.name));
+
+    const byLayer = {};
+    tables.forEach(t => { const l = layerOf[t.name] ?? 0; (byLayer[l] = byLayer[l] || []).push(t); });
+
+    const isReferenced = new Set();
+    tables.forEach(t => t.foreignKeys.forEach(fk => { if (fk.table !== t.name) isReferenced.add(fk.table); }));
+    const isolated = [];
+    byLayer[0] = (byLayer[0] || []).filter(t => {
+      if (!isReferenced.has(t.name) && deps[t.name].length === 0) { isolated.push(t); return false; }
+      return true;
+    });
+    if (!byLayer[0].length) delete byLayer[0];
+
+    const layerNums = Object.keys(byLayer).map(Number).sort((a, b) => a - b);
+    layerNums.forEach(ln => {
+      const grp = byLayer[ln]; if (!grp || ln === 0) return;
+      const prev = byLayer[ln - 1] || [], pi = {};
+      prev.forEach((t, i) => pi[t.name] = i);
+      grp.sort((a, b) => {
+        const s = t => { const d = (deps[t.name]||[]).filter(x=>x in pi); return d.length?d.reduce((s,x)=>s+pi[x],0)/d.length:999; };
+        return s(a) - s(b);
+      });
+    });
+
+    const COL_WIDTH   = NODE_W + 200;
+    const ROW_PADDING = 44;
+    const colHeights  = layerNums.map(ln => (byLayer[ln]||[]).reduce((s,t) => s + nodeHeight(t) + ROW_PADDING, 0));
+    const maxColH     = Math.max(...colHeights, 300);
+
+    layerNums.forEach((ln, ci) => {
+      const grp = byLayer[ln] || [];
+      let y = Math.max(60, (maxColH - colHeights[ci]) / 2 + 60);
+      grp.forEach(t => { positions[t.name] = { x: 60 + ci * COL_WIDTH, y }; y += nodeHeight(t) + ROW_PADDING; });
+    });
+
+    if (isolated.length > 0) {
+      const isoX = 60 + layerNums.length * COL_WIDTH;
+      let isoY = 60;
+      isolated.forEach(t => { positions[t.name] = { x: isoX, y: isoY }; isoY += nodeHeight(t) + ROW_PADDING; });
+    }
+  }
+
+  // ── 3. Circular layout ────────────────────────────────────────────────────
+  function layoutCircle() {
+    const tables = schema.tables;
+    if (tables.length === 0) return;
+
+    // Separate isolated tables (no FKs and never referenced by anyone)
+    const isReferenced = new Set();
+    tables.forEach(t => t.foreignKeys.forEach(fk => { if (fk.table !== t.name) isReferenced.add(fk.table); }));
+    const isolated  = tables.filter(t => !isReferenced.has(t.name) && t.foreignKeys.filter(fk => fk.table !== t.name).length === 0);
+    const connected = tables.filter(t => !isolated.includes(t));
+
+    // Sort connected: highly-connected first (12 o'clock position)
+    const degree = {};
+    tables.forEach(t => {
+      degree[t.name] = t.foreignKeys.length;
+      tables.forEach(o => { if (o.foreignKeys.some(fk => fk.table === t.name)) degree[t.name]++; });
+    });
+    const sorted = [...connected].sort((a, b) => (degree[b.name] || 0) - (degree[a.name] || 0));
+    const n = sorted.length;
+
+    if (n === 0) {
+      // All tables are isolated — just grid them
+      const cols = Math.max(1, Math.ceil(Math.sqrt(isolated.length)));
+      isolated.forEach((t, i) => {
+        positions[t.name] = { x: 60 + (i % cols) * (NODE_W + 40), y: 60 + Math.floor(i / cols) * 280 };
+      });
+      return;
+    }
+    if (n === 1) {
+      positions[sorted[0].name] = { x: 60, y: 60 };
+    } else {
+      // Compute radius so circle nodes don't overlap
+      const avgH      = sorted.reduce((s, t) => s + nodeHeight(t), 0) / n;
+      const minGap    = 36;
+      const arcPerNode = Math.max(NODE_W + minGap, avgH + minGap);
+      const radius    = Math.max(240, (n * arcPerNode) / (2 * Math.PI));
+      const cx        = radius + NODE_W / 2 + 60;
+      const cy        = radius + avgH / 2  + 60;
+
+      sorted.forEach((t, i) => {
+        const angle = (2 * Math.PI * i / n) - Math.PI / 2; // start at 12 o'clock
+        positions[t.name] = {
+          x: cx + radius * Math.cos(angle) - NODE_W / 2,
+          y: cy + radius * Math.sin(angle) - nodeHeight(t) / 2,
+        };
+      });
+    }
+
+    // Place isolated tables in a compact column to the right of the circle
+    if (isolated.length > 0) {
+      const circleRight = Math.max(...sorted.map(t => positions[t.name].x + NODE_W)) + 60;
+      const ROW_PAD     = 32;
+      let isoY          = 60;
+      isolated.forEach(t => {
+        positions[t.name] = { x: circleRight, y: isoY };
+        isoY += nodeHeight(t) + ROW_PAD;
+      });
+    }
+  }
+
+
+  // ── Render all ────────────────────────────────────────────────────────────
+  function renderAll() {
+    edgesG.innerHTML = '';
+    nodesG.innerHTML = '';
+    schema.tables.forEach(t => renderNode(t));
+    schema.tables.forEach(t => renderEdges(t));
+    applySearch();
+    renderMinimap();
+  }
+
+  // ── Render node ──────────────────────────────────────────────────────────
+  function renderNode(t) {
+    const pos  = positions[t.name];
+    const h    = nodeHeight(t);
+    const pal  = palOf(t.name);
+    const isCollapsed = collapsed.has(t.name) || compactAll;
+
+    const fkCols = new Set(t.foreignKeys.map(f => f.from));
+    const pkCols = new Set((t.primaryKey && t.primaryKey.length ? t.primaryKey : t.columns.filter(c => c.pk > 0).map(c => c.name)));
+
+    const g = svgE('g', { class: 'erd-node', 'data-table': t.name, transform: `translate(${pos.x},${pos.y})` });
+
+    // Drop shadow background
+    g.appendChild(svgE('rect', { class: 'erd-node-shadow', x: 0, y: 0, width: NODE_W, height: h, rx: 12, fill: 'transparent', filter: 'url(#erd-shadow)' }));
+
+    // Main background
+    g.appendChild(svgE('rect', { class: 'erd-node-rect', x: 0, y: 0, width: NODE_W, height: h, rx: 12, fill: 'var(--erd-node-bg)', stroke: 'var(--erd-node-border)', 'stroke-width': '1.5' }));
+
+    // Header gradient strip
+    const hdrClip = svgE('clipPath', { id: `erd-hclip-${t.name.replace(/\W/g,'_')}` });
+    hdrClip.appendChild(svgE('rect', { x: 0, y: 0, width: NODE_W, height: HEADER_H, rx: 12 }));
+    g.appendChild(hdrClip);
+    const hdrRect = svgE('rect', { class: 'erd-node-header-rect', x: 0, y: 0, width: NODE_W, height: HEADER_H, fill: pal.h, 'clip-path': `url(#erd-hclip-${t.name.replace(/\W/g,'_')})` });
+    g.appendChild(hdrRect);
+    // bottom fill to square off the lower edge of header
+    g.appendChild(svgE('rect', { x: 0, y: HEADER_H - 12, width: NODE_W, height: 12, fill: pal.h }));
+
+    // Collapse arrow
+    const arrX = NODE_W - 20, arrY = HEADER_H / 2;
+    const arrPath = isCollapsed ? 'M-4,-2 L0,3 L4,-2' : 'M-4,2 L0,-3 L4,2';
+    const arr = svgE('path', { d: arrPath, fill: 'none', stroke: 'rgba(255,255,255,0.7)', 'stroke-width': '2', 'stroke-linecap': 'round', transform: `translate(${arrX},${arrY})`, style: 'cursor:pointer;', class: 'erd-collapse-btn' });
+    arr.addEventListener('click', e => { e.stopPropagation(); toggleCollapse(t.name); });
+    g.appendChild(arr);
+
+    // Table name
+    const nameEl = svgE('text', { x: 14, y: 26, fill: '#fff', 'font-size': '13', 'font-weight': '700', 'font-family': 'Inter, ui-sans-serif, sans-serif', class: 'erd-node-title' });
+    const maxLen = 20;
+    nameEl.textContent = t.name.length > maxLen ? t.name.slice(0, maxLen - 1) + '…' : t.name;
+    g.appendChild(nameEl);
+
+    // Row/col count pill in header
+    const pillW = 36, pillX = NODE_W - pillW - 8;
+    g.appendChild(svgE('rect', { x: pillX, y: 10, width: pillW, height: 18, rx: 9, fill: 'rgba(0,0,0,0.18)' }));
+    const pillTxt = svgE('text', { x: pillX + pillW / 2, y: 23, 'text-anchor': 'middle', fill: 'rgba(255,255,255,0.85)', 'font-size': '9.5', 'font-weight': '600', 'font-family': 'Inter, sans-serif' });
+    pillTxt.textContent = t.columns.length + (t.columns.length === 1 ? ' col' : ' cols');
+    g.appendChild(pillTxt);
+
+    // Columns (when not collapsed)
+    if (!isCollapsed) {
+      t.columns.forEach((col, idx) => {
+        const cy   = HEADER_H + NODE_PAD + idx * COL_H;
+        const isPk = pkCols.has(col.name);
+        const isFk = fkCols.has(col.name);
+        const isLast = idx === t.columns.length - 1;
+
+        // Row background
+        let rowFill = idx % 2 === 0 ? 'var(--erd-node-row-even)' : 'var(--erd-node-row-odd)';
+        if (isPk) rowFill = 'var(--erd-node-row-pk)';
+        if (isFk && !isPk) rowFill = 'var(--erd-node-row-fk)';
+        const rowBg = svgE('rect', { x: 1, y: cy, width: NODE_W - 2, height: COL_H, fill: rowFill });
+        if (isLast) { rowBg.setAttribute('rx', '0'); } // no extra clip needed
+        g.appendChild(rowBg);
+
+        // Left accent bar for PK/FK
+        if (isPk || isFk) {
+          g.appendChild(svgE('rect', { x: 1, y: cy, width: 3, height: COL_H, fill: isPk ? pal.h : '#f59e0b' }));
+        }
+
+        // Column name
+        const nameTxt = svgE('text', { x: isPk || isFk ? 14 : 10, y: cy + 17, fill: isPk ? pal.h : 'var(--erd-node-text)', 'font-size': '11.5', 'font-weight': isPk ? '600' : '400', 'font-family': '"JetBrains Mono", "Fira Code", monospace' });
+        const trim = 15;
+        nameTxt.textContent = col.name.length > trim ? col.name.slice(0, trim - 1) + '…' : col.name;
+        g.appendChild(nameTxt);
+
+        // Type
+        const typeStr = (col.type || 'any').toUpperCase().replace('CHARACTER VARYING', 'VARCHAR');
+        const typeTrimmed = typeStr.length > 10 ? typeStr.slice(0, 9) + '…' : typeStr;
+        const typeX = NODE_W - (isPk || isFk ? 46 : 10);
+        const typeTxt = svgE('text', { x: typeX, y: cy + 17, 'text-anchor': 'end', fill: 'var(--erd-node-subtext)', 'font-size': '9.5', 'font-family': '"JetBrains Mono", monospace' });
+        typeTxt.textContent = typeTrimmed;
+        g.appendChild(typeTxt);
+
+        // Badges
+        let badgeX = NODE_W - 8;
+        if (isFk) {
+          badgeX -= 22;
+          g.appendChild(svgE('rect', { x: badgeX, y: cy + 6, width: 20, height: 13, rx: 3, fill: 'rgba(245,158,11,0.18)' }));
+          const fkTxt = svgE('text', { x: badgeX + 10, y: cy + 15.5, 'text-anchor': 'middle', fill: '#d97706', 'font-size': '7.5', 'font-weight': '700', 'font-family': 'Inter, sans-serif' });
+          fkTxt.textContent = 'FK';
+          g.appendChild(fkTxt);
+        }
+        if (isPk) {
+          badgeX -= 22;
+          g.appendChild(svgE('rect', { x: badgeX, y: cy + 6, width: 20, height: 13, rx: 3, fill: 'rgba(99,102,241,0.15)' }));
+          const pkTxt = svgE('text', { x: badgeX + 10, y: cy + 15.5, 'text-anchor': 'middle', fill: pal.h, 'font-size': '7.5', 'font-weight': '700', 'font-family': 'Inter, sans-serif' });
+          pkTxt.textContent = 'PK';
+          g.appendChild(pkTxt);
+        }
+
+        // Invisible wide hit target for row hover (used for FK jump)
+        const rowHit = svgE('rect', { x: 0, y: cy, width: NODE_W, height: COL_H, fill: 'transparent' });
+        g.appendChild(rowHit);
+      });
+
+      // Bottom rounded cap to complete the card
+      const capClip = svgE('clipPath', { id: `erd-bclip-${t.name.replace(/\W/g,'_')}` });
+      capClip.appendChild(svgE('rect', { x: 0, y: h - 12, width: NODE_W, height: 12, rx: 0 }));
+      g.appendChild(capClip);
+    }
+
+    // Invisible interaction rect (full node)
+    const hitRect = svgE('rect', { x: 0, y: 0, width: NODE_W, height: h, rx: 12, fill: 'transparent', class: 'erd-hit', style: 'cursor:grab;' });
+    g.appendChild(hitRect);
+
+    // Click → select
+    hitRect.addEventListener('click', e => { e.stopPropagation(); selectTable(t.name); });
+
+    // Right-click → context menu
+    g.addEventListener('contextmenu', e => {
+      e.preventDefault(); e.stopPropagation();
+      openCtxMenu(t.name, e.clientX, e.clientY);
+    });
+
+    // Drag
+    hitRect.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      draggingNode = { name: t.name, origX: positions[t.name].x, origY: positions[t.name].y, startX: e.clientX, startY: e.clientY, moved: false };
+      wrap.style.cursor = 'grabbing';
+    });
+
+    nodesG.appendChild(g);
+  }
+
+  // ── Edges ─────────────────────────────────────────────────────────────────
+  function getPortY(tableName, colName) {
+    if (collapsed.has(tableName) || compactAll) return COMPACT_H / 2;
+    const t   = schema.tables.find(t => t.name === tableName);
+    if (!t) return HEADER_H / 2;
+    const idx = t.columns.findIndex(c => c.name === colName);
+    if (idx === -1) return HEADER_H + NODE_PAD + COL_H / 2;
+    return HEADER_H + NODE_PAD + idx * COL_H + COL_H / 2;
+  }
+
+  function edgePath(srcPos, srcColY, tgtPos, tgtColY) {
+    let sx = srcPos.x + NODE_W, sy = srcPos.y + srcColY;
+    let ex = tgtPos.x,          ey = tgtPos.y + tgtColY;
+    if (tgtPos.x < srcPos.x) { sx = srcPos.x; ex = tgtPos.x + NODE_W; }
+    const dx   = Math.abs(ex - sx);
+    const cpDx = Math.max(60, dx * 0.45);
+    return `M${sx},${sy} C${sx + (tgtPos.x < srcPos.x ? -cpDx : cpDx)},${sy} ${ex - (tgtPos.x < srcPos.x ? -cpDx : cpDx)},${ey} ${ex},${ey}`;
+  }
+
+  function renderEdges(t) {
+    t.foreignKeys.forEach(fk => {
+      const srcPos = positions[t.name], tgtPos = positions[fk.table];
+      if (!srcPos || !tgtPos) return;
+      const d = edgePath(srcPos, getPortY(t.name, fk.from), tgtPos, getPortY(fk.table, fk.to || ''));
+
+      const path = svgE('path', {
+        class: 'erd-edge',
+        d,
+        fill: 'none',
+        stroke: 'var(--erd-edge-color)',
+        'stroke-width': '1.8',
+        'stroke-dasharray': 'none',
+        'marker-end': 'url(#erd-arrow)',
+        'data-from': t.name,
+        'data-to': fk.table,
+        'data-from-col': fk.from,
+        'data-to-col': fk.to || '',
+        opacity: '0.65',
+      });
+
+      // Edge hover: show tooltip + highlight
+      path.addEventListener('mouseenter', e => {
+        const rect   = wrap.getBoundingClientRect();
+        edgeTip.style.left = (e.clientX - rect.left + 12) + 'px';
+        edgeTip.style.top  = (e.clientY - rect.top - 8) + 'px';
+        edgeTip.innerHTML  = `<span style="color:var(--erd-edge-color)">${fk.from}</span> <span style="opacity:.5">→</span> <span style="color:#10b981">${fk.table}</span><span style="opacity:.5">.${fk.to || '?'}</span>`;
+        edgeTip.classList.remove('hidden');
+        path.setAttribute('stroke-width', '2.8');
+        path.style.opacity = '1';
+      });
+      path.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        edgeTip.style.left = (e.clientX - rect.left + 12) + 'px';
+        edgeTip.style.top  = (e.clientY - rect.top - 8) + 'px';
+      });
+      path.addEventListener('mouseleave', () => {
+        edgeTip.classList.add('hidden');
+        if (!path.classList.contains('highlighted') && !path.classList.contains('neighbor-edge')) {
+          path.setAttribute('stroke-width', '1.8');
+          path.style.opacity = '0.65';
+        }
+      });
+
+      edgesG.appendChild(path);
+    });
+  }
+
+  function updateEdges() {
+    edgesG.querySelectorAll('.erd-edge').forEach(path => {
+      const fn = path.getAttribute('data-from'), tn = path.getAttribute('data-to');
+      const fc = path.getAttribute('data-from-col'), tc = path.getAttribute('data-to-col');
+      const sp = positions[fn], tp = positions[tn];
+      if (!sp || !tp) return;
+      path.setAttribute('d', edgePath(sp, getPortY(fn, fc), tp, getPortY(tn, tc)));
+    });
+  }
+
+  // ── Selection & highlighting ──────────────────────────────────────────────
+  function clearHighlights() {
+    nodesG.querySelectorAll('.erd-node').forEach(el => {
+      el.classList.remove('selected', 'neighbor', 'dimmed');
+    });
+    edgesG.querySelectorAll('.erd-edge').forEach(el => {
+      el.classList.remove('highlighted', 'neighbor-edge', 'dimmed');
+      el.setAttribute('stroke-width', '1.8');
+      el.setAttribute('marker-end', 'url(#erd-arrow)');
+      el.style.opacity = '0.65';
+    });
+  }
+
+  function selectTable(name) {
+    if (selectedTable === name) { deselectTable(); return; }
+    selectedTable = name;
+    clearHighlights();
+
+    // Collect neighbors
+    const neighbors = new Set();
+    schema.tables.forEach(t => {
+      t.foreignKeys.forEach(fk => {
+        if (t.name === name) neighbors.add(fk.table);
+        if (fk.table === name) neighbors.add(t.name);
+      });
+    });
+
+    // Apply node classes
+    nodesG.querySelectorAll('.erd-node').forEach(el => {
+      const n = el.getAttribute('data-table');
+      if (n === name) el.classList.add('selected');
+      else if (neighbors.has(n)) el.classList.add('neighbor');
+      else el.classList.add('dimmed');
+    });
+
+    // Apply edge classes
+    edgesG.querySelectorAll('.erd-edge').forEach(el => {
+      const f = el.getAttribute('data-from'), t = el.getAttribute('data-to');
+      if (f === name || t === name) {
+        el.classList.add('neighbor-edge');
+        el.setAttribute('stroke-width', '2.2');
+        el.style.opacity = '1';
+        el.setAttribute('marker-end', 'url(#erd-arrow)');
+      } else {
+        el.classList.add('dimmed');
+      }
+    });
+
+    showSidePanel(name, neighbors);
+  }
+
+  function deselectTable() {
+    selectedTable = null;
+    clearHighlights();
+    hideSidePanel();
+  }
+
+  // ── Side panel ────────────────────────────────────────────────────────────
+  function showSidePanel(name, neighbors) {
+    const t   = schema.tables.find(t => t.name === name);
+    if (!t) return;
+    const pal = palOf(name);
+
+    sidePanel.classList.add('visible');
+
+    document.getElementById('erd-panel-header').style.background = pal.h;
+    document.getElementById('erd-panel-name').textContent = name;
+    document.getElementById('erd-panel-col-count').textContent = t.columns.length;
+    document.getElementById('erd-panel-fk-count').textContent = t.foreignKeys.length;
+    // how many other tables reference this one?
+    const refCount = schema.tables.filter(x => x.foreignKeys.some(fk => fk.table === name)).length;
+    document.getElementById('erd-panel-ref-count').textContent = refCount;
+
+    const panelBrowse = document.getElementById('erd-panel-browse');
+    const panelSchema = document.getElementById('erd-panel-schema');
+    const panelSeed = document.getElementById('erd-panel-seed');
+    panelBrowse.href = `${BASE}/tables/${encodeURIComponent(name)}`;
+    panelSchema.href = `${BASE}/tables/${encodeURIComponent(name)}/schema`;
+    if (panelSeed) panelSeed.href = `${BASE}/tables/${encodeURIComponent(name)}/seed?mode=chain`;
+
+    // Columns list
+    const fkCols = new Set(t.foreignKeys.map(f => f.from));
+    const pkCols = new Set(t.primaryKey && t.primaryKey.length ? t.primaryKey : t.columns.filter(c => c.pk > 0).map(c => c.name));
+    const colsEl = document.getElementById('erd-panel-cols');
+    colsEl.innerHTML = '';
+    t.columns.forEach(col => {
+      const isPk = pkCols.has(col.name), isFk = fkCols.has(col.name);
+      const row  = document.createElement('div');
+      row.className = 'erd-col-row';
+      row.style.background = isPk ? 'rgba(99,102,241,0.06)' : isFk ? 'rgba(245,158,11,0.05)' : '';
+
+      const lAcc = document.createElement('div');
+      lAcc.style.cssText = `width:3px;height:16px;border-radius:2px;background:${isPk ? pal.h : isFk ? '#f59e0b' : 'transparent'};flex-shrink:0;`;
+      row.appendChild(lAcc);
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'erd-col-row-name';
+      nameEl.textContent = col.name;
+      nameEl.style.color = isPk ? pal.h : '';
+      row.appendChild(nameEl);
+
+      const typeEl = document.createElement('span');
+      typeEl.className = 'erd-col-row-type';
+      typeEl.textContent = (col.type || 'any').toUpperCase().replace('CHARACTER VARYING', 'VARCHAR');
+      row.appendChild(typeEl);
+
+      if (isPk) { const b = document.createElement('span'); b.className = 'erd-badge erd-badge-pk'; b.textContent = 'PK'; row.appendChild(b); }
+      if (isFk) { const b = document.createElement('span'); b.className = 'erd-badge erd-badge-fk'; b.textContent = 'FK'; row.appendChild(b); }
+      if (col.notnull && !isPk) { const b = document.createElement('span'); b.className = 'erd-badge erd-badge-nn'; b.textContent = 'NN'; row.appendChild(b); }
+
+      colsEl.appendChild(row);
+    });
+
+    // Relationships panel
+    const relsPanel = document.getElementById('erd-panel-rels');
+    const relsList  = document.getElementById('erd-panel-rels-list');
+    relsList.innerHTML = '';
+
+    const allRels = [];
+    // outgoing FKs
+    t.foreignKeys.forEach(fk => allRels.push({ dir: 'out', label: `${name}.${fk.from} → ${fk.table}.${fk.to || '?'}`, target: fk.table }));
+    // incoming
+    schema.tables.forEach(src => {
+      if (src.name === name) return;
+      src.foreignKeys.filter(fk => fk.table === name).forEach(fk => {
+        allRels.push({ dir: 'in', label: `${src.name}.${fk.from} → ${name}.${fk.to || '?'}`, target: src.name });
+      });
+    });
+
+    if (allRels.length > 0) {
+      relsPanel.classList.remove('hidden');
+      allRels.forEach(rel => {
+        const row = document.createElement('div');
+        row.className = 'erd-rel-row';
+        row.innerHTML = `
+          <span style="font-size:10px;opacity:.5">${rel.dir === 'out' ? '→' : '←'}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:10.5px;">${rel.label}</span>
+          <span style="font-size:10px;color:var(--erd-edge-color);font-weight:600;">${rel.target}</span>
+        `;
+        row.addEventListener('click', () => selectTable(rel.target));
+        relsList.appendChild(row);
+      });
+    } else {
+      relsPanel.classList.add('hidden');
+    }
+  }
+
+  function hideSidePanel() {
+    sidePanel.classList.remove('visible');
+  }
+
+  document.getElementById('erd-panel-close').addEventListener('click', deselectTable);
+
+  // ── Context menu ─────────────────────────────────────────────────────────
+  function openCtxMenu(name, cx, cy) {
+    ctxTable = name;
+    document.getElementById('erd-ctx-title').textContent = name;
+    document.getElementById('erd-ctx-browse').href = `${BASE}/tables/${encodeURIComponent(name)}`;
+    document.getElementById('erd-ctx-schema').href = `${BASE}/tables/${encodeURIComponent(name)}/schema`;
+    const ctxSeed = document.getElementById('erd-ctx-seed');
+    if (ctxSeed) ctxSeed.href = `${BASE}/tables/${encodeURIComponent(name)}/seed?mode=chain`;
+    document.getElementById('erd-ctx-collapse-label').textContent = collapsed.has(name) ? 'Expand table' : 'Collapse table';
+
+    const rect = wrap.getBoundingClientRect();
+    let x = cx - rect.left, y = cy - rect.top;
+    ctxMenu.style.left = Math.min(x, wrap.clientWidth  - 200) + 'px';
+    ctxMenu.style.top  = Math.min(y, wrap.clientHeight - 160) + 'px';
+    ctxMenu.classList.remove('hidden');
+    selectTable(name);
+  }
+
+  document.getElementById('erd-ctx-focus').addEventListener('click', () => {
+    ctxMenu.classList.add('hidden');
+    if (!ctxTable) return;
+    const p = positions[ctxTable], t = schema.tables.find(x => x.name === ctxTable);
+    if (!p || !t) return;
+    const nw = NODE_W, nh = nodeHeight(t);
+    const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2;
+    scale = Math.min(1.8, Math.min(wrap.clientWidth / (nw + 80), wrap.clientHeight / (nh + 80)));
+    tx    = cx - (p.x + nw / 2) * scale;
+    ty    = cy - (p.y + nh / 2) * scale;
+    applyTransform();
+  });
+
+  document.getElementById('erd-ctx-collapse').addEventListener('click', () => {
+    ctxMenu.classList.add('hidden');
+    if (ctxTable) toggleCollapse(ctxTable);
+  });
+
+  document.addEventListener('click', () => ctxMenu.classList.add('hidden'));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') ctxMenu.classList.add('hidden'); });
+
+  // ── Collapse toggle ───────────────────────────────────────────────────────
+  function toggleCollapse(name) {
+    if (collapsed.has(name)) collapsed.delete(name); else collapsed.add(name);
+    edgesG.innerHTML = '';
+    nodesG.innerHTML = '';
+    schema.tables.forEach(t => renderNode(t));
+    schema.tables.forEach(t => renderEdges(t));
+    if (selectedTable) selectTable(selectedTable);
+    applySearch();
+    renderMinimap();
+  }
+
+  // ── Compact mode (all tables) ─────────────────────────────────────────────
+  document.getElementById('erd-btn-compact').addEventListener('click', () => {
+    compactAll = !compactAll;
+    const btn = document.getElementById('erd-btn-compact');
+    btn.classList.toggle('btn-active', compactAll);
+    positions = {};
+    initLayout();
+    edgesG.innerHTML = '';
+    nodesG.innerHTML = '';
+    schema.tables.forEach(t => renderNode(t));
+    schema.tables.forEach(t => renderEdges(t));
+    fitView();
+    if (selectedTable) selectTable(selectedTable);
+    renderMinimap();
+  });
+
+  // ── Search/filter ─────────────────────────────────────────────────────────
+  function applySearch() {
+    if (!schema) return;
+    const q = searchQuery.toLowerCase().trim();
+    nodesG.querySelectorAll('.erd-node').forEach(el => {
+      const name = el.getAttribute('data-table');
+      el.classList.remove('search-match', 'search-no-match');
+      if (!q) return;
+      if (name.toLowerCase().includes(q)) el.classList.add('search-match');
+      else el.classList.add('search-no-match');
+    });
+  }
+
+  searchInput.addEventListener('input', () => {
+    searchQuery = searchInput.value;
+    applySearch();
+    if (searchQuery && schema) {
+      // pan to first match
+      const match = schema.tables.find(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (match && positions[match.name]) {
+        const p = positions[match.name], nh = nodeHeight(match);
+        const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2;
+        tx = cx - (p.x + NODE_W / 2) * scale;
+        ty = cy - (p.y + nh / 2) * scale;
+        applyTransform();
+      }
+    }
+  });
+
+  // ── Viewport transform ────────────────────────────────────────────────────
+  function applyTransform() {
+    viewport.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+    zoomLabel.textContent = Math.round(scale * 100) + '%';
+    renderMinimap();
+  }
+
+  function fitView() {
+    if (!schema || schema.tables.length === 0) return;
+    const wW = wrap.clientWidth, wH = wrap.clientHeight;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    schema.tables.forEach(t => {
+      const p = positions[t.name]; if (!p) return;
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + NODE_W); maxY = Math.max(maxY, p.y + nodeHeight(t));
+    });
+    const cW = maxX - minX + 120, cH = maxY - minY + 120;
+    scale = Math.min(1.1, Math.min(wW / cW, wH / cH));
+    tx = (wW - cW * scale) / 2 - minX * scale + 60 * scale;
+    ty = (wH - cH * scale) / 2 - minY * scale + 60 * scale;
+    applyTransform();
+  }
+
+  // ── Minimap ───────────────────────────────────────────────────────────────
+  function renderMinimap() {
+    if (!schema || schema.tables.length === 0) return;
+    minimapSvg.innerHTML = '';
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    schema.tables.forEach(t => {
+      const p = positions[t.name]; if (!p) return;
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + NODE_W); maxY = Math.max(maxY, p.y + nodeHeight(t));
+    });
+    const cW = maxX - minX || 1, cH = maxY - minY || 1;
+    const mW = 168, mH = 92;
+    const mS = Math.min((mW - 8) / (cW + 40), (mH - 8) / (cH + 40));
+
+    schema.tables.forEach(t => {
+      const p = positions[t.name]; if (!p) return;
+      const pal = palOf(t.name);
+      const rx = (p.x - minX + 20) * mS + 4, ry = (p.y - minY + 20) * mS + 4;
+      const rw = NODE_W * mS, rh = nodeHeight(t) * mS;
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', rx); r.setAttribute('y', ry);
+      r.setAttribute('width', Math.max(rw, 2)); r.setAttribute('height', Math.max(rh, 2));
+      r.setAttribute('rx', 2);
+      r.setAttribute('fill', t.name === selectedTable ? pal.h : pal.h + '55');
+      r.setAttribute('stroke', pal.h); r.setAttribute('stroke-width', '0.5');
+      minimapSvg.appendChild(r);
+    });
+
+    // Viewport rect
+    const vpX = (-tx / scale - minX + 20) * mS + 4;
+    const vpY = (-ty / scale - minY + 20) * mS + 4;
+    const vpW = (wrap.clientWidth  / scale) * mS;
+    const vpH = (wrap.clientHeight / scale) * mS;
+    const vp  = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    vp.setAttribute('x', vpX); vp.setAttribute('y', vpY);
+    vp.setAttribute('width', vpW); vp.setAttribute('height', vpH);
+    vp.setAttribute('fill', 'rgba(99,102,241,0.06)');
+    vp.setAttribute('stroke', '#6366f1'); vp.setAttribute('stroke-width', '1'); vp.setAttribute('rx', '2');
+    minimapSvg.appendChild(vp);
+  }
+
+  // ── Mouse / touch events ──────────────────────────────────────────────────
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const d = e.deltaY > 0 ? 0.88 : 1.12;
+    const r = wrap.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const ns = Math.min(3, Math.max(0.1, scale * d));
+    tx = mx - (mx - tx) * (ns / scale);
+    ty = my - (my - ty) * (ns / scale);
+    scale = ns; applyTransform();
+  }, { passive: false });
+
+  // Canvas panning
+  wrap.addEventListener('mousedown', e => {
+    if (draggingNode || e.button !== 0) return;
+    const tgt = e.target;
+    if (tgt.closest('.erd-node') || tgt.closest('#erd-ctx-menu')) return;
+    isPanning = true;
+    panStart  = { x: e.clientX, y: e.clientY, tx, ty };
+    wrap.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (draggingNode) {
+      const dx = (e.clientX - draggingNode.startX) / scale;
+      const dy = (e.clientY - draggingNode.startY) / scale;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) draggingNode.moved = true;
+      positions[draggingNode.name].x = draggingNode.origX + dx;
+      positions[draggingNode.name].y = draggingNode.origY + dy;
+      const el = nodesG.querySelector(`[data-table="${draggingNode.name}"]`);
+      if (el) { const p = positions[draggingNode.name]; el.setAttribute('transform', `translate(${p.x},${p.y})`); }
+      updateEdges();
+      renderMinimap();
+    } else if (isPanning) {
+      tx = panStart.tx + (e.clientX - panStart.x);
+      ty = panStart.ty + (e.clientY - panStart.y);
+      applyTransform();
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    draggingNode = null; isPanning = false;
+    wrap.style.cursor = 'grab';
+  });
+
+  // Click on canvas background → deselect
+  svgEl_.addEventListener('click', e => {
+    if (e.target === svgEl_ || e.target.id === 'erd-viewport') deselectTable();
+  });
+
+  // Zoom buttons
+  function zoomAt(factor) {
+    const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2;
+    const ns = Math.min(3, Math.max(0.1, scale * factor));
+    tx = cx - (cx - tx) * (ns / scale); ty = cy - (cy - ty) * (ns / scale);
+    scale = ns; applyTransform();
+  }
+  document.getElementById('erd-btn-zoom-in').addEventListener('click',  () => zoomAt(1.2));
+  document.getElementById('erd-btn-zoom-out').addEventListener('click', () => zoomAt(0.83));
+  document.getElementById('erd-btn-fit').addEventListener('click',      fitView);
+
+  // Layout mode buttons
+  function applyLayoutMode(mode) {
+    if (!schema) return;
+    layoutMode = mode;
+    positions  = {};
+    initLayout();
+    edgesG.innerHTML = ''; nodesG.innerHTML = '';
+    schema.tables.forEach(t => renderNode(t));
+    schema.tables.forEach(t => renderEdges(t));
+    fitView();
+    if (selectedTable) selectTable(selectedTable);
+    applySearch();
+    renderMinimap();
+  }
+  document.querySelectorAll('.erd-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyLayoutMode(btn.dataset.mode));
+  });
+  updateModeButtons();
+
+  // Export SVG
+  document.getElementById('erd-btn-export-svg').addEventListener('click', () => {
+    if (!schema) return;
+
+    // 1. Compute content bounds in diagram-space
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    schema.tables.forEach(t => {
+      const p = positions[t.name]; if (!p) return;
+      minX = Math.min(minX, p.x);       minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + NODE_W); maxY = Math.max(maxY, p.y + nodeHeight(t));
+    });
+    const PAD = 48;
+    const vW  = maxX - minX + PAD * 2;
+    const vH  = maxY - minY + PAD * 2;
+
+    // 2. Resolve all current CSS variable values
+    const cs  = getComputedStyle(document.documentElement);
+    const get = v => cs.getPropertyValue(v).trim();
+    const VARS = {
+      'var(--erd-node-bg)'      : get('--erd-node-bg')       || '#ffffff',
+      'var(--erd-node-border)'  : get('--erd-node-border')   || '#e2e8f0',
+      'var(--erd-node-text)'    : get('--erd-node-text')      || '#1e293b',
+      'var(--erd-node-subtext)' : get('--erd-node-subtext')  || '#94a3b8',
+      'var(--erd-node-row-odd)' : get('--erd-node-row-odd')  || '#f8fafc',
+      'var(--erd-node-row-even)': get('--erd-node-row-even') || '#ffffff',
+      'var(--erd-node-row-pk)'  : get('--erd-node-row-pk')   || '#eef2ff',
+      'var(--erd-node-row-fk)'  : get('--erd-node-row-fk')   || '#fffbeb',
+      'var(--erd-edge-color)'   : get('--erd-edge-color')    || '#818cf8',
+      'var(--erd-edge-hl)'      : get('--erd-edge-hl')       || '#f59e0b',
+      'var(--erd-edge-dim)'     : get('--erd-edge-dim')      || '#cbd5e1',
+      'var(--erd-canvas-bg)'    : get('--erd-canvas-bg')     || '#f1f5f9',
+    };
+
+    function resolveVars(str) {
+      if (!str || !str.includes('var(')) return str;
+      return Object.entries(VARS).reduce((s, [k, v]) => s.replaceAll(k, v), str);
+    }
+
+    // 3. Deep-clone SVG and walk every element to inline CSS vars
+    const clone = svgEl_.cloneNode(true);
+
+    function inlineEl(el) {
+      // Inline attribute-level var() references
+      for (const attr of [...el.attributes]) {
+        const resolved = resolveVars(attr.value);
+        if (resolved !== attr.value) el.setAttribute(attr.name, resolved);
+      }
+      // Inline style attribute
+      const styleAttr = el.getAttribute('style');
+      if (styleAttr) {
+        const resolved = resolveVars(styleAttr);
+        if (resolved !== styleAttr) el.setAttribute('style', resolved);
+      }
+      for (const child of el.children) inlineEl(child);
+    }
+    inlineEl(clone);
+
+    // 4. Fix dimensions & viewBox
+    clone.setAttribute('width',   String(Math.ceil(vW)));
+    clone.setAttribute('height',  String(Math.ceil(vH)));
+    clone.setAttribute('viewBox', `0 0 ${Math.ceil(vW)} ${Math.ceil(vH)}`);
+    clone.removeAttribute('style'); // removes display:none
+
+    // 5. Reset viewport transform — shift content so it starts at (PAD, PAD)
+    const vpClone = clone.querySelector('#erd-viewport');
+    if (vpClone) vpClone.setAttribute('transform', `translate(${PAD - minX},${PAD - minY})`);
+
+    // 6. Add background rect behind everything
+    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('x', 0); bgRect.setAttribute('y', 0);
+    bgRect.setAttribute('width', Math.ceil(vW)); bgRect.setAttribute('height', Math.ceil(vH));
+    bgRect.setAttribute('fill', VARS['var(--erd-canvas-bg)']);
+    clone.insertBefore(bgRect, clone.firstChild);
+
+    // 7. Strip interactive-only elements (hit targets, collapse arrows, tooltip, minimap)
+    clone.querySelectorAll(
+      '.erd-hit, .erd-collapse-btn, #erd-minimap, #erd-edge-tooltip, #erd-ctx-menu'
+    ).forEach(el => el.remove());
+
+    // 8. Add Google Fonts import so text renders correctly in SVG viewers that support it
+    const defs = clone.querySelector('defs') || clone.insertBefore(
+      document.createElementNS('http://www.w3.org/2000/svg', 'defs'), clone.firstChild
+    );
+    const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    style.textContent = `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');`;
+    defs.insertBefore(style, defs.firstChild);
+
+    // 9. Serialize and trigger download
+    const xml  = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + xml], { type: 'image/svg+xml;charset=utf-8' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = 'er-diagram.svg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+
+  // Touch pinch-zoom
+  let lastPinchDist = null;
+  wrap.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }, { passive: true });
+  wrap.addEventListener('touchmove', e => {
+    if (e.touches.length !== 2 || !lastPinchDist) return;
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    const r = wrap.getBoundingClientRect();
+    const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+    const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+    const ns = Math.min(3, Math.max(0.1, scale * d / lastPinchDist));
+    tx = mx - (mx - tx) * (ns / scale); ty = my - (my - ty) * (ns / scale);
+    scale = ns; applyTransform(); lastPinchDist = d; e.preventDefault();
+  }, { passive: false });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'Escape') deselectTable();
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fitView(); }
+    if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      const modes = ['force', 'hierarchy', 'circle'];
+      applyLayoutMode(modes[(modes.indexOf(layoutMode) + 1) % modes.length]);
+    }
+    if (e.key === 'c' || e.key === 'C') { document.getElementById('erd-btn-compact').click(); }
+    if (e.key === '+' || e.key === '=') zoomAt(1.2);
+    if (e.key === '-') zoomAt(0.83);
+    if ((e.key === '0') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fitView(); }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  loadSchema();
+})();
+</script>

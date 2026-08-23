@@ -6,6 +6,27 @@ export function errorMessage(err: unknown): string {
   return String(err);
 }
 
+/** Check if a given string or target is a PostgreSQL connection string */
+export function isPostgresConnectionString(target: unknown): boolean {
+  return (
+    typeof target === 'string' &&
+    (target.startsWith('postgres://') || target.startsWith('postgresql://'))
+  );
+}
+
+/** Mask credentials/password in a database connection URI for safe display and logging */
+export function sanitizeConnectionString(conn: string): string {
+  if (!conn || typeof conn !== 'string') return '';
+  try {
+    const u = new URL(conn);
+    if (u.password) {
+      u.password = '****';
+      return u.toString();
+    }
+  } catch {}
+  return conn.replace(/:([^:@]+)@/, ':****@');
+}
+
 
 /**
  * True when `p` is equal to `root` or lives inside it (both treated as

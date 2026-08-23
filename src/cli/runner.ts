@@ -7,6 +7,7 @@ import { createLogger } from '../utils/logger';
 import { DbManager } from '../db/manager';
 import { parseArgs, helpText, versionText, getPackageVersion } from './args';
 import { DEFAULT_PASSWORD_HASH } from '../auth';
+import { isPostgresConnectionString, sanitizeConnectionString } from '../utils/common';
 import { c } from '../utils/colors';
 
 export function runCli(): void {
@@ -72,12 +73,8 @@ export function runCli(): void {
   //  - Otherwise -> manager mode.
   const hasDir = Boolean(config.dbDir);
   const hasFiles = Boolean(config.dbFiles && config.dbFiles.length > 0);
-  const explicitFile =
-    args.connection ??
-    config.connection ??
-    args.dbPath ??
-    (process.env.ADMINDB_DB_PATH || process.env.ADMINDB_PATH || process.env.DB_PATH ? config.dbPath : undefined);
-  const isPg = Boolean(explicitFile && (explicitFile.startsWith('postgres://') || explicitFile.startsWith('postgresql://')));
+  const explicitFile = args.connection || args.dbPath || config.connection || config.dbPath;
+  const isPg = Boolean(explicitFile && isPostgresConnectionString(explicitFile));
   const singleFileOnly = !hasConnections && (Boolean(explicitFile) || isPg) && !hasDir && !hasFiles;
   const useManager = !singleFileOnly;
 
@@ -164,8 +161,8 @@ export function runCli(): void {
       }
       if (hasConnections) {
         for (const [name, target] of Object.entries(connections!)) {
-          const sanitized = target.replace(/:([^@]+)@/, ':****@');
-          const isTargetPg = target.startsWith('postgres://') || target.startsWith('postgresql://');
+          const sanitized = sanitizeConnectionString(target);
+          const isTargetPg = isPostgresConnectionString(target);
           const engine = isTargetPg ? 'PostgreSQL' : 'SQLite';
           console.log(`     ${c.dim('•')} ${c.bold(name)}: ${c.cyan(engine)} ${c.dim(sanitized)}`);
         }
@@ -188,7 +185,7 @@ export function runCli(): void {
         console.log(`  ${c.green('➜')}  ${c.bold('Config:')}   ${c.cyan(args.configPath)}`);
       }
       if (isPg) {
-        const sanitized = explicitFile?.replace(/:([^@]+)@/, ':****@');
+        const sanitized = sanitizeConnectionString(explicitFile || '');
         console.log(`  ${c.green('➜')}  ${c.bold('Engine:')}   ${c.cyan('PostgreSQL')}`);
         console.log(`  ${c.green('➜')}  ${c.bold('Database:')} ${sanitized}`);
       } else {

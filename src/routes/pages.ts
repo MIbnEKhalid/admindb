@@ -400,6 +400,11 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
+  // ER diagram / relationship visualization.
+  router.get('/erd', (_req: Request, res: Response) => {
+    res.render('pages/erd', { title: 'ER Diagram' });
+  });
+
   // Table designer.
   router.get('/designer', (_req: Request, res: Response) => {
     res.render('pages/designer', {

@@ -2,48 +2,9 @@
  * and preview the generated CREATE TABLE live. Create executes; Copy copies. */
 (function () {
   'use strict';
-  const SQLITE_TYPES = [
-    'TEXT',
-    'INTEGER',
-    'REAL',
-    'BLOB',
-    'BOOLEAN',
-    'DATE',
-    'DATETIME',
-    'NUMERIC',
-    'VARCHAR(255)',
-    'JSON',
-  ];
-
-  const POSTGRES_TYPES = [
-    'TEXT',
-    'VARCHAR(255)',
-    'INTEGER',
-    'BIGINT',
-    'SMALLINT',
-    'SERIAL',
-    'BIGSERIAL',
-    'REAL',
-    'DECIMAL(10,2)',
-    'NUMERIC',
-    'BOOLEAN',
-    'DATE',
-    'DATETIME',
-    'TIMESTAMP',
-    'TIMESTAMPTZ',
-    'TIME',
-    'INTERVAL',
-    'JSON',
-    'JSONB',
-    'UUID',
-    'BYTEA',
-    'INET',
-  ];
-
-  const isPostgres = window.APP && window.APP.dialect === 'postgres';
-  const DESIGNER_TYPES = isPostgres ? POSTGRES_TYPES : SQLITE_TYPES;
-
-  const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
+  const isPostgres = window.Utils ? window.Utils.isPostgres() : (window.APP && window.APP.dialect === 'postgres');
+  const DESIGNER_TYPES = window.Utils ? window.Utils.getDesignerTypes() : ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN'];
+  const NAME_RE = window.Utils ? window.Utils.NAME_REGEX : /^[A-Za-z_][A-Za-z0-9_$]*$/;
 
   const columnsEl = document.getElementById('columns');
   const errorBox = document.getElementById('designer-error');
@@ -60,9 +21,7 @@
   let fkTables = [];
   let previewTimer = null;
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
 
   async function loadColumns(table) {
     if (columnCache[table]) return columnCache[table];

@@ -1,7 +1,7 @@
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import type { Logger } from '../utils/logger';
 import { quoteIdentifier, type ColumnDef, type IndexDef } from '../sql/generator';
-import { errorMessage } from '../utils/common';
+import { errorMessage, sanitizeConnectionString } from '../utils/common';
 import type {
   ColumnDetail,
   ColumnInfo,
@@ -89,7 +89,7 @@ export class PostgresDatabase implements IDatabase {
     };
 
     this.path = opts.connectionString
-      ? this.sanitizeConnectionString(opts.connectionString)
+      ? sanitizeConnectionString(opts.connectionString)
       : `${opts.user || 'postgres'}@${opts.host || 'localhost'}:${opts.port || 5432}/${opts.database || 'postgres'}`;
 
     this.pool = new Pool(poolConfig);
@@ -107,16 +107,6 @@ export class PostgresDatabase implements IDatabase {
     }
 
     this.logger.info(`Initialized PostgreSQL pool for ${this.path}${this.isReadOnly ? ' (read-only)' : ''}`);
-  }
-
-  private sanitizeConnectionString(conn: string): string {
-    try {
-      const url = new URL(conn);
-      if (url.password) url.password = '****';
-      return url.toString();
-    } catch {
-      return conn.replace(/:([^@]+)@/, ':****@');
-    }
   }
 
   private readonlyBlocked(): Result<never> {

@@ -51,8 +51,11 @@ AdminDB supports both **SQLite** and **PostgreSQL** database backends seamlessly
 | PUT    | `/api/tables/:table/columns/:column` | Modify/rename a column           |
 | DELETE | `/api/tables/:table/columns/:column` | Drop a column (safety-checked)   |
 | DELETE | `/api/tables/:table`                 | Drop the table (safety-checked)  |
+| POST   | `/api/tables/bulk-drop`              | Drop multiple tables at once (`{ tables, force }`) |
+| POST   | `/api/tables/bulk-truncate`          | Truncate/empty multiple tables at once (`{ tables, force }`) |
 | POST   | `/api/tables/:table/indexes`         | Create an index (`{ name?, columns[], unique? }`) |
 | DELETE | `/api/tables/:table/indexes/:index`  | Drop an index (auto indexes refused) |
+| GET    | `/api/erd`                           | Full schema graph with columns & FK edges for ER Diagram |
 
 ## Queries
 
@@ -128,6 +131,7 @@ import {
   type BlobMetaResponseData,
   type TableDdlResponseData,
 } from 'admindb';
+import { analyzeSqlError } from 'admindb/dist/sql/error-analyzer.js';
 
 // 1. Sniff MIME type from binary magic bytes
 const analysis = sniffMimeType(imageBuffer);

@@ -5,31 +5,11 @@
 (function () {
   'use strict';
 
-  function escapeHtml(s) {
-    return (window.UI && UI.escapeHtml) ? UI.escapeHtml(s) : String(s == null ? '' : s);
-  }
-
-  function formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
-    var k = 1024;
-    var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  }
-
-  function isJson(str) {
-    if (typeof str !== 'string') return false;
-    var t = str.trim();
-    if (!((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')))) return false;
-    try {
-      JSON.parse(t);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
+  const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
+  const formatBytes = window.Utils ? window.Utils.formatBytes : function(b) { return b + ' B'; };
+  const isJson = window.Utils ? window.Utils.isJson : function(s) { return false; };
   function isHexBlob(str) {
+    if (window.Utils && window.Utils.isHexBlob(str)) return true;
     return typeof str === 'string' && (/^0x[0-9a-f]{4,}$/i.test(str.trim()) || /^\\x[0-9a-f]{4,}$/i.test(str.trim()));
   }
 

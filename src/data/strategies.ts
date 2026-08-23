@@ -32,8 +32,10 @@ export const randFloat = (min: number, max: number): number => Math.random() * (
 export const pick = <T>(arr: T[]): T => arr[randInt(0, arr.length - 1)];
 
 export const makeSlug = (): string => `${pick(LOREM_WORDS)}-${pick(LOREM_WORDS)}-${randInt(100, 999)}`;
-export const makeEmail = (): string => `${pick(FIRST_NAMES).toLowerCase()}.${pick(LAST_NAMES).toLowerCase()}${randInt(1, 99)}@${pick(DOMAINS)}`;
-export const makeUsername = (): string => `${pick(FIRST_NAMES).toLowerCase()}${pick(LAST_NAMES).toLowerCase()}${randInt(1, 9999)}`;
+export const makeEmail = (idx?: number): string =>
+  `${pick(FIRST_NAMES).toLowerCase()}.${pick(LAST_NAMES).toLowerCase()}${idx != null ? idx + 1 : ''}${randInt(10, 9999)}@${pick(DOMAINS)}`;
+export const makeUsername = (idx?: number): string =>
+  `${pick(FIRST_NAMES).toLowerCase()}${pick(LAST_NAMES).toLowerCase()}${idx != null ? idx + 1 : ''}${randInt(10, 9999)}`;
 export const makePhone = (): string => `+1 (${randInt(200, 999)}) ${randInt(200, 999)}-${String(randInt(0, 9999)).padStart(4, '0')}`;
 export const makeAddress = (): string => `${randInt(10, 9999)} ${pick(LOREM_WORDS)} ${pick(['St', 'Ave', 'Rd', 'Blvd', 'Ln', 'Dr'])}, ${pick(CITIES)}`;
 export const makeIp = (): string => `${randInt(1, 223)}.${randInt(0, 255)}.${randInt(0, 255)}.${randInt(1, 254)}`;
@@ -245,8 +247,8 @@ const BASIC_STRATEGIES: Record<string, (p: ColumnPlan, rowIndex: number) => unkn
   first: () => pick(FIRST_NAMES),
   last: () => pick(LAST_NAMES),
   fullname: () => `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`,
-  email: () => makeEmail(),
-  username: () => makeUsername(),
+  email: (_, idx) => makeEmail(idx),
+  username: (_, idx) => makeUsername(idx),
   job: () => pick(JOB_TITLES),
   company: () => pick(COMPANIES),
   currency: () => pick(CURRENCIES),

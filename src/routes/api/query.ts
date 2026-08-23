@@ -1,5 +1,6 @@
 import type { Router } from 'express';
 import { classifySql } from '../../sql/classifier';
+import { analyzeSqlError } from '../../sql/error-analyzer';
 import { normalizeRow } from '../../utils/common';
 import { type ApiContext, ok, fail, wrap } from './helpers';
 
@@ -20,7 +21,10 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
         return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
       }
       const r = await db.execResult(rawSql);
-      if (!r.success) return fail(res, r.error ?? 'Query failed.', 400);
+      if (!r.success) {
+        const details = await analyzeSqlError(rawSql, r.error ?? 'Script execution failed.', db);
+        return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
+      }
       return ok(res, {
         kind: 'script',
         message: 'Script executed successfully.',
@@ -29,7 +33,10 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
 
     if (kind === 'select' || kind === 'read' || kind === 'count') {
       const r = await db.all(rawSql);
-      if (!r.success) return fail(res, r.error ?? 'Query failed.', 400);
+      if (!r.success) {
+        const details = await analyzeSqlError(rawSql, r.error ?? 'Query execution failed.', db);
+        return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
+      }
       const rows = ((r.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
       const columns = rows.length ? Object.keys(rows[0]) : [];
       return ok(res, { kind: 'select', columns, rows });
@@ -40,7 +47,10 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
       return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
     }
     const r = await db.runWrite(rawSql);
-    if (!r.success) return fail(res, r.error ?? 'Query failed.', 400);
+    if (!r.success) {
+      const details = await analyzeSqlError(rawSql, r.error ?? 'Statement execution failed.', db);
+      return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
+    }
     const changes = r.data?.changes as number | undefined;
     ok(res, {
       kind: 'write',

@@ -10,7 +10,7 @@ import { registerPages } from './routes/pages';
 import { registerApi } from './routes/api/index';
 import { registerDatabasesRoutes } from './routes/databases';
 import { getPackageVersion } from './cli/args';
-import { errorMessage } from './utils/common';
+import { errorMessage, isPostgresConnectionString } from './utils/common';
 import { renderIcon } from './utils/icons';
 import { isServerlessEnvironment } from './serverless';
 
@@ -152,7 +152,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
   const rawTarget = options.connection || options.dbPath || '';
   const isPg =
     Boolean(options.pgOptions) ||
-    (typeof rawTarget === 'string' && (rawTarget.startsWith('postgres://') || rawTarget.startsWith('postgresql://'))) ||
+    isPostgresConnectionString(rawTarget) ||
     options.db?.dialect === 'postgres';
 
   // In serverless environments, SQLite local files are ephemeral/read-only,

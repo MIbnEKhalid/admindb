@@ -5,6 +5,7 @@ import {
   generateDropTable,
   generateCreateIndex,
   generateDropIndex,
+  quoteIdentifier,
   type ColumnDef,
   type IndexDef,
 } from '../../sql/generator';
@@ -72,6 +73,100 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     const r = await db.dropTable(req.params.table);
     if (!r.success) return fail(res, r.error ?? 'Failed to drop table.');
     ok(res, { message: `Table "${req.params.table}" dropped.` });
+  }));
+
+  // ---- Bulk Table Operations -----------------------------------------------
+
+  // POST /api/tables/bulk-drop — drop multiple tables at once
+  // Body: { tables: string[], force: boolean }
+  // force=true: disables FK checks (SQLite PRAGMA / Postgres CASCADE)
+  router.post('/api/tables/bulk-drop', wrap(async (req, res) => {
+    const tables: string[] = Array.isArray(req.body?.tables)
+      ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+      : [];
+    const force = Boolean(req.body?.force);
+    if (tables.length === 0) return fail(res, 'No tables specified.');
+
+    const dropped: string[] = [];
+    const failed: { table: string; error: string }[] = [];
+
+    // Disable FK enforcement for the session when force=true (SQLite only)
+    if (force && db.dialect === 'sqlite') {
+      await db.run('PRAGMA foreign_keys = OFF');
+    }
+
+    for (const table of tables) {
+      try {
+        if (force && db.dialect === 'postgres') {
+          // Postgres: DROP TABLE ... CASCADE bypasses FK constraints
+          const r = await db.run(`DROP TABLE IF EXISTS ${quoteIdentifier(table)} CASCADE`);
+          if (!r.success) throw new Error(r.error ?? 'Failed to drop table.');
+        } else {
+          const r = await db.dropTable(table);
+          if (!r.success) throw new Error(r.error ?? 'Failed to drop table.');
+        }
+        dropped.push(table);
+      } catch (err) {
+        failed.push({ table, error: (err as Error).message });
+      }
+    }
+
+    // Always re-enable FK enforcement after force mode
+    if (force && db.dialect === 'sqlite') {
+      await db.run('PRAGMA foreign_keys = ON');
+    }
+
+    ok(res, {
+      dropped,
+      failed,
+      message: `Dropped ${dropped.length} table(s)${failed.length ? `, ${failed.length} failed` : ''}.`,
+    });
+  }));
+
+  // POST /api/tables/bulk-truncate — delete all rows from multiple tables
+  // Body: { tables: string[], force: boolean }
+  // force=true: disables FK checks (SQLite PRAGMA / Postgres CASCADE)
+  router.post('/api/tables/bulk-truncate', wrap(async (req, res) => {
+    const tables: string[] = Array.isArray(req.body?.tables)
+      ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+      : [];
+    const force = Boolean(req.body?.force);
+    if (tables.length === 0) return fail(res, 'No tables specified.');
+
+    const cleared: string[] = [];
+    const failed: { table: string; error: string }[] = [];
+
+    // Disable FK enforcement for the session when force=true (SQLite only)
+    if (force && db.dialect === 'sqlite') {
+      await db.run('PRAGMA foreign_keys = OFF');
+    }
+
+    for (const table of tables) {
+      try {
+        let r;
+        if (force && db.dialect === 'postgres') {
+          // Postgres: TRUNCATE ... RESTART IDENTITY CASCADE bypasses FK constraints
+          r = await db.run(`TRUNCATE ${quoteIdentifier(table)} RESTART IDENTITY CASCADE`);
+        } else {
+          r = await db.run(`DELETE FROM ${quoteIdentifier(table)}`);
+        }
+        if (!r.success) throw new Error(r.error ?? 'Failed to clear table.');
+        cleared.push(table);
+      } catch (err) {
+        failed.push({ table, error: (err as Error).message });
+      }
+    }
+
+    // Always re-enable FK enforcement after force mode
+    if (force && db.dialect === 'sqlite') {
+      await db.run('PRAGMA foreign_keys = ON');
+    }
+
+    ok(res, {
+      cleared,
+      failed,
+      message: `Cleared ${cleared.length} table(s)${failed.length ? `, ${failed.length} failed` : ''}.`,
+    });
   }));
 
   // Preview generated CREATE TABLE SQL without executing

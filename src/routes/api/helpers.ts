@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { IDatabase, TableInfoData, WhereClause, SQLInputValue } from '../../db/index';
 import type { Logger } from '../../utils/logger';
 import { coerceFormValue, decodePk, errorMessage } from '../../utils/common';
-import { sanitizeColumnPlan, MAX_SEED_ROWS, type ColumnPlan } from '../../data/index';
+import { sanitizeColumnPlan, MAX_SEED_ROWS, type ColumnPlan, type ErChainScope } from '../../data/index';
 import { quoteIdentifier } from '../../sql/generator';
 
 export interface ApiContext {
@@ -14,8 +14,8 @@ export function ok(res: Response, data: unknown, status = 200): Response {
   return res.status(status).json({ success: true, data });
 }
 
-export function fail(res: Response, error: string, status = 400): Response {
-  return res.status(status).json({ success: false, error });
+export function fail(res: Response, error: string, status = 400, details?: Record<string, unknown> | null): Response {
+  return res.status(status).json({ success: false, error, ...(details ? { details } : {}) });
 }
 
 export function wrap(fn: (req: Request, res: Response) => unknown) {
@@ -96,6 +96,47 @@ export function parseSeedRequest(body: unknown): { count: number; plan: Record<s
   }
   return { count, plan, truncate };
 }
+
+export function parseChainSeedRequest(body: unknown): {
+  scope: ErChainScope;
+  counts: Record<string, number>;
+  plans: Record<string, Record<string, ColumnPlan>>;
+  truncate: boolean;
+} {
+  const b = (body ?? {}) as {
+    scope?: unknown;
+    counts?: unknown;
+    plans?: unknown;
+    truncate?: unknown;
+  };
+  const scope: ErChainScope =
+    b.scope === 'ancestors' || b.scope === 'descendants' || b.scope === 'all' || b.scope === 'single'
+      ? b.scope
+      : 'chain';
+  const truncate = Boolean(b.truncate);
+  const counts: Record<string, number> = {};
+  if (b.counts && typeof b.counts === 'object') {
+    for (const [table, rawN] of Object.entries(b.counts as Record<string, unknown>)) {
+      const n = Number.parseInt(String(rawN), 10);
+      if (Number.isFinite(n) && n > 0) counts[table] = Math.min(2000, n);
+    }
+  }
+  const plans: Record<string, Record<string, ColumnPlan>> = {};
+  if (b.plans && typeof b.plans === 'object') {
+    for (const [table, tablePlans] of Object.entries(b.plans as Record<string, unknown>)) {
+      if (tablePlans && typeof tablePlans === 'object') {
+        const pMap: Record<string, ColumnPlan> = {};
+        for (const [col, v] of Object.entries(tablePlans as Record<string, unknown>)) {
+          const p = sanitizeColumnPlan(v);
+          if (p) pMap[col] = p;
+        }
+        plans[table] = pMap;
+      }
+    }
+  }
+  return { scope, counts, plans, truncate };
+}
+
 
 export function resolvePkRows(info: TableInfoData, ids: unknown): WhereClause[][] | null {
   const list = Array.isArray(ids) ? ids : ids == null ? [] : [ids];

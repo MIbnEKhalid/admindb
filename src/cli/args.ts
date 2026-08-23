@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel } from '../utils/logger';
+import { isPostgresConnectionString } from '../utils/common';
 import { parseConfigFile } from './config';
 
 const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
@@ -196,7 +197,7 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       const v = takeValue('--open');
       if (v === undefined) return invalid('Missing value for --open / --db-path.');
       args.dbPath = v;
-      if (v.startsWith('postgres://') || v.startsWith('postgresql://')) {
+      if (isPostgresConnectionString(v)) {
         args.connection = v;
       }
     } else if (isFlag(tok, '-d', '--dir', '--folder', '--db-dir')) {
@@ -255,7 +256,7 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
   }
   const p = positional[0];
   if (p) {
-    if (p.startsWith('postgres://') || p.startsWith('postgresql://')) {
+    if (isPostgresConnectionString(p)) {
       args.connection = p;
       args.dbPath = p;
     } else if (p.endsWith('.json') || existsSync(p)) {

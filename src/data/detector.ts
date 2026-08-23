@@ -16,9 +16,16 @@ export interface NumericConstraint {
   max?: number;
 }
 
+export interface LengthConstraint {
+  min?: number;
+  max?: number;
+  exact?: number;
+}
+
 export interface CheckInfo {
   columnAllowed: Map<string, string[]>;
   columnRange: Map<string, NumericConstraint>;
+  columnLength: Map<string, LengthConstraint>;
   jsonAllowed: Map<string, Map<string, string[]>>;
   ordering: Map<string, OrderingConstraint>;
 }
@@ -87,6 +94,7 @@ export function parseChecks(sql: string | null): CheckInfo {
   const info: CheckInfo = {
     columnAllowed: new Map(),
     columnRange: new Map(),
+    columnLength: new Map(),
     jsonAllowed: new Map(),
     ordering: new Map(),
   };
@@ -110,8 +118,8 @@ export function parseChecks(sql: string | null): CheckInfo {
 
   for (const expr of extractCheckExprs(sql)) {
     // 1. JSON whitelists
-    const jw1 = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(?:->>|->)\s*'([^']+)'\s*\)*\s*IN\s*\(([^)]*)\)/gi;
-    const jw2 = /json_extract\s*\(\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*,\s*'(?:\$\??|\.)?\.?([^']+)'\s*\)\s*\)*\s*IN\s*\(([^)]*)\)/gi;
+    const jw1 = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(?:->>|->)\s*'([^']+)'\s*(?:\)\s*)*IN\s*\(([^)]*)\)/gi;
+    const jw2 = /json_extract\s*\(\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*,\s*'(?:\$\??|\.)?\.?([^']+)'\s*\)\s*(?:\)\s*)*IN\s*\(([^)]*)\)/gi;
     for (const re of [jw1, jw2]) {
       let m: RegExpExecArray | null;
       while ((m = re.exec(expr))) {
@@ -128,8 +136,8 @@ export function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // 2. Direct column IN lists
-    const colIn = /(?:^|[^(->>\w])(?:\(\s*)?(?:(?:lower|upper|trim|coalesce)\s*\(\s*)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*,\s*[^)]+)?\s*\)?\s*\)?\s*IN\s*\(([^)]*)\)/gi;
+    // 2. Direct column IN lists (handles arbitrary parentheses like (((action)IN ('a', 'b'))))
+    const colIn = /(?:^|[^\w"'\`\[])(?:\s*\(\s*)*(?:(?:lower|upper|trim|coalesce)\s*\(\s*)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*,\s*[^)]+)?(?:\s*\)\s*)*\s*IN\s*\(([^)]*)\)/gi;
     let mColIn: RegExpExecArray | null;
     while ((mColIn = colIn.exec(expr))) {
       const col = mColIn[1] || mColIn[2] || mColIn[3] || mColIn[4];
@@ -144,7 +152,7 @@ export function parseChecks(sql: string | null): CheckInfo {
     }
 
     // 3. Direct column equality
-    const eqOr = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*=\s*'((?:[^']|'')*)'/gi;
+    const eqOr = /(?:^|[^\w"'\`\[])(?:\s*\(\s*)*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*\)\s*)*\s*=\s*'((?:[^']|'')*)'/gi;
     let mEq: RegExpExecArray | null;
     const eqByCol = new Map<string, string[]>();
     while ((mEq = eqOr.exec(expr))) {
@@ -159,7 +167,7 @@ export function parseChecks(sql: string | null): CheckInfo {
     for (const [col, vals] of eqByCol.entries()) setColumnAllowed(col, vals);
 
     // 4. Numeric range constraints
-    const numCmp1 = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(>=|>|<=|<)\s*(-?\d+(?:\.\d+)?)/g;
+    const numCmp1 = /(?:^|[^\w"'\`\[])(?:\s*\(\s*)*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*\)\s*)*\s*(>=|>|<=|<)\s*(-?\d+(?:\.\d+)?)/g;
     let mNum1: RegExpExecArray | null;
     while ((mNum1 = numCmp1.exec(expr))) {
       const col = mNum1[1] || mNum1[2] || mNum1[3] || mNum1[4];
@@ -173,7 +181,29 @@ export function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // 5. Column ordering
+    // 5. Length constraints (e.g. length("UserId") = 12, length(code) >= 6, length(title) <= 100)
+    const lenRe1 = /length\s*\(\s*(?:\s*\(\s*)*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*\)\s*)*\s*\)\s*(=|==|>=|>|<=|<)\s*(\d+)/gi;
+    let mLen1: RegExpExecArray | null;
+    while ((mLen1 = lenRe1.exec(expr))) {
+      const col = mLen1[1] || mLen1[2] || mLen1[3] || mLen1[4];
+      const op = mLen1[5];
+      const val = Number(mLen1[6]);
+      if (col && Number.isFinite(val)) {
+        const cur = findInMap(info.columnLength, col) ?? {};
+        if (op === '=' || op === '==') {
+          cur.exact = val;
+          cur.min = val;
+          cur.max = val;
+        } else if (op === '>=' || op === '>') {
+          cur.min = op === '>' ? val + 1 : val;
+        } else if (op === '<=' || op === '<') {
+          cur.max = op === '<' ? val - 1 : val;
+        }
+        info.columnLength.set(col, cur);
+      }
+    }
+
+    // 6. Column ordering
     const ord = /(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*(>=|<=|>|<)\s*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))/g;
     let m2: RegExpExecArray | null;
     while ((m2 = ord.exec(expr))) {
@@ -263,7 +293,8 @@ export function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPl
   if (fk) return { strategy: 'fk' };
   if (col.pk) {
     if (type.startsWith('INT') || type === 'SERIAL' || type === 'BIGSERIAL') return { strategy: 'skip' };
-    if (type === 'TEXT' || type === 'BLOB' || type === 'UUID') return { strategy: 'uuid' };
+    if (type.includes('TEXT') || type.includes('CHAR') || type.includes('VARCHAR') || type.includes('STRING') || type === 'BLOB' || type === 'UUID') return { strategy: 'uuid' };
+    if (col.notnull && col.dflt_value == null) return { strategy: 'uuid' };
     return { strategy: 'skip' };
   }
   if (type === 'UUID') return { strategy: 'uuid' };
@@ -345,6 +376,17 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
     }
   }
 
+  if (info.sql) {
+    const uqRe = /UNIQUE\s*\(\s*([^)]+)\s*\)/gi;
+    let uqM: RegExpExecArray | null;
+    while ((uqM = uqRe.exec(info.sql))) {
+      const rawCols = uqM[1].split(',').map((s) => s.trim().replace(/[`"\[\]]/g, ''));
+      if (rawCols.length === 1 && rawCols[0]) {
+        uniqueCols.add(rawCols[0]);
+      }
+    }
+  }
+
   const checkInfo = parseChecks(info.sql ?? null);
 
   return info.columns.map((col) => {
@@ -380,6 +422,16 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
     if (colRange && (defaultPlan.strategy === 'int' || defaultPlan.strategy === 'decimal')) {
       if (colRange.min != null) defaultPlan.min = colRange.min;
       if (colRange.max != null) defaultPlan.max = colRange.max;
+    }
+
+    const colLen = findInMap(checkInfo.columnLength, col.name);
+    if (colLen && defaultPlan.strategy !== 'fk' && !col.pk) {
+      if (colLen.exact != null) {
+        defaultPlan = { strategy: 'token', minLen: colLen.exact, maxLen: colLen.exact };
+      } else {
+        if (colLen.min != null) defaultPlan.minLen = colLen.min;
+        if (colLen.max != null) defaultPlan.maxLen = colLen.max;
+      }
     }
 
     if (!strategies.some((s) => s.id === defaultPlan.strategy) || (!col.pk && col.notnull && col.dflt_value == null && (defaultPlan.strategy === 'skip' || defaultPlan.strategy === 'null'))) {

@@ -61,6 +61,12 @@
           Query editor
         </a>
       </li>
+      <li>
+        <a href="{{basePath}}/erd" class="side-link {{#if (startsWith currentPath '/erd')}}active{{/if}}">
+          {{{icon "diagram" class="h-4 w-4"}}}
+          ER Diagram
+        </a>
+      </li>
       {{#unless readonly}}
       <li>
         <a href="{{basePath}}/designer" class="side-link {{#if (startsWith currentPath '/designer')}}active{{/if}}">
