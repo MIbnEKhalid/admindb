@@ -337,6 +337,24 @@ export class SqliteDatabase implements IDatabase {
     return this.run(`DELETE FROM ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} WHERE id = ?`, [Number(id)]);
   }
 
+  async getSettings(): Promise<Result<Record<string, string>>> {
+    return this.tryRun(() => {
+      const pragmas = ['journal_mode', 'synchronous', 'foreign_keys', 'page_size', 'encoding', 'auto_vacuum', 'mmap_size', 'temp_store'];
+      const settings: Record<string, string> = {};
+      for (const p of pragmas) {
+        try {
+          const row = this.db.prepare(`PRAGMA ${p}`).get() as Record<string, unknown> | undefined;
+          if (row && p in row) {
+            settings[p] = String(row[p]);
+          }
+        } catch {
+          // ignore unsupported pragmas
+        }
+      }
+      return settings;
+    });
+  }
+
   async getSchema(table: string): Promise<Result<SchemaInfo>> {
     return this.tryRun(() => getSchemaSync(this.db, table));
   }

@@ -6,6 +6,7 @@ import { registerImportExportRoutes } from './import-export';
 import { registerSeedRoutes } from './seed';
 import { registerQueryRoutes } from './query';
 import { registerErdRoutes } from './erd';
+import { generateSchemaDump } from '../../db/export';
 
 export { type ApiContext } from './helpers';
 
@@ -40,4 +41,16 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   registerSeedRoutes(router, ctx);
   registerQueryRoutes(router, ctx);
   registerErdRoutes(router, ctx);
+
+  router.get('/api/info/ddl', async (_req: Request, res: Response) => {
+    try {
+      const dump = await generateSchemaDump(db);
+      if (!dump.success) {
+        return res.status(500).json({ success: false, error: dump.error });
+      }
+      res.json({ success: true, data: dump.data });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 }

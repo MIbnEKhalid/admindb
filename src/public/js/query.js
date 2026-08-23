@@ -181,7 +181,10 @@
     updateGutter();
     updateCursorStats();
     if (recordHistory) {
-      history.record(text, sel);
+      // For large SQL files, applying syntax highlight shouldn't record to the history 
+      // stack as long as it wasn't triggered by typing. If it was, the history should have 
+      // already recorded it during the 'input' event via history.record.
+      // But we still update the selection here just in case.
     }
   }
 
@@ -379,7 +382,11 @@
   if (editor) {
     editor.addEventListener('input', function () {
       errorLineNum = null;
-      applyHighlightPreservingSelection(true);
+      // Record history on input BEFORE we potentially wreck the DOM during syntax highlighting
+      const text = getEditorText();
+      const sel = saveSelection(editor);
+      history.record(text, sel, 0);
+      applyHighlightPreservingSelection(false); // Don't let applyHighlight record history again
     });
 
     editor.addEventListener('paste', function (e) {

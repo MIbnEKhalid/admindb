@@ -176,6 +176,7 @@ export interface IDatabase {
   saveQuery(name: string, sql: string): Promise<Result<MutationResult>>;
   deleteSavedQuery(id: string | number): Promise<Result<MutationResult>>;
 
+  getSettings(): Promise<Result<Record<string, string>>>;
   getSchema(table: string): Promise<Result<SchemaInfo>>;
   getReferencingTables(table: string): Promise<Result<ReferencingTableInfo[]>>;
 

@@ -630,6 +630,29 @@ export class PostgresDatabase implements IDatabase {
     });
   }
 
+  async getSettings(): Promise<Result<Record<string, string>>> {
+    return this.tryRun(async () => {
+      const keys = ['server_version', 'max_connections', 'port', 'timezone', 'shared_buffers', 'work_mem'];
+      const settings: Record<string, string> = {};
+      try {
+        const res = await this.pool.query(
+          `SELECT name, setting FROM pg_settings WHERE name = ANY($1::text[])`,
+          [keys]
+        );
+        for (const row of res.rows) {
+          settings[row.name] = String(row.setting);
+        }
+      } catch (err) {
+        // Fallback for limited permission environments
+        try {
+          const ver = await this.pool.query('SHOW server_version');
+          settings['server_version'] = String(ver.rows[0]?.server_version);
+        } catch {}
+      }
+      return settings;
+    });
+  }
+
   async getSchema(table: string): Promise<Result<SchemaInfo>> {
     return this.tryRun(async () => {
       const infoR = await this.getTableInfo(table);

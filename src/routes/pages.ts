@@ -1,7 +1,7 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import type { IDatabase, TableInfoData } from '../db/index';
 import type { Logger } from '../utils/logger';
-import { generateSqlDump } from '../db/export';
+import { generateSqlDump, generateSchemaDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
 import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS, formatBytes } from '../utils/common';
 import { sniffMimeType, isJsonString } from '../utils/datatype';
@@ -434,6 +434,23 @@ export function registerPages(router: Router, ctx: PageContext): void {
       res.setHeader('Content-Type', 'application/sql; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="admindb-${stamp}.sql"`);
       res.send(dump.data);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Database Info / Settings page
+  router.get('/info', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const settingsRes = await db.getSettings();
+      const settings = settingsRes.success ? settingsRes.data : {};
+      
+      res.render('pages/info', {
+        title: 'Database Info',
+        settings,
+        dialect: db.dialect,
+        dbPath: db.path,
+      });
     } catch (err) {
       next(err);
     }

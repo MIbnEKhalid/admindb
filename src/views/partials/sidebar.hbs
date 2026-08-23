@@ -67,6 +67,12 @@
           ER Diagram
         </a>
       </li>
+      <li>
+        <a href="{{basePath}}/info" class="side-link {{#if (startsWith currentPath '/info')}}active{{/if}}">
+          {{{icon "settings" class="h-4 w-4"}}}
+          Info & Settings
+        </a>
+      </li>
       {{#unless readonly}}
       <li>
         <a href="{{basePath}}/designer" class="side-link {{#if (startsWith currentPath '/designer')}}active{{/if}}">

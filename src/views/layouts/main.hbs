@@ -27,7 +27,19 @@
       } catch (e) {}
     })();
   </script>
-  <script src="{{basePath}}/js/icons.js" defer></script>
+  <script>
+    window.AdminIcons = {
+      map: {{{json icons}}},
+      get: function(name, customClass) {
+        var svg = this.map[name] || '';
+        if (!svg || !customClass) return svg;
+        if (svg.indexOf('class="') !== -1) {
+          return svg.replace(/class="[^"]*"/, 'class="' + customClass + '"');
+        }
+        return svg.replace('<svg', '<svg class="' + customClass + '"');
+      }
+    };
+  </script>
   <script src="{{basePath}}/js/common.js" defer></script>
   <script src="{{basePath}}/js/api.js" defer></script>
   <script src="{{basePath}}/js/app.js" defer></script>

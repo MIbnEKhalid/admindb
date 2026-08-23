@@ -6317,6 +6317,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   margin: 0px !important;
 }
 
+.m-0 {
+  margin: 0px;
+}
+
 .-mx-1 {
   margin-left: -0.25rem;
   margin-right: -0.25rem;
@@ -6590,6 +6594,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   height: 1px;
 }
 
+.h-\[75vh\] {
+  height: 75vh;
+}
+
 .max-h-48 {
   max-height: 12rem;
 }
@@ -6624,6 +6632,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .max-h-\[92vh\] {
   max-height: 92vh;
+}
+
+.max-h-\[70vh\] {
+  max-height: 70vh;
 }
 
 .min-h-0 {
@@ -6769,6 +6781,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
 .w-px {
   width: 1px;
+}
+
+.w-1\/2 {
+  width: 50%;
 }
 
 .min-w-0 {
@@ -8318,10 +8334,6 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   opacity: 1;
 }
 
-.opacity-25 {
-  opacity: 0.25;
-}
-
 .opacity-40 {
   opacity: 0.4;
 }
@@ -8638,6 +8650,10 @@ td.sticky-col-actions:has(.dropdown:focus-within),
   background-color: rgb(255 255 255 / 0.06);
 }
 
+.hover\:bg-base-200\/20:hover {
+  background-color: var(--fallback-b2,oklch(var(--b2)/0.2));
+}
+
 .hover\:text-base-content:hover {
   --tw-text-opacity: 1;
   color: var(--fallback-bc,oklch(var(--bc)/var(--tw-text-opacity, 1)));
@@ -8832,6 +8848,14 @@ td.sticky-col-actions:has(.dropdown:focus-within),
 
   .lg\:top-24 {
     top: 6rem;
+  }
+
+  .lg\:col-span-1 {
+    grid-column: span 1 / span 1;
+  }
+
+  .lg\:col-span-2 {
+    grid-column: span 2 / span 2;
   }
 
   .lg\:hidden {

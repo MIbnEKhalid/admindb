@@ -11,46 +11,46 @@
     <div class="ml-auto flex flex-wrap items-center gap-1.5">
       {{!-- Search --}}
       <div class="relative">
-        <svg class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-base-content/40" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        {{{icon "search" class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-base-content/40"}}}
         <input id="erd-search" type="search" placeholder="Find table…" autocomplete="off"
           class="h-8 w-36 rounded-lg border border-base-300 bg-base-100 pl-7 pr-2 text-xs outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/20" />
       </div>
       <div class="h-5 w-px bg-base-300"></div>
       <button id="erd-btn-compact" title="Toggle compact mode (C)" class="btn btn-sm btn-ghost gap-1.5 font-normal">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16"/></svg>
+        {{{icon "compact" class="h-4 w-4"}}}
         Compact
       </button>
       <button id="erd-btn-fit" title="Fit to screen (F)" class="btn btn-sm btn-ghost gap-1.5 font-normal">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5-5"/></svg>
+        {{{icon "fit" class="h-4 w-4"}}}
         Fit
       </button>
       {{!-- Layout mode toggle --}}
       <div class="flex items-center rounded-lg border border-base-300 bg-base-100 p-0.5 gap-0.5" title="Layout mode (L to cycle)">
         <button id="erd-mode-force" class="erd-mode-btn rounded-md px-2.5 py-1 text-xs font-semibold transition-all gap-1.5 flex items-center" data-mode="force" title="Force-directed (physics)">
-          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path stroke-linecap="round" d="M6 6.5l4.5 4M17.5 6.5l-4 4M6 17.5l4.5-4M17.5 17.5l-4-4"/></svg>
+          {{{icon "layoutForce" class="h-3.5 w-3.5"}}}
           Force
         </button>
         <button id="erd-mode-hierarchy" class="erd-mode-btn rounded-md px-2.5 py-1 text-xs font-semibold transition-all gap-1.5 flex items-center" data-mode="hierarchy" title="Hierarchical (reference tables left)">
-          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="5" height="6" rx="1"/><rect x="9" y="4" width="5" height="6" rx="1"/><rect x="9" y="14" width="5" height="6" rx="1"/><rect x="17" y="9" width="5" height="6" rx="1"/><path stroke-linecap="round" d="M7 12h2M14 7h1l2 5-2 5h-1"/></svg>
+          {{{icon "layoutHierarchy" class="h-3.5 w-3.5"}}}
           Hierarchy
         </button>
         <button id="erd-mode-circle" class="erd-mode-btn rounded-md px-2.5 py-1 text-xs font-semibold transition-all gap-1.5 flex items-center" data-mode="circle" title="Circular layout">
-          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="3" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.2" cy="7.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.2" cy="16.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="21" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.8" cy="16.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.8" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+          {{{icon "layoutCircle" class="h-3.5 w-3.5"}}}
           Circle
         </button>
       </div>
       <button id="erd-btn-export-svg" title="Download as SVG" class="btn btn-sm btn-ghost gap-1.5 font-normal">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        {{{icon "export" class="h-4 w-4"}}}
         Export
       </button>
       <div class="h-5 w-px bg-base-300"></div>
       <div class="flex items-center gap-0.5 rounded-lg border border-base-300 bg-base-100 px-1.5 py-1">
         <button id="erd-btn-zoom-out" class="rounded px-1 py-0.5 hover:bg-base-200 transition-colors text-base-content/60" title="Zoom out (−)">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"/></svg>
+          {{{icon "minus" class="h-3.5 w-3.5"}}}
         </button>
         <span id="erd-zoom-label" class="w-12 text-center text-xs font-mono font-semibold tabular-nums">100%</span>
         <button id="erd-btn-zoom-in" class="rounded px-1 py-0.5 hover:bg-base-200 transition-colors text-base-content/60" title="Zoom in (+)">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          {{{icon "plus" class="h-3.5 w-3.5"}}}
         </button>
       </div>
     </div>
@@ -64,17 +64,14 @@
 
       {{!-- Loading --}}
       <div id="erd-loading" class="absolute inset-0 flex flex-col items-center justify-center gap-3 z-20 bg-base-100/80 backdrop-blur-sm">
-        <svg class="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
+        {{{icon "spinner" class="animate-spin h-8 w-8 text-primary"}}}
         <span class="text-sm text-base-content/60 font-medium">Loading schema…</span>
       </div>
 
       {{!-- Error --}}
       <div id="erd-error" class="absolute inset-0 hidden flex-col items-center justify-center gap-3 z-20">
         <div class="rounded-full bg-error/10 p-4">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          {{{icon "warning" class="h-8 w-8 text-error"}}}
         </div>
         <p id="erd-error-msg" class="text-sm text-error font-medium"></p>
       </div>
@@ -82,7 +79,7 @@
       {{!-- Empty --}}
       <div id="erd-empty" class="absolute inset-0 hidden flex-col items-center justify-center gap-3 z-20">
         <div class="rounded-full bg-base-200 p-6">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="6" height="5" rx="1"/><rect x="16" y="3" width="6" height="5" rx="1"/><rect x="9" y="16" width="6" height="5" rx="1"/><path d="M5 8v4h14V8M12 12v4"/></svg>
+          {{{icon "diagram" class="h-10 w-10 text-base-content/30"}}}
         </div>
         <p class="text-base-content/40 text-sm font-medium">No tables found in this database</p>
       </div>
@@ -140,24 +137,24 @@
       <div id="erd-ctx-menu" class="absolute hidden z-50 rounded-xl border border-base-300 bg-base-100 shadow-2xl py-1.5 w-48 text-sm">
         <div class="px-3 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-base-content/40" id="erd-ctx-title"></div>
         <a id="erd-ctx-browse" href="#" class="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
-          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          {{{icon "table" class="h-3.5 w-3.5 shrink-0"}}}
           Browse rows
         </a>
         <a id="erd-ctx-schema" href="#" class="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
-          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          {{{icon "schema" class="h-3.5 w-3.5 shrink-0"}}}
           Edit schema
         </a>
         <a id="erd-ctx-seed" href="#" class="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-emerald-600 font-medium">
-          <svg class="h-3.5 w-3.5 shrink-0 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+          {{{icon "seed" class="h-3.5 w-3.5 shrink-0 text-emerald-500"}}}
           Seed ER Chain…
         </a>
         <div class="my-1 border-t border-base-200"></div>
         <button id="erd-ctx-focus" class="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
-          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 8v6m-3-3h6"/></svg>
+          {{{icon "focus" class="h-3.5 w-3.5 shrink-0"}}}
           Focus & zoom
         </button>
         <button id="erd-ctx-collapse" class="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-base-200 transition-colors text-base-content/80">
-          <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+          {{{icon "chevronUp" class="h-3.5 w-3.5 shrink-0"}}}
           <span id="erd-ctx-collapse-label">Collapse table</span>
         </button>
       </div>
@@ -174,11 +171,11 @@
         {{!-- Panel header --}}
         <div id="erd-panel-header" class="flex items-center justify-between gap-2 px-4 py-3" style="background: var(--erd-node-header); color:#fff;">
           <div class="flex items-center gap-2 min-w-0">
-            <svg class="h-4 w-4 shrink-0 opacity-80" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            {{{icon "table" class="h-4 w-4 shrink-0 opacity-80"}}}
             <span class="font-bold text-sm truncate" id="erd-panel-name"></span>
           </div>
           <button id="erd-panel-close" class="shrink-0 rounded-full p-1 hover:bg-white/20 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            {{{icon "x" class="h-4 w-4"}}}
           </button>
         </div>
         {{!-- Stats row --}}
@@ -192,15 +189,15 @@
         {{!-- Actions --}}
         <div class="flex gap-2 p-3 border-t border-base-200">
           <a id="erd-panel-browse" href="#" class="btn btn-xs btn-primary flex-1 gap-1">
-            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            {{{icon "table" class="h-3 w-3"}}}
             Browse
           </a>
           <a id="erd-panel-schema" href="#" class="btn btn-xs btn-ghost flex-1 gap-1 border border-base-300">
-            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            {{{icon "schema" class="h-3 w-3"}}}
             Schema
           </a>
           <a id="erd-panel-seed" href="#" class="btn btn-xs btn-outline btn-success flex-1 gap-1">
-            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+            {{{icon "seed" class="h-3 w-3"}}}
             Seed
           </a>
         </div>

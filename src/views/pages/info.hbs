@@ -1,0 +1,117 @@
+{{!-- Page: Database Info & Settings · URL: /info --}}
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-wider text-primary">{{dialect}} Database</p>
+      <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Info & Settings</h1>
+      <p class="mt-1.5 text-sm text-base-content/55">Database configuration, settings, and schema DDL overview.</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-1 space-y-6">
+      <div class="app-card overflow-hidden">
+        <div class="border-b border-base-200 bg-base-200/40 px-4 py-3">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-base-content/80">Settings / Configuration</h2>
+        </div>
+        <div class="p-0">
+          <table class="table table-sm w-full">
+            <tbody>
+              {{#each settings}}
+              <tr class="hover:bg-base-200/20">
+                <td class="font-medium text-base-content/70 w-1/2">{{@key}}</td>
+                <td class="font-mono text-xs">{{this}}</td>
+              </tr>
+              {{else}}
+              <tr>
+                <td colspan="2" class="p-4 text-center text-sm text-base-content/40">No settings available</td>
+              </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <div class="lg:col-span-2 space-y-6">
+      <div class="app-card overflow-hidden flex flex-col h-[75vh]">
+        <div class="border-b border-base-200 bg-base-200/40 px-4 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-base-content/80">Schema DDL</h2>
+            <span class="badge badge-sm badge-ghost font-mono text-[10px] uppercase font-bold">{{dialect}}</span>
+          </div>
+          <button id="btn-copy-ddl" class="btn btn-sm btn-ghost gap-1.5" disabled>
+            {{{icon "copy" class="h-4 w-4"}}}
+            Copy
+          </button>
+        </div>
+        <div class="bg-base-300 p-4 overflow-y-auto flex-1 relative">
+          <div id="ddl-loader" class="absolute inset-0 flex flex-col items-center justify-center text-base-content/50 gap-3">
+            {{{icon "spinner" class="h-6 w-6 animate-spin text-primary"}}}
+            <p class="text-sm font-medium">Extracting schema definitions...</p>
+          </div>
+          <div id="ddl-error" class="hidden absolute inset-0 flex flex-col items-center justify-center text-error gap-3 bg-base-300">
+            {{{icon "error" class="h-8 w-8"}}}
+            <p class="text-sm font-medium">Failed to load schema.</p>
+          </div>
+          <pre id="ddl-container" class="hidden m-0 h-full"><code class="language-sql text-sm text-base-content/80 whitespace-pre-wrap"></code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', async () => {
+    const loader = document.getElementById('ddl-loader');
+    const container = document.getElementById('ddl-container');
+    const codeBlock = container.querySelector('code');
+    const btnCopy = document.getElementById('btn-copy-ddl');
+    const errorBox = document.getElementById('ddl-error');
+
+    try {
+      const res = await fetch('{{basePath}}/api/info/ddl');
+      const json = await res.json();
+      loader.classList.add('hidden');
+      
+      if (json.success && json.data) {
+        if (window.Utils && window.Utils.highlightSql) {
+          codeBlock.innerHTML = window.Utils.highlightSql(json.data);
+        } else {
+          codeBlock.textContent = json.data;
+        }
+        container.classList.remove('hidden');
+        btnCopy.disabled = false;
+        
+        btnCopy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(json.data);
+            const originalText = btnCopy.innerHTML;
+            btnCopy.innerHTML = `{{{icon "check" class="h-4 w-4"}}} Copied!`;
+            btnCopy.classList.add('text-success');
+            setTimeout(() => {
+              btnCopy.innerHTML = originalText;
+              btnCopy.classList.remove('text-success');
+            }, 2000);
+          } catch (err) {
+            console.error('Failed to copy', err);
+          }
+        });
+      } else {
+        if (json.success && !json.data) {
+          codeBlock.textContent = '-- No tables defined in the database.';
+          container.classList.remove('hidden');
+        } else {
+          throw new Error(json.error || 'Failed to fetch DDL');
+        }
+      }
+    } catch (err) {
+      loader.classList.add('hidden');
+      errorBox.classList.remove('hidden');
+      errorBox.querySelector('p').textContent = err.message || 'Failed to load schema.';
+    }
+  });
+</script>
+

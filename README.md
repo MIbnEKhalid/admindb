@@ -75,7 +75,7 @@ admindb
 AdminDB features a clean, colorized CLI startup banner and streamlined, low-noise runtime logging:
 
 ```text
-  ⚡ AdminDB v2.2.0
+  ⚡ AdminDB v2.2.1
 
   ➜  Local:    http://localhost:45531/
   ➜  Network:  http://192.168.1.15:45531/
@@ -128,6 +128,7 @@ Runtime operations produce crisp, color-coded status logs:
 * **Full Database Dump:** Download the entire database as a standard SQL file (`CREATE TABLE` + `INSERT` statements).
 
 ### 🗂️ Visual Schema Designer & Indexes
+* **Database Info & Settings:** View active database configuration parameters (e.g. `journal_mode`, `max_connections`) and a complete database-wide syntax-highlighted Schema DDL extraction with an easy 1-click copy tool.
 * **Visual Table Designer:** Create tables interactively with column types (including `UUID`, `JSONB`, `TIMESTAMP`, `TIMESTAMPTZ`, `INTERVAL`, `BYTEA`, `INET`, `SERIAL`, `BIGINT`), primary keys, autoincrement, nullable/unique constraints, default values, and foreign keys.
 * **Relationship-Safe Schema Editor:** Rename tables, add columns, modify column types, rename columns, and drop columns/tables with safety checks to protect active foreign keys and unique constraints.
 * **Index Manager:** Create single or multi-column indexes (plain or unique) with live SQL previews, and drop existing indexes safely.

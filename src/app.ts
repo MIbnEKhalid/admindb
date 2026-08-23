@@ -11,7 +11,7 @@ import { registerApi } from './routes/api/index';
 import { registerDatabasesRoutes } from './routes/databases';
 import { getPackageVersion } from './cli/args';
 import { errorMessage, isPostgresConnectionString } from './utils/common';
-import { renderIcon } from './utils/icons';
+import { renderIcon, ICONS } from './utils/icons';
 import { isServerlessEnvironment } from './serverless';
 
 import {
@@ -214,6 +214,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
       res.locals.version = APP_VERSION;
       res.locals.authEnabled = authConfig.enabled;
       res.locals.isDefaultPassword = authConfig.isDefaultPassword;
+      res.locals.icons = ICONS;
       if (!req.path.startsWith('/api/')) {
         const all = await db.listTables();
         const names = (all.data ?? []).map((t) => t.name);
@@ -273,6 +274,7 @@ function createManagerApp(options: AppOptions): express.Express {
       res.locals.version = APP_VERSION;
       res.locals.authEnabled = authConfig.enabled;
       res.locals.isDefaultPassword = authConfig.isDefaultPassword;
+      res.locals.icons = ICONS;
       if (!req.path.startsWith('/api/')) {
         res.locals.tables = [];
         res.locals.internalTables = [];

@@ -44,7 +44,8 @@ AdminDB supports both **SQLite** and **PostgreSQL** database backends seamlessly
 | POST   | `/api/tables`                        | Create table                     |
 | POST   | `/api/tables/generate`               | Generate CREATE SQL (no execute) |
 | GET    | `/api/tables/:table/schema`          | Full schema (constraints, indexes, FK refs) |
-| GET    | `/api/tables/:table/ddl`             | Get formatted `CREATE TABLE` and `INDEX` DDL |
+| GET    | `/api/tables/:table/ddl`             | Get formatted `CREATE TABLE` and `INDEX` DDL for a single table |
+| GET    | `/api/info/ddl`                      | Get formatted DDL for the entire database schema |
 
 | POST   | `/api/tables/:table/rename`          | Rename the table                 |
 | POST   | `/api/tables/:table/columns`         | Add a column                     |
