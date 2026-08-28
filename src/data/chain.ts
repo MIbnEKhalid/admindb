@@ -10,7 +10,7 @@ import {
   type ErChainTableNode,
 } from './types';
 import { buildColumnConfigs, findInMap, parseChecks, type OrderingConstraint } from './detector';
-import { generateOne } from './strategies';
+import { fallbackPlanFor, generateOne } from './strategies';
 
 export interface ErGraphNode {
   name: string;
@@ -135,7 +135,7 @@ export function buildErGraph(tables: TableInfoData[]): Map<string, ErGraphNode> 
         hasSelfRef = true;
       }
       const c = colMap.get(fk.from);
-      const notnull = Boolean(c?.notnull && !c?.pk);
+      const notnull = Boolean(c?.notnull || (c?.pk ?? 0) > 0);
       parents.push({ table: fk.table, from: fk.from, to: toCol, notnull });
     }
 
@@ -251,42 +251,41 @@ export function topologicalSort(nodes: ErGraphNode[]): {
   const activeNames = new Set(nodes.map((n) => n.name));
   const nodeMap = new Map(nodes.map((n) => [n.name, n]));
 
-  // In-degree counts required (NOT NULL) parent dependencies first
-  const hardInDegree = new Map<string, number>();
+  // Track parent dependencies
   const totalInDegree = new Map<string, number>();
+  const hardInDegree = new Map<string, number>();
+  const allForwardEdges = new Map<string, Set<string>>(); // parent -> set of dependent children
   const hardForwardEdges = new Map<string, Set<string>>(); // parent -> set of hard dependent children
-  const softForwardEdges = new Map<string, Set<string>>(); // parent -> set of soft dependent children
 
   for (const n of nodes) {
-    hardInDegree.set(n.name, 0);
     totalInDegree.set(n.name, 0);
+    hardInDegree.set(n.name, 0);
+    allForwardEdges.set(n.name, new Set());
     hardForwardEdges.set(n.name, new Set());
-    softForwardEdges.set(n.name, new Set());
   }
 
   for (const n of nodes) {
     for (const p of n.parents) {
       if (p.table !== n.name && activeNames.has(p.table)) {
+        if (!allForwardEdges.get(p.table)!.has(n.name)) {
+          allForwardEdges.get(p.table)!.add(n.name);
+          totalInDegree.set(n.name, (totalInDegree.get(n.name) ?? 0) + 1);
+        }
         if (p.notnull) {
           if (!hardForwardEdges.get(p.table)!.has(n.name)) {
             hardForwardEdges.get(p.table)!.add(n.name);
             hardInDegree.set(n.name, (hardInDegree.get(n.name) ?? 0) + 1);
           }
-        } else {
-          if (!softForwardEdges.get(p.table)!.has(n.name)) {
-            softForwardEdges.get(p.table)!.add(n.name);
-          }
         }
-        totalInDegree.set(n.name, (totalInDegree.get(n.name) ?? 0) + 1);
       }
     }
   }
 
-  // Kahn's algorithm starting with hard in-degree 0 (can be seeded immediately without missing required FKs)
+  // Kahn's algorithm starting with totalInDegree 0 (no unresolved parent dependencies)
   const queue: string[] = [];
   const visited = new Set<string>();
 
-  for (const [name, deg] of hardInDegree.entries()) {
+  for (const [name, deg] of totalInDegree.entries()) {
     if (deg === 0) {
       queue.push(name);
       visited.add(name);
@@ -306,18 +305,18 @@ export function topologicalSort(nodes: ErGraphNode[]): {
       sortedNames.push(curr);
       const currDepth = depths.get(curr) ?? 0;
 
-      for (const child of hardForwardEdges.get(curr) ?? []) {
-        const newDeg = (hardInDegree.get(child) ?? 1) - 1;
-        hardInDegree.set(child, newDeg);
+      for (const child of allForwardEdges.get(curr) ?? []) {
+        const newTotalDeg = (totalInDegree.get(child) ?? 1) - 1;
+        totalInDegree.set(child, newTotalDeg);
+        if (hardForwardEdges.get(curr)?.has(child)) {
+          const newHardDeg = (hardInDegree.get(child) ?? 1) - 1;
+          hardInDegree.set(child, newHardDeg);
+        }
         depths.set(child, Math.max(depths.get(child) ?? 0, currDepth + 1));
-        if (newDeg === 0 && !visited.has(child)) {
+        if (newTotalDeg === 0 && !visited.has(child)) {
           visited.add(child);
           queue.push(child);
         }
-      }
-
-      for (const child of softForwardEdges.get(curr) ?? []) {
-        depths.set(child, Math.max(depths.get(child) ?? 0, currDepth + 1));
       }
     }
 
@@ -327,13 +326,16 @@ export function topologicalSort(nodes: ErGraphNode[]): {
 
       // Find the unvisited node with the lowest remaining hard in-degree
       let bestCandidate = '';
-      let lowestDeg = Infinity;
+      let lowestHardDeg = Infinity;
+      let lowestTotalDeg = Infinity;
 
       for (const n of nodes) {
         if (!visited.has(n.name)) {
-          const deg = hardInDegree.get(n.name) ?? 0;
-          if (deg < lowestDeg) {
-            lowestDeg = deg;
+          const hDeg = hardInDegree.get(n.name) ?? 0;
+          const tDeg = totalInDegree.get(n.name) ?? 0;
+          if (hDeg < lowestHardDeg || (hDeg === lowestHardDeg && tDeg < lowestTotalDeg)) {
+            lowestHardDeg = hDeg;
+            lowestTotalDeg = tDeg;
             bestCandidate = n.name;
           }
         }
@@ -481,6 +483,11 @@ export async function generateChainRows(
         }
       }
     }
+    if (info.primaryKey && info.primaryKey.length > 1) {
+      if (!compositeUniques.some((cu) => cu.join(',') === info.primaryKey.join(','))) {
+        compositeUniques.push(info.primaryKey);
+      }
+    }
     const compositeSeen = new Map<string, Set<string>>();
     for (const cu of compositeUniques) {
       compositeSeen.set(cu.join('::'), new Set());
@@ -504,11 +511,24 @@ export async function generateChainRows(
       if (p.strategy === 'fk') {
         const fk = fkByColumn.get(col.name);
         const refTable = fk?.table ?? '';
-        const refCol = fk?.to || 'id';
+        let refCol = fk?.to;
+        if (!refCol) {
+          const refNode = chainConfig.tables.find((t) => t.name.toLowerCase() === refTable.toLowerCase());
+          if (refNode) {
+            const pkCol = refNode.columns.find((c) => c.pk);
+            refCol = pkCol?.name;
+          }
+        }
+        if (!refCol) {
+          refCol = 'id';
+        }
+
         const poolKey = `${refTable}.${refCol}`;
 
-        // First check in-flight generated relational pool (with case-insensitive fallback)
+        // 1. Check exact key in relationalPool
         let pool = relationalPool.get(poolKey) ?? [];
+
+        // 2. Case-insensitive key match
         if (!pool.length) {
           for (const [k, v] of relationalPool.entries()) {
             if (k.toLowerCase() === poolKey.toLowerCase() && v.length) {
@@ -518,7 +538,18 @@ export async function generateChainRows(
           }
         }
 
-        // If in-flight pool is empty (e.g. parent had 0 generated rows or not in chain), sample DB
+        // 3. Fallback: match any column in relationalPool from refTable
+        if (!pool.length) {
+          for (const [k, v] of relationalPool.entries()) {
+            const [tName] = k.split('.');
+            if (tName && tName.toLowerCase() === refTable.toLowerCase() && v.length) {
+              pool = v;
+              break;
+            }
+          }
+        }
+
+        // 4. Sample database if relationalPool is empty
         if (!pool.length) {
           pool = await sampleFkValues(db, fk ?? null);
         }
@@ -526,7 +557,7 @@ export async function generateChainRows(
         fkPools.set(col.name, pool);
 
         if (!pool.length) {
-          if (col.notnull && !col.pk) {
+          if (col.notnull || (col.pk ?? 0) > 0) {
             // If parent table has no pool rows yet, provide fallback ID (1) to satisfy NOT NULL constraints
             pool = [1];
             fkPools.set(col.name, pool);
@@ -582,9 +613,9 @@ export async function generateChainRows(
       return false;
     };
 
-    // 1. If table has a unique 1-to-1 foreign key, cap row count to number of available parent rows
+    // 1. If table has a single-column primary key or unique 1-to-1 foreign key, cap row count to available parent rows
     for (const { col, plan: p } of prepared) {
-      if (p.strategy === 'fk' && (col.pk || isUniqueCol(col.name))) {
+      if (p.strategy === 'fk' && ((info.primaryKey.length === 1 && col.pk) || isUniqueCol(col.name))) {
         const pool = fkPools.get(col.name);
         if (pool && pool.length > 0 && pool.length < count) {
           count = pool.length;
@@ -592,7 +623,7 @@ export async function generateChainRows(
       }
     }
 
-    // 2. If table has composite unique foreign keys (e.g. project_id, username in project_members), cap count to available combinations
+    // 2. If table has composite unique foreign keys (e.g. order_id, product_id in order_items), cap count to available combinations
     if (compositeUniques.length > 0) {
       for (const cu of compositeUniques) {
         const isAllFk = cu.every((colName) => prepared.some((p) => (p.col.name === colName || p.col.name.replace(/[`"\[\]]/g, '') === colName.replace(/[`"\[\]]/g, '')) && p.plan.strategy === 'fk'));
@@ -640,8 +671,26 @@ export async function generateChainRows(
           let v = generateOne(col, p, pool, i + attempt * 50);
 
           // If sequence/int PK and skipped, assign explicit sequential ID for deterministic FK referencing
-          if (v === SKIP && col.pk && (col.type || '').toUpperCase().includes('INT')) {
-            v = pkStartOffset + i + 1;
+          if (v === SKIP && col.pk) {
+            const isInt = (col.type || '').toUpperCase().includes('INT') || (col.type || '').toUpperCase().includes('SERIAL') || col.type === '' || col.type === 'NUMBER';
+            if (isInt) {
+              v = pkStartOffset + i + 1;
+            }
+          }
+
+          // If NOT NULL / PK column ended up with null / SKIP, supply a deterministic fallback value
+          if ((col.notnull || (col.pk ?? 0) > 0) && col.dflt_value == null && (v == null || v === SKIP)) {
+            if (p.strategy === 'fk') {
+              v = (pool && pool.length > 0) ? pool[0] : 1;
+            } else if (col.pk) {
+              v = pkStartOffset + i + 1;
+            } else {
+              const fbPlan = fallbackPlanFor(col);
+              v = generateOne(col, fbPlan, pool, i + attempt * 50);
+              if (v == null || v === SKIP) {
+                v = (col.type || '').toUpperCase().includes('INT') ? (i + 1) : `val_${i + 1}`;
+              }
+            }
           }
 
           if (v === SKIP) {

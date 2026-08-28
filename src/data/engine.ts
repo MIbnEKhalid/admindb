@@ -7,7 +7,7 @@ import {
   type GenerateResult,
 } from './types';
 import { findInMap, parseChecks, type OrderingConstraint } from './detector';
-import { generateOne } from './strategies';
+import { fallbackPlanFor, generateOne } from './strategies';
 
 /** Distinct non-null values of a foreign key's referenced column. */
 async function sampleFkValues(db: IDatabase, fk: ForeignKeyInfo | null): Promise<unknown[]> {
@@ -153,19 +153,26 @@ export async function generateRows(
       warnings.push(`Column "${col.name}" is NOT NULL without a default — "${p.strategy}" rows may fail to insert.`);
     }
     if (p.strategy === 'fk') {
-      const pool = await sampleFkValues(db, fkByColumn.get(col.name) ?? null);
-      fkPools.set(col.name, pool);
+      let pool = await sampleFkValues(db, fkByColumn.get(col.name) ?? null);
       const refTable = fkByColumn.get(col.name)?.table ?? '?';
       if (!pool.length) {
-        if (col.notnull && !col.pk) {
-          fkOmit.add(col.name);
-          warnings.push(
-            `Column "${col.name}" is a NOT NULL foreign key to "${refTable}", which has no rows. It is omitted from generated rows — seed "${refTable}" first so the insert can reference real values.`,
-          );
+        if (col.notnull || (col.pk ?? 0) > 0) {
+          if (col.dflt_value != null) {
+            fkOmit.add(col.name);
+            warnings.push(
+              `Column "${col.name}" is a foreign key to "${refTable}", which has no rows. Using default value.`,
+            );
+          } else {
+            pool = [1];
+            warnings.push(
+              `Column "${col.name}" is a NOT NULL foreign key to "${refTable}", which has no rows. Fallback ID 1 was used.`,
+            );
+          }
         } else {
           warnings.push(`Column "${col.name}": "${refTable}" is empty, so NULL will be inserted.`);
         }
       }
+      fkPools.set(col.name, pool);
     }
 
     prepared.push({ col, plan: p });
@@ -205,6 +212,21 @@ export async function generateRows(
         }
         
         let v = generateOne(col, p, fkPools.get(col.name), i + attempt * count);
+
+        // Guard against NOT NULL constraint failure on required non-PK columns or FKs without default
+        if (!col.pk && col.notnull && col.dflt_value == null && (v == null || v === SKIP)) {
+          if (p.strategy === 'fk') {
+            const pool = fkPools.get(col.name);
+            v = (pool && pool.length > 0) ? pool[0] : 1;
+          } else {
+            const fbPlan = fallbackPlanFor(col);
+            v = generateOne(col, fbPlan, fkPools.get(col.name), i + attempt * count);
+            if (v == null || v === SKIP) {
+              v = (col.type || '').toUpperCase().includes('INT') ? (i + 1) : `val_${i + 1}`;
+            }
+          }
+        }
+
         if (v === SKIP) {
           previewRow[col.name] = '(default)';
           continue;

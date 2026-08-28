@@ -356,3 +356,116 @@ test('ER Chain API: End-to-end endpoints /api/tables/:table/seed/chain', async (
     await close();
   }
 });
+
+test('ER Chain: order_items with composite primary key and NOT NULL foreign keys', async () => {
+  const { db, cleanup } = openDb(`
+    CREATE TABLE customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      price REAL NOT NULL
+    );
+
+    CREATE TABLE orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      order_date TEXT NOT NULL,
+      total_amount REAL NOT NULL
+    );
+
+    CREATE TABLE order_items (
+      order_id INTEGER NOT NULL REFERENCES orders(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      PRIMARY KEY (order_id, product_id)
+    );
+  `);
+
+  try {
+    const config = await getErChainConfig(db, 'order_items', 'chain');
+    const orderNames = config.tables.map((t) => t.name);
+
+    // Topological order check: customers, products, orders must precede order_items
+    assert.ok(orderNames.indexOf('customers') < orderNames.indexOf('orders'));
+    assert.ok(orderNames.indexOf('orders') < orderNames.indexOf('order_items'));
+    assert.ok(orderNames.indexOf('products') < orderNames.indexOf('order_items'));
+
+    // Generate rows across the entire chain
+    const gen = await generateChainRows(
+      db,
+      config,
+      {},
+      {
+        customers: 3,
+        products: 5,
+        orders: 5,
+        order_items: 10,
+      },
+    );
+
+    assert.equal(gen.tableResults['customers'].rows.length, 3);
+    assert.equal(gen.tableResults['products'].rows.length, 5);
+    assert.equal(gen.tableResults['orders'].rows.length, 5);
+    assert.equal(gen.tableResults['order_items'].rows.length, 10);
+
+    // Ensure no order_items row has NULL for order_id or product_id
+    for (const row of gen.tableResults['order_items'].rows) {
+      const orderIdField = row.find((f) => f.column === 'order_id');
+      const productIdField = row.find((f) => f.column === 'product_id');
+      assert.ok(orderIdField && orderIdField.value != null, 'order_id must not be null');
+      assert.ok(productIdField && productIdField.value != null, 'product_id must not be null');
+    }
+
+    // Execute atomic insertion into database without any NOT NULL constraint errors
+    const insertRes = await executeChainInsert(db, gen, true);
+    assert.equal(insertRes.totalInserted, 3 + 5 + 5 + 10);
+
+    // Verify rows in database
+    const itemRows = await db.getRows('order_items');
+    assert.equal((itemRows.data as unknown[]).length, 10);
+  } finally {
+    cleanup();
+  }
+});
+
+test('ER Chain: Parent table with custom PK name (order_id) and shorthand REFERENCES', async () => {
+  const { db, cleanup } = openDb(`
+    CREATE TABLE orders (
+      order_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_num TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE order_items (
+      item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders,
+      qty INTEGER NOT NULL
+    );
+  `);
+
+  try {
+    const config = await getErChainConfig(db, 'order_items', 'chain');
+    const orderNames = config.tables.map((t) => t.name);
+    assert.ok(orderNames.indexOf('orders') < orderNames.indexOf('order_items'));
+
+    const gen = await generateChainRows(db, config, {}, { orders: 4, order_items: 8 });
+    assert.equal(gen.tableResults['orders'].rows.length, 4);
+    assert.equal(gen.tableResults['order_items'].rows.length, 8);
+
+    for (const row of gen.tableResults['order_items'].rows) {
+      const orderIdField = row.find((f) => f.column === 'order_id');
+      assert.ok(orderIdField && orderIdField.value != null, 'order_id must not be null');
+    }
+
+    const insertRes = await executeChainInsert(db, gen, true);
+    assert.equal(insertRes.totalInserted, 12);
+  } finally {
+    cleanup();
+  }
+});
+
