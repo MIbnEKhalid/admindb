@@ -13,82 +13,28 @@ import { getPackageVersion } from './cli/args';
 import { errorMessage, isPostgresConnectionString } from './utils/common';
 import { renderIcon, ICONS } from './utils/icons';
 import { isServerlessEnvironment } from './serverless';
+import { resolveAuthConfig, createAuthMiddleware, registerAuthRoutes, type AuthConfig } from './auth';
 
-import {
-  resolveAuthConfig,
-  createAuthMiddleware,
-  registerAuthRoutes,
-  type AuthConfig,
-} from './auth';
-
-/** Installed package version, exposed to every template as `{{version}}`. */
 const APP_VERSION = getPackageVersion();
 
 export interface AppOptions {
-  /** Path to the SQLite file (single-db mode) or connection string. Defaults to `admindb.db`. */
   dbPath?: string;
-  /** PostgreSQL or database connection string (e.g. `postgresql://user:pass@host:5432/db`). */
   connection?: string;
-  /** Explicit PostgreSQL connection options. */
   pgOptions?: PostgresOptions;
-  /** URL prefix used by templates/static assets (e.g. `/admin`). Defaults to `''`. */
   basePath?: string;
   logger?: Logger;
   logLevel?: LogLevel;
-  /** Provide an existing database instance (single-db embedding). */
   db?: IDatabase;
-  /** Enable multi-database mode with a manager over a directory of `.db` files. */
   manager?: DbManager;
-  /** Open the database read-only — all write routes are rejected with 403. */
   readonly?: boolean;
-  /**
-   * Serverless mode flag.
-   * When enabled (or auto-detected in Vercel/AWS Lambda/Netlify/etc.),
-   * all write operations, mutations, schema alterations, and seeder generators
-   * are disabled, enforcing strict read-only safety for ephemeral environments.
-   *
-   * Defaults to `undefined` (auto-detected via environment).
-   */
   serverless?: boolean;
-  /**
-   * Authentication configuration.
-   * - `true` (default): authentication enabled with default or env credentials.
-   * - `false`: completely disables authentication (no protection / developer's own auth).
-   * - `{ username, password, secret, ... }`: custom credentials and options.
-   */
   auth?: boolean | AuthConfig;
-  /**
-   * Manager mode: show the filesystem file-browser on the databases landing
-   * page. Defaults to `true`. Set to `false` to disable browsing (e.g. when the
-   * server was started with specific database files only).
-   */
   allowBrowse?: boolean;
-  /**
-   * Manager mode: restrict the file-browser to this folder (absolute path).
-   * When set, the browser cannot navigate above it and only databases inside it
-   * can be opened.
-   */
   browseRoot?: string;
-  /** Internal: URL of the databases list (used by per-db apps to link "switch database"). */
   databasesUrl?: string;
-  /** Internal: current database id (for locals/display). */
   dbId?: string;
 }
 
-
-/**
- * Build a fully configured, mountable Express app (pages + JSON API + static
- * assets + view engine).
- *
- * - Single database: pass `dbPath` (or `db`). Mount under your own prefix with
- *   `basePath`. This is also the mode used per-database in multi-db mode.
- * - Multiple databases: pass a `manager`. The app then shows a "Databases"
- *   landing page and scopes every database under `/{dbFile}/…` (e.g.
- *   `/{base}/app.db/tables/users`, `/{base}/app.db/api/tables`).
- *
- * An Express app is valid middleware, so `app.use('/admin', createRouter({...}))`
- * works and shares the same port.
- */
 export function createRouter(options: AppOptions = {}): express.Express {
   return options.manager ? createManagerApp(options) : createSingleDbApp(options);
 }
@@ -124,11 +70,9 @@ function setupViewEngine(app: express.Express, _logger: Logger): void {
   );
   app.set('view engine', 'hbs');
   app.set('views', path.join(__dirname, 'views'));
-
 }
 
 function addErrorHandlers(app: express.Express, logger: Logger): void {
-  // 404 handler.
   app.use((req: express.Request, res: express.Response) => {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ success: false, error: 'Not found.' });
@@ -136,7 +80,6 @@ function addErrorHandlers(app: express.Express, logger: Logger): void {
     res.status(404).render('pages/error', { title: 'Not found', status: 404, error: 'The page you requested does not exist.' });
   });
 
-  // Central error handler.
   app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error('Unhandled error', err);
     if (req.path.startsWith('/api/')) {
@@ -146,7 +89,6 @@ function addErrorHandlers(app: express.Express, logger: Logger): void {
   });
 }
 
-/** Single-database app (also used as the per-database app in multi-db mode). */
 function createSingleDbApp(options: AppOptions): express.Express {
   const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
   const rawTarget = options.connection || options.dbPath || '';
@@ -155,8 +97,6 @@ function createSingleDbApp(options: AppOptions): express.Express {
     isPostgresConnectionString(rawTarget) ||
     options.db?.dialect === 'postgres';
 
-  // In serverless environments, SQLite local files are ephemeral/read-only,
-  // whereas PostgreSQL connects to a remote networked database and is fully editable.
   const readonly = options.readonly !== undefined
     ? Boolean(options.readonly)
     : (isServerless && !isPg);
@@ -167,13 +107,10 @@ function createSingleDbApp(options: AppOptions): express.Express {
   let db: IDatabase;
   if (options.db) {
     db = options.db;
+  } else if (isPg) {
+    db = new PostgresDatabase(options.pgOptions || rawTarget, logger, { readonly });
   } else {
-    if (isPg) {
-      const conn = options.pgOptions || rawTarget;
-      db = new PostgresDatabase(conn, logger, { readonly });
-    } else {
-      db = new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly });
-    }
+    db = new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly });
   }
 
   const databasesUrl = options.databasesUrl;
@@ -182,20 +119,14 @@ function createSingleDbApp(options: AppOptions): express.Express {
   const router = express();
   router.disable('x-powered-by');
 
-  // Static assets (relative to the mount point, so a prefix "just works").
   router.use(express.static(path.join(__dirname, 'public')));
-
   setupViewEngine(router, logger);
   router.use(express.json({ limit: '10mb' }));
   router.use(express.urlencoded({ extended: false }));
 
-  // Register authentication endpoints (/login, /logout)
   registerAuthRoutes(router, authConfig, basePath, logger);
-
-  // Authentication gatekeeper middleware
   router.use(createAuthMiddleware(authConfig, basePath, logger));
 
-  // Page locals (skipped for API + static paths).
   router.use(async (req, res, next) => {
     try {
       res.locals.basePath = basePath;
@@ -221,13 +152,11 @@ function createSingleDbApp(options: AppOptions): express.Express {
         res.locals.tables = names.filter((n) => !n.startsWith('_'));
         res.locals.internalTables = names.filter((n) => n.startsWith('_'));
       }
-
       next();
     } catch (err) {
       next(err);
     }
   });
-
 
   registerPages(router, { db, logger });
   registerApi(router, { db, logger });
@@ -236,7 +165,6 @@ function createSingleDbApp(options: AppOptions): express.Express {
   return router;
 }
 
-/** Multi-database app: databases landing page + a per-database sub-app per file. */
 function createManagerApp(options: AppOptions): express.Express {
   const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
   const readonly = isServerless || Boolean(options.readonly);
@@ -253,13 +181,9 @@ function createManagerApp(options: AppOptions): express.Express {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: false }));
 
-  // Register authentication endpoints (/login, /logout)
   registerAuthRoutes(app, authConfig, basePath, logger);
-
-  // Authentication gatekeeper middleware
   app.use(createAuthMiddleware(authConfig, basePath, logger));
 
-  // Locals for the databases landing page.
   app.use(async (req, res, next) => {
     try {
       res.locals.basePath = basePath;
@@ -285,7 +209,6 @@ function createManagerApp(options: AppOptions): express.Express {
     }
   });
 
-  // Per-database dispatch: mount a cached single-db app at /:dbId.
   const subApps = new Map<string, express.Express>();
   registerDatabasesRoutes(app, {
     manager,
@@ -296,6 +219,7 @@ function createManagerApp(options: AppOptions): express.Express {
     browseRoot: options.browseRoot,
     invalidate: (id) => subApps.delete(id),
   });
+
   app.use('/:dbId', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const dbId = String(req.params.dbId);
     if (!manager.has(dbId)) {
@@ -320,7 +244,7 @@ function createManagerApp(options: AppOptions): express.Express {
 
     let sub = subApps.get(dbId);
     if (!sub) {
-      const subBase = `${basePath ? basePath : ''}/${encodeURIComponent(dbId)}`;
+      const subBase = `${basePath || ''}/${encodeURIComponent(dbId)}`;
       const effectiveRo = readonly || manager.isDbReadOnly(dbId);
       sub = createSingleDbApp({
         db: manager.open(dbId, effectiveRo),
@@ -328,7 +252,7 @@ function createManagerApp(options: AppOptions): express.Express {
         logger,
         logLevel: options.logLevel,
         dbId,
-        databasesUrl: `${basePath ? basePath : ''}/`,
+        databasesUrl: `${basePath || ''}/`,
         readonly: effectiveRo,
         serverless: isServerless,
         auth: authConfig,
@@ -337,7 +261,6 @@ function createManagerApp(options: AppOptions): express.Express {
     }
     return sub(req, res, next);
   });
-
 
   addErrorHandlers(app, logger);
   return app;

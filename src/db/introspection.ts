@@ -1,15 +1,6 @@
 import type Database from 'better-sqlite3';
 import { quoteIdentifier } from '../sql/generator';
-import type {
-  ColumnDetail,
-  ColumnInfo,
-  ForeignKeyInfo,
-  IndexInfo,
-  ReferencingTableInfo,
-  SchemaInfo,
-  TableInfoData,
-  TableListItem,
-} from './types';
+import type { ColumnDetail, ColumnInfo, ForeignKeyInfo, IndexInfo, ReferencingTableInfo, SchemaInfo, TableInfoData, TableListItem } from './types';
 
 export function listTablesSync(db: Database.Database): TableListItem[] {
   const rows = db
@@ -18,14 +9,12 @@ export function listTablesSync(db: Database.Database): TableListItem[] {
   return rows.map((r) => ({ name: r.name }));
 }
 
-/** Get all tables non-internal in the SQLite database. */
 function getTableNames(db: Database.Database): string[] {
   return (db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
     .all() as { name: string }[]).map((r) => r.name);
 }
 
-/** Discover all foreign keys declared across all other tables pointing to `targetTable`. */
 function getIncomingFks(db: Database.Database, targetTable: string): { table: string; from: string; to: string }[] {
   const refs: { table: string; from: string; to: string }[] = [];
   for (const t of getTableNames(db)) {
@@ -35,9 +24,7 @@ function getIncomingFks(db: Database.Database, targetTable: string): { table: st
       for (const fk of fks) {
         if (fk.table === targetTable) refs.push({ table: t, from: fk.from, to: fk.to ?? '' });
       }
-    } catch {
-      /* ignore unreadable tables */
-    }
+    } catch {}
   }
   return refs;
 }
@@ -63,7 +50,7 @@ export function getTableInfoSync(db: Database.Database, table: string): TableInf
       .get(ix.name) as { sql?: string | null } | undefined;
     return {
       name: ix.name,
-      unique: !!ix.unique,
+      unique: Boolean(ix.unique),
       partial: ix.partial,
       origin: ix.origin,
       columns: ixCols,
@@ -104,9 +91,7 @@ export function getSchemaSync(db: Database.Database, table: string): SchemaInfo 
   const info = getTableInfoSync(db, table);
   if (!info || info.columns.length === 0) throw new Error(`Table "${table}" does not exist.`);
 
-  const foreignKeys = info.foreignKeys;
-  const indexes = info.indexes;
-
+  const { foreignKeys, indexes } = info;
   const uniqueCols = new Set<string>();
   const indexedCols = new Set<string>();
   for (const ix of indexes) {
@@ -135,6 +120,7 @@ export function getSchemaSync(db: Database.Database, table: string): SchemaInfo 
     if (indexed) dropBlockers.push('Is used by an index');
     if (referencedBy.length) dropBlockers.push(`Referenced by a foreign key in "${referencedBy[0].table}"`);
     if (fk) dropBlockers.push('Is part of a foreign key');
+
     return {
       ...c,
       unique,
@@ -173,9 +159,7 @@ export function getReferencingTablesSync(db: Database.Database, table: string): 
         c: number | bigint;
       };
       refCount = Number(row.c);
-    } catch {
-      /* count is best-effort */
-    }
+    } catch {}
     result.push({ table: t, refs: tRefs, refCount });
   }
   result.sort((a, b) => a.table.localeCompare(b.table));

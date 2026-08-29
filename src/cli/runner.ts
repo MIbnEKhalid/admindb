@@ -29,7 +29,6 @@ export function runCli(): void {
     process.exit(0);
   }
 
-  // Merge CLI flags over environment variables.
   const authEnabled = args.auth !== undefined ? args.auth : env.auth;
   const authUsername = args.authUsername ?? env.authUsername ?? 'admin';
   const authPassword = args.authPassword ?? env.authPassword;
@@ -49,7 +48,6 @@ export function runCli(): void {
     dbDir: args.dbDir ?? env.dbDir,
     dbFiles: args.dbFiles ?? env.dbFiles,
     basePath: (args.basePath ?? env.basePath).replace(/\/+$/, ''),
-
     logLevel: args.logLevel ?? env.logLevel,
     readonly,
     serverless,
@@ -67,12 +65,8 @@ export function runCli(): void {
   const app = express();
   app.disable('x-powered-by');
 
-  // Mode selection:
-  //  - Multiple database connections from JSON config -> Manager mode.
-  //  - A specific single file / connection without multiple connections -> single-database mode.
-  //  - Otherwise -> manager mode.
   const hasDir = Boolean(config.dbDir);
-  const hasFiles = Boolean(config.dbFiles && config.dbFiles.length > 0);
+  const hasFiles = Boolean(config.dbFiles?.length);
   const explicitFile = args.connection || args.dbPath || config.connection || config.dbPath;
   const isPg = Boolean(explicitFile && isPostgresConnectionString(explicitFile));
   const singleFileOnly = !hasConnections && (Boolean(explicitFile) || isPg) && !hasDir && !hasFiles;
@@ -115,14 +109,10 @@ export function runCli(): void {
       const nets = os.networkInterfaces();
       for (const name of Object.keys(nets)) {
         for (const net of nets[name] ?? []) {
-          if (net.family === 'IPv4' && !net.internal) {
-            return net.address;
-          }
+          if (net.family === 'IPv4' && !net.internal) return net.address;
         }
       }
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     return undefined;
   }
 
@@ -142,12 +132,10 @@ export function runCli(): void {
     if (isAnyHost) {
       const netIp = getNetworkIp();
       if (netIp) {
-        const netUrl = `http://${netIp}:${config.port}${config.basePath}/`;
-        console.log(`  ${c.green('➜')}  ${c.bold('Network:')}  ${c.cyan(netUrl)}`);
+        console.log(`  ${c.green('➜')}  ${c.bold('Network:')}  ${c.cyan(`http://${netIp}:${config.port}${config.basePath}/`)}`);
       }
     }
 
-    // Mode & Target Info
     if (useManager) {
       const modeDesc = config.serverless
         ? 'Manager [Serverless Read-Only]'
@@ -194,7 +182,6 @@ export function runCli(): void {
       }
     }
 
-    // Auth Status
     if (authEnabled) {
       const isDefaultPass =
         authUsername === 'admin' &&

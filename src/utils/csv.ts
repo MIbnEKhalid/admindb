@@ -5,22 +5,19 @@
 
 /** Escape a single CSV field (quote when it contains comma, quote or newline). */
 export function csvEscape(value: unknown): string {
-  const s = value === null || value === undefined ? '' : String(value);
-  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
+  const s = value == null ? '' : String(value);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** Serialize rows to CSV with an explicit column order. */
-export function toCsv(rows: Record<string, unknown>[], columns: string[]): string {
-  const header = columns.map(csvEscape).join(',');
-  const body = rows.map((row) => columns.map((c) => csvEscape(row[c])).join(','));
-  return [header, ...body].join('\r\n');
-}
+export const toCsv = (rows: Record<string, unknown>[], columns: string[]): string =>
+  [
+    columns.map(csvEscape).join(','),
+    ...rows.map((row) => columns.map((c) => csvEscape(row[c])).join(',')),
+  ].join('\r\n');
 
 /** Serialize rows to JSON (values are expected to be already normalized). */
-export function toJson(rows: Record<string, unknown>[]): string {
-  return JSON.stringify(rows, null, 2);
-}
+export const toJson = (rows: Record<string, unknown>[]): string => JSON.stringify(rows, null, 2);
 
 /**
  * Parse CSV text into rows of string fields. Handles quoted fields containing
@@ -32,6 +29,7 @@ export function parseCsv(text: string): string[][] {
   let field = '';
   let inQuotes = false;
   const src = String(text ?? '');
+
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (inQuotes) {
@@ -55,12 +53,11 @@ export function parseCsv(text: string): string[][] {
       field = '';
       if (row.length > 1 || row[0] !== '') rows.push(row);
       row = [];
-    } else if (ch === '\r') {
-      // Ignore — part of CRLF line endings.
-    } else {
+    } else if (ch !== '\r') {
       field += ch;
     }
   }
+
   row.push(field);
   if (row.length > 1 || row[0] !== '') rows.push(row);
   return rows;

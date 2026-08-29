@@ -1,34 +1,8 @@
 import Database from 'better-sqlite3';
 import type { Logger } from '../utils/logger';
-import {
-  quoteIdentifier,
-  generateAddColumn,
-  generateRenameTable,
-  generateRenameColumn,
-  generateDropColumn,
-  generateDropTable,
-  generateCreateIndex,
-  generateDropIndex,
-  type ColumnDef,
-  type IndexDef,
-} from '../sql/generator';
+import { quoteIdentifier, generateAddColumn, generateRenameTable, generateRenameColumn, generateDropColumn, generateDropTable, generateCreateIndex, generateDropIndex, type ColumnDef, type IndexDef } from '../sql/generator';
 import { errorMessage } from '../utils/common';
-import type {
-  ColumnInfo,
-  DatabaseDialect,
-  DbOpenOptions,
-  IDatabase,
-  MutationResult,
-  ReferencingTableInfo,
-  Result,
-  RowFilters,
-  SavedQuery,
-  SchemaInfo,
-  SQLInputValue,
-  TableInfoData,
-  TableListItem,
-  WhereClause,
-} from './types';
+import type { ColumnInfo, DatabaseDialect, DbOpenOptions, IDatabase, ReferencingTableInfo, Result, RowFilters, SavedQuery, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
 import { INTERNAL_TABLES } from './types';
 import { buildFilterClause } from './filters';
 import { getSchemaSync, getTableInfoSync, listTablesSync, getReferencingTablesSync } from './introspection';
@@ -49,11 +23,10 @@ export class SqliteDatabase implements IDatabase {
   readonly isReadOnly: boolean;
   readonly dialect: DatabaseDialect = 'sqlite';
 
-
   constructor(dbPath: string, logger: Logger, options: DbOpenOptions = {}) {
     this.path = dbPath;
     this.logger = logger;
-    this.isReadOnly = !!options.readonly;
+    this.isReadOnly = Boolean(options.readonly);
     this.db = new Database(dbPath, { readonly: this.isReadOnly });
     this.db.exec('PRAGMA foreign_keys = ON;');
     if (this.isReadOnly) {
@@ -90,8 +63,7 @@ export class SqliteDatabase implements IDatabase {
 
   private async tryRun<T>(fn: () => T): Promise<Result<T>> {
     try {
-      const data = await Promise.resolve(fn());
-      return { success: true, data };
+      return { success: true, data: await Promise.resolve(fn()) };
     } catch (err) {
       const msg = errorMessage(err);
       this.logger.error(msg);
@@ -109,7 +81,7 @@ export class SqliteDatabase implements IDatabase {
         this.db.exec('COMMIT');
         return res;
       } catch (err) {
-        try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+        try { this.db.exec('ROLLBACK'); } catch {}
         throw err;
       }
     });
@@ -132,7 +104,7 @@ export class SqliteDatabase implements IDatabase {
       const info = this.db.prepare(sql).run(...params);
       return {
         changes: Number(info.changes),
-        lastInsertRowid: info.lastInsertRowid === undefined || info.lastInsertRowid === null ? null : Number(info.lastInsertRowid),
+        lastInsertRowid: info.lastInsertRowid == null ? null : Number(info.lastInsertRowid),
       };
     });
   }
@@ -160,8 +132,7 @@ export class SqliteDatabase implements IDatabase {
     if (this.isReadOnly) return this.readonlyBlocked();
     const trimmed = String(sql).trim().replace(/;+\s*$/, '');
     try {
-      const stmt = this.db.prepare(trimmed);
-      const info = stmt.run();
+      const info = this.db.prepare(trimmed).run();
       return { success: true, data: { changes: Number(info.changes) } };
     } catch {
       try {
@@ -235,7 +206,6 @@ export class SqliteDatabase implements IDatabase {
     return this.run(sql, fields.map((f) => this.toBind(f.value)));
   }
 
-  /** Insert many rows inside a single atomic transaction. */
   async insertRows(table: string, rows: WhereClause[][]): Promise<Result<{ inserted: number; skipped: number }>> {
     return this.transaction(() => {
       let inserted = 0;
@@ -244,7 +214,7 @@ export class SqliteDatabase implements IDatabase {
         const cols = fields.map((f) => quoteIdentifier(f.column));
         const sql = `INSERT INTO ${quoteIdentifier(table)} (${cols.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`;
         this.db.prepare(sql).run(...fields.map((f) => this.toBind(f.value)));
-        inserted += 1;
+        inserted++;
       }
       return { inserted, skipped: rows.length - inserted };
     });
@@ -257,7 +227,6 @@ export class SqliteDatabase implements IDatabase {
     return this.run(sql, [...fields.map((f) => this.toBind(f.value)), ...where.map((w) => this.toBind(w.value))]);
   }
 
-  /** Apply many row updates inside a single atomic transaction. */
   async updateRows(
     table: string,
     rows: { fields: WhereClause[]; where: WhereClause[] }[],
@@ -284,7 +253,6 @@ export class SqliteDatabase implements IDatabase {
     return this.run(sql, where.map((w) => this.toBind(w.value)));
   }
 
-  /** Delete many rows inside a single atomic transaction. */
   async deleteRows(table: string, rows: WhereClause[][]): Promise<Result<{ deleted: number }>> {
     return this.transaction(() => {
       let deleted = 0;
@@ -344,12 +312,8 @@ export class SqliteDatabase implements IDatabase {
       for (const p of pragmas) {
         try {
           const row = this.db.prepare(`PRAGMA ${p}`).get() as Record<string, unknown> | undefined;
-          if (row && p in row) {
-            settings[p] = String(row[p]);
-          }
-        } catch {
-          // ignore unsupported pragmas
-        }
+          if (row && p in row) settings[p] = String(row[p]);
+        } catch {}
       }
       return settings;
     });
@@ -388,8 +352,7 @@ export class SqliteDatabase implements IDatabase {
       }
       try {
         const colCopy = { ...col, unique: false };
-        const sql = generateAddColumn(table, colCopy);
-        this.db.exec(sql);
+        this.db.exec(generateAddColumn(table, colCopy));
         if (col.unique) {
           const idxName = `idx_${table}_${col.name}_unique`;
           this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(idxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(col.name)});`);
@@ -426,7 +389,7 @@ export class SqliteDatabase implements IDatabase {
 
       const typeMatches = !newColDef.type || newColDef.type.toUpperCase() === existing.type.toUpperCase();
       const pkMatches = newColDef.primaryKey === undefined || newColDef.primaryKey === (existing.pk > 0);
-      const notNullMatches = newColDef.notNull === undefined || newColDef.notNull === (!!existing.notnull);
+      const notNullMatches = newColDef.notNull === undefined || newColDef.notNull === Boolean(existing.notnull);
       const uniqueMatches = newColDef.unique === undefined || newColDef.unique === existingIsUnique;
       const defaultMatches = newColDef.defaultValue === undefined || String(newColDef.defaultValue ?? '').trim() === String(existing.dflt_value ?? '').trim();
       const fkMatches = newColDef.foreignKey === undefined || (
@@ -447,7 +410,7 @@ export class SqliteDatabase implements IDatabase {
             try {
               this.db.exec(`DROP INDEX ${quoteIdentifier(defaultOldIdx)};`);
               this.db.exec(`CREATE ${uniqueKeyword}INDEX IF NOT EXISTS ${quoteIdentifier(newIdxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(newName)});`);
-            } catch { /* ignore */ }
+            } catch {}
           }
         }
         return { changes: 1 };
@@ -498,7 +461,7 @@ export class SqliteDatabase implements IDatabase {
           try {
             this.db.exec(`DROP INDEX ${quoteIdentifier(defaultOldIdx)};`);
             this.db.exec(`CREATE ${uniqueKeyword}INDEX IF NOT EXISTS ${quoteIdentifier(newIdxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(newName)});`);
-          } catch { /* ignore */ }
+          } catch {}
         }
       }
 

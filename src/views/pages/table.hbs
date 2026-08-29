@@ -119,6 +119,11 @@
           </span>
         </div>
         <div class="flex flex-wrap items-center gap-2.5">
+          <button id="btn-columns-manager" type="button" class="btn btn-outline btn-xs gap-1.5 font-medium text-xs" title="Manage column visibility, order, and pinned columns">
+            {{{icon "columns" class="h-3.5 w-3.5"}}}
+            Columns
+            <span id="col-count-badge" class="badge badge-sm badge-primary text-[10px] tabular-nums font-semibold">{{add info.columns.length refColumns.length}}/{{add info.columns.length refColumns.length}}</span>
+          </button>
           <label class="flex items-center gap-2 text-xs text-base-content/55">
             Per page
             <select id="page-size" class="field-select !w-auto !py-1 !text-xs" data-table="{{table}}" data-orderby="{{orderBy}}" data-orderdir="{{orderDir}}" data-filters="{{filterQS}}">
@@ -154,11 +159,11 @@
         <table id="main-table" class="table table-compact table-pin-rows">
           <thead>
             <tr class="bg-base-200/70 text-xs uppercase tracking-wide text-base-content/50">
-              <th class="w-10 text-center font-semibold">
+              <th class="w-10 text-center font-semibold th-select-all">
                 <input type="checkbox" id="select-all-rows" class="checkbox checkbox-primary checkbox-xs" title="Select all rows on this page" />
               </th>
               {{#each colHeaders}}
-                <th class="whitespace-nowrap font-semibold">
+                <th class="whitespace-nowrap font-semibold" data-col="{{this.name}}">
                   <a href="{{this.href}}" class="sort-link {{#if this.active}}active{{/if}}" title="Sort by {{this.name}}">
                     <span class="font-mono normal-case">{{this.name}}</span>
                     {{#if this.pk}}<span class="chip chip-pk">PK</span>{{/if}}
@@ -166,12 +171,13 @@
                   </a>
                 </th>
               {{/each}}
-              <th class="text-right font-semibold sticky-col-actions">Actions</th>
               {{#each refColumns}}
-                <th class="whitespace-nowrap text-right font-semibold" title="Rows in {{this.table}} where {{this.from}} references {{this.to}}">
+                <th class="whitespace-nowrap text-right font-semibold" data-col="ref:{{this.table}}" data-is-ref="true" data-ref-table="{{this.table}}" title="Rows in {{this.table}} where {{this.from}} references {{this.to}}">
                   <span class="font-mono normal-case">{{this.table}}</span>
+                  <span class="chip chip-type text-[9px] ml-1 bg-secondary/15 text-secondary">REF</span>
                 </th>
               {{/each}}
+              <th class="text-right font-semibold sticky-col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -233,6 +239,23 @@
                     {{/if}}
                   </td>
                 {{/each}}
+                {{#each this.refs}}
+                  <td class="whitespace-nowrap text-right align-middle" data-col="ref:{{this.table}}" data-is-ref="true" data-ref-table="{{this.table}}">
+                    {{#if this.value}}
+                      <button type="button" class="js-ref-toggle inline-flex items-center gap-1.5 rounded-lg border border-base-300 bg-base-100 px-2 py-1 text-xs font-medium text-base-content/70 shadow-soft transition hover:border-primary/50 hover:text-primary {{#unless this.count}}opacity-50{{/unless}}"
+                        data-table="{{@root.table}}" data-pk="{{../pkEncoded}}" data-ref-table="{{this.table}}"
+                        aria-expanded="false" title="View {{this.table}} rows where {{this.from}} = {{this.value}}">
+                        <span class="font-mono normal-case">{{this.table}}</span>
+                        <span class="rounded-md bg-primary/10 px-1.5 py-0.5 font-semibold tabular-nums text-primary">{{this.count}}</span>
+                        <span class="js-ref-chevron transition-transform inline-block">
+                          {{{icon "chevronDown" class="h-3 w-3"}}}
+                        </span>
+                      </button>
+                    {{else}}
+                      <span class="text-xs text-base-content/35">&mdash;</span>
+                    {{/if}}
+                  </td>
+                {{/each}}
                 <td class="whitespace-nowrap text-right align-middle sticky-col-actions">
                   {{#if this.pkEncoded}}
                     <div class="row-actions">
@@ -281,23 +304,6 @@
                     <span class="text-xs text-base-content/35">No PK</span>
                   {{/if}}
                 </td>
-                {{#each this.refs}}
-                  <td class="whitespace-nowrap text-right align-middle">
-                    {{#if this.value}}
-                      <button type="button" class="js-ref-toggle inline-flex items-center gap-1.5 rounded-lg border border-base-300 bg-base-100 px-2 py-1 text-xs font-medium text-base-content/70 shadow-soft transition hover:border-primary/50 hover:text-primary {{#unless this.count}}opacity-50{{/unless}}"
-                        data-table="{{@root.table}}" data-pk="{{../pkEncoded}}" data-ref-table="{{this.table}}"
-                        aria-expanded="false" title="View {{this.table}} rows where {{this.from}} = {{this.value}}">
-                        <span class="font-mono normal-case">{{this.table}}</span>
-                        <span class="rounded-md bg-primary/10 px-1.5 py-0.5 font-semibold tabular-nums text-primary">{{this.count}}</span>
-                        <span class="js-ref-chevron transition-transform inline-block">
-                          {{{icon "chevronDown" class="h-3 w-3"}}}
-                        </span>
-                      </button>
-                    {{else}}
-                      <span class="text-xs text-base-content/35">&mdash;</span>
-                    {{/if}}
-                  </td>
-                {{/each}}
               </tr>
             {{/each}}
           </tbody>
@@ -337,5 +343,64 @@
     </div>
   {{/if}}
 </div>
+
+<!-- Column Manager Modal -->
+<dialog id="col-manager-modal" class="modal">
+  <div class="modal-box max-w-lg p-0 overflow-hidden shadow-lift border border-base-300 bg-base-100">
+    <div class="flex items-center justify-between border-b border-base-200 px-5 py-3.5 bg-base-200/50">
+      <div class="flex items-center gap-2.5">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
+          {{{icon "columns" class="h-4 w-4"}}}
+        </span>
+        <div>
+          <h3 class="font-bold text-sm text-base-content">Column Manager</h3>
+          <p class="text-[11px] text-base-content/50">Visibility, custom ordering, and pinned columns</p>
+        </div>
+      </div>
+      <form method="dialog">
+        <button class="btn btn-ghost btn-xs btn-circle text-base-content/60" aria-label="Close">✕</button>
+      </form>
+    </div>
+
+    <div class="p-4 space-y-3">
+      <!-- Search & Presets Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="relative flex-1 min-w-[160px]">
+          <input type="text" id="col-search" class="field-input !py-1.5 !pl-8 !pr-3 !text-xs w-full" placeholder="Filter columns..." />
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none">
+            {{{icon "search" class="h-3.5 w-3.5"}}}
+          </span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button type="button" id="col-btn-show-all" class="btn btn-ghost btn-xs text-xs font-medium">Show all</button>
+          <button type="button" id="col-btn-hide-non-pk" class="btn btn-ghost btn-xs text-xs font-medium">PKs only</button>
+          <button type="button" id="col-btn-reset" class="btn btn-ghost btn-xs text-xs text-warning hover:bg-warning/10">Reset</button>
+        </div>
+      </div>
+
+      <!-- Hint -->
+      <div class="flex items-center justify-between text-[11px] text-base-content/50 px-0.5">
+        <span>Drag ⠿ to reorder. Toggle checkbox to show/hide. Click 📌 to pin.</span>
+        <span id="col-manager-summary" class="font-mono text-primary font-semibold"></span>
+      </div>
+
+      <!-- Column List -->
+      <div id="col-manager-list" class="space-y-1 max-h-[360px] overflow-y-auto pr-1">
+        <!-- Dynamically rendered by browse.js -->
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between border-t border-base-200 px-5 py-3 bg-base-200/40 text-xs">
+      <span class="text-base-content/50 text-[11px]">Saved in browser for this table</span>
+      <form method="dialog">
+        <button class="btn btn-primary btn-sm">Done</button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop bg-black/40 backdrop-blur-xs">
+    <button>close</button>
+  </form>
+</dialog>
+
 <script type="application/json" id="browse-config">{{{json browseConfig}}}</script>
 <script src="{{basePath}}/js/browse.js" defer></script>

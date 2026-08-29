@@ -1,9 +1,5 @@
 import type Database from 'better-sqlite3';
-import {
-  generateCreateTable,
-  quoteIdentifier,
-  type ColumnDef,
-} from '../sql/generator';
+import { generateCreateTable, quoteIdentifier, type ColumnDef } from '../sql/generator';
 import type { ColumnInfo, ForeignKeyInfo } from './types';
 
 export function modifyTableStructureSync(
@@ -19,14 +15,12 @@ export function modifyTableStructureSync(
   const fks = db.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`).all() as unknown as ForeignKeyInfo[];
   const indexRows = db.prepare(`PRAGMA index_list(${quoteIdentifier(table)})`).all() as unknown as { seq: number; name: string; unique: number; origin: string; partial: number }[];
 
-  // Discover which single columns are UNIQUE across the whole table (so existing uniqueness is preserved)
+  // Discover which single columns are UNIQUE across the whole table
   const uniqueCols = new Set<string>();
   for (const ix of indexRows) {
     if (ix.unique) {
       const ixCols = (db.prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`).all() as unknown as { seqno: number; cid: number; name: string }[]).map((c) => c.name);
-      if (ixCols.length === 1) {
-        uniqueCols.add(ixCols[0]);
-      }
+      if (ixCols.length === 1) uniqueCols.add(ixCols[0]);
     }
   }
 
@@ -44,7 +38,7 @@ export function modifyTableStructureSync(
       }
       userIndexes.push({
         name: ixName,
-        unique: !!ix.unique,
+        unique: Boolean(ix.unique),
         columns: ixCols.map((c) => (renamedOldCol && renamedNewCol && c === renamedOldCol ? renamedNewCol : c)),
       });
     }
@@ -56,7 +50,7 @@ export function modifyTableStructureSync(
       name: c.name,
       type: c.type,
       primaryKey: c.pk > 0,
-      notNull: !!c.notnull,
+      notNull: Boolean(c.notnull),
       unique: uniqueCols.has(c.name),
       defaultValue: c.dflt_value,
       foreignKey: existingFk ? { table: existingFk.table, column: existingFk.to ?? '' } : null,
@@ -72,18 +66,14 @@ export function modifyTableStructureSync(
   const matchingNewCols: string[] = [];
 
   for (const nc of newCols) {
-    let sourceColName = nc.name;
-    if (renamedOldCol && renamedNewCol && nc.name === renamedNewCol) {
-      sourceColName = renamedOldCol;
-    }
+    const sourceColName = renamedOldCol && renamedNewCol && nc.name === renamedNewCol ? renamedOldCol : nc.name;
     if (oldColMap.has(sourceColName)) {
       matchingOldCols.push(quoteIdentifier(sourceColName));
       matchingNewCols.push(quoteIdentifier(nc.name));
     }
   }
 
-  db.exec('PRAGMA foreign_keys = OFF;');
-  db.exec('BEGIN TRANSACTION;');
+  db.exec('PRAGMA foreign_keys = OFF;\nBEGIN TRANSACTION;');
   try {
     db.exec(createSql);
     if (matchingOldCols.length > 0) {
@@ -97,21 +87,18 @@ export function modifyTableStructureSync(
       const ixColsStr = ix.columns.map(quoteIdentifier).join(', ');
       try {
         db.exec(`CREATE ${uq}INDEX IF NOT EXISTS ${quoteIdentifier(ix.name)} ON ${quoteIdentifier(table)} (${ixColsStr});`);
-      } catch {
-        /* ignore index recreation error */
-      }
+      } catch {}
     }
 
-    const fkCheck = db.prepare('PRAGMA foreign_key_check;').all();
-    if (fkCheck.length > 0) {
+    if (db.prepare('PRAGMA foreign_key_check;').all().length > 0) {
       throw new Error('Foreign key constraint check failed after schema modification.');
     }
 
     db.exec('COMMIT;');
     return { changes: 1 };
   } catch (err) {
-    try { db.exec('ROLLBACK;'); } catch { /* ignore */ }
-    try { db.exec(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTable)};`); } catch { /* ignore */ }
+    try { db.exec('ROLLBACK;'); } catch {}
+    try { db.exec(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTable)};`); } catch {}
     throw err;
   } finally {
     db.exec('PRAGMA foreign_keys = ON;');

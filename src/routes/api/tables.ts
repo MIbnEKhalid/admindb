@@ -1,14 +1,5 @@
 import type { Router, Request, Response } from 'express';
-import {
-  generateCreateTable,
-  generateRenameTable,
-  generateDropTable,
-  generateCreateIndex,
-  generateDropIndex,
-  quoteIdentifier,
-  type ColumnDef,
-  type IndexDef,
-} from '../../sql/generator';
+import { generateCreateTable, quoteIdentifier, type ColumnDef, type IndexDef } from '../../sql/generator';
 import { type ApiContext, ok, fail, wrap, requireTable } from './helpers';
 
 export function registerTableRoutes(router: Router, ctx: ApiContext): void {
@@ -38,8 +29,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
         if (!refInfo) continue;
         const refCol = fk.to || refInfo.primaryKey[0] || refInfo.columns[0]?.name;
         const pk = refInfo.primaryKey[0] ?? refInfo.columns[0]?.name;
-        const labelCol =
-          refInfo.columns.find((c) => /name|title|label|username|email/i.test(c.name))?.name ?? pk;
+        const labelCol = refInfo.columns.find((c) => /name|title|label|username|email/i.test(c.name))?.name ?? pk;
         const rows = await db.getRows(fk.table, { limit: 100, orderBy: labelCol });
         if (rows.success && rows.data) {
           options[fk.from] = rows.data.map((r) => ({
@@ -47,9 +37,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
             label: r[labelCol] != null ? `${r[labelCol]} (${r[refCol]})` : String(r[refCol]),
           }));
         }
-      } catch {
-        // FK option loading is best-effort.
-      }
+      } catch {}
     }
     ok(res, options);
   }));
@@ -77,9 +65,6 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
 
   // ---- Bulk Table Operations -----------------------------------------------
 
-  // POST /api/tables/bulk-drop — drop multiple tables at once
-  // Body: { tables: string[], force: boolean }
-  // force=true: disables FK checks (SQLite PRAGMA / Postgres CASCADE)
   router.post('/api/tables/bulk-drop', wrap(async (req, res) => {
     const tables: string[] = Array.isArray(req.body?.tables)
       ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
@@ -90,31 +75,21 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     const dropped: string[] = [];
     const failed: { table: string; error: string }[] = [];
 
-    // Disable FK enforcement for the session when force=true (SQLite only)
-    if (force && db.dialect === 'sqlite') {
-      await db.run('PRAGMA foreign_keys = OFF');
-    }
+    if (force && db.dialect === 'sqlite') await db.run('PRAGMA foreign_keys = OFF');
 
     for (const table of tables) {
       try {
-        if (force && db.dialect === 'postgres') {
-          // Postgres: DROP TABLE ... CASCADE bypasses FK constraints
-          const r = await db.run(`DROP TABLE IF EXISTS ${quoteIdentifier(table)} CASCADE`);
-          if (!r.success) throw new Error(r.error ?? 'Failed to drop table.');
-        } else {
-          const r = await db.dropTable(table);
-          if (!r.success) throw new Error(r.error ?? 'Failed to drop table.');
-        }
+        const r = force && db.dialect === 'postgres'
+          ? await db.run(`DROP TABLE IF EXISTS ${quoteIdentifier(table)} CASCADE`)
+          : await db.dropTable(table);
+        if (!r.success) throw new Error(r.error ?? 'Failed to drop table.');
         dropped.push(table);
       } catch (err) {
         failed.push({ table, error: (err as Error).message });
       }
     }
 
-    // Always re-enable FK enforcement after force mode
-    if (force && db.dialect === 'sqlite') {
-      await db.run('PRAGMA foreign_keys = ON');
-    }
+    if (force && db.dialect === 'sqlite') await db.run('PRAGMA foreign_keys = ON');
 
     ok(res, {
       dropped,
@@ -123,9 +98,6 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  // POST /api/tables/bulk-truncate — delete all rows from multiple tables
-  // Body: { tables: string[], force: boolean }
-  // force=true: disables FK checks (SQLite PRAGMA / Postgres CASCADE)
   router.post('/api/tables/bulk-truncate', wrap(async (req, res) => {
     const tables: string[] = Array.isArray(req.body?.tables)
       ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
@@ -136,20 +108,13 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     const cleared: string[] = [];
     const failed: { table: string; error: string }[] = [];
 
-    // Disable FK enforcement for the session when force=true (SQLite only)
-    if (force && db.dialect === 'sqlite') {
-      await db.run('PRAGMA foreign_keys = OFF');
-    }
+    if (force && db.dialect === 'sqlite') await db.run('PRAGMA foreign_keys = OFF');
 
     for (const table of tables) {
       try {
-        let r;
-        if (force && db.dialect === 'postgres') {
-          // Postgres: TRUNCATE ... RESTART IDENTITY CASCADE bypasses FK constraints
-          r = await db.run(`TRUNCATE ${quoteIdentifier(table)} RESTART IDENTITY CASCADE`);
-        } else {
-          r = await db.run(`DELETE FROM ${quoteIdentifier(table)}`);
-        }
+        const r = force && db.dialect === 'postgres'
+          ? await db.run(`TRUNCATE ${quoteIdentifier(table)} RESTART IDENTITY CASCADE`)
+          : await db.run(`DELETE FROM ${quoteIdentifier(table)}`);
         if (!r.success) throw new Error(r.error ?? 'Failed to clear table.');
         cleared.push(table);
       } catch (err) {
@@ -157,10 +122,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
       }
     }
 
-    // Always re-enable FK enforcement after force mode
-    if (force && db.dialect === 'sqlite') {
-      await db.run('PRAGMA foreign_keys = ON');
-    }
+    if (force && db.dialect === 'sqlite') await db.run('PRAGMA foreign_keys = ON');
 
     ok(res, {
       cleared,
@@ -169,15 +131,13 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  // Preview generated CREATE TABLE SQL without executing
   router.post('/api/tables/generate', wrap(async (req, res) => {
     const name = String(req.body?.name ?? '').trim();
     const columns = (req.body?.columns ?? []) as ColumnDef[];
     if (!name) return fail(res, 'Table name is required.');
     if (!Array.isArray(columns) || columns.length === 0) return fail(res, 'At least one column is required.');
     try {
-      const sql = generateCreateTable(name, columns);
-      ok(res, { sql });
+      ok(res, { sql: generateCreateTable(name, columns) });
     } catch (err) {
       fail(res, (err as Error).message);
     }
@@ -206,7 +166,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
 
   router.post('/api/tables/:table/columns', wrap(async (req, res) => {
     const col = req.body as ColumnDef;
-    if (!col || !col.name) return fail(res, 'Column name is required.');
+    if (!col?.name) return fail(res, 'Column name is required.');
     const r = await db.addColumn(req.params.table, col);
     if (!r.success) return fail(res, r.error ?? 'Failed to add column.');
     ok(res, { message: `Column "${col.name}" added.` }, 201);

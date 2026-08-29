@@ -793,24 +793,30 @@
   }
 
   function navigateCell(direction) {
+    const getVisibleCells = (row) =>
+      Array.prototype.slice.call(row.querySelectorAll('td.cell-editable')).filter((td) => td.style.display !== 'none' && !td.classList.contains('hidden'));
+
     if (!focusedCell) {
-      const cells = getEditableCells();
-      if (cells.length) setFocusedCell(cells[0]);
+      const firstRow = document.querySelector('#main-table tbody tr');
+      if (firstRow) {
+        const visible = getVisibleCells(firstRow);
+        if (visible.length) setFocusedCell(visible[0]);
+      }
       return;
     }
 
     const tr = focusedCell.closest('tr');
     if (!tr) return;
-    const rowCells = Array.prototype.slice.call(tr.querySelectorAll('td.cell-editable'));
+    const rowCells = getVisibleCells(tr);
     const colIdx = rowCells.indexOf(focusedCell);
 
     if (direction === 'right') {
-      if (colIdx < rowCells.length - 1) {
+      if (colIdx >= 0 && colIdx < rowCells.length - 1) {
         setFocusedCell(rowCells[colIdx + 1]);
       } else {
         const nextTr = tr.nextElementSibling;
         if (nextTr) {
-          const nextCells = Array.prototype.slice.call(nextTr.querySelectorAll('td.cell-editable'));
+          const nextCells = getVisibleCells(nextTr);
           if (nextCells.length) setFocusedCell(nextCells[0]);
         }
       }
@@ -820,21 +826,33 @@
       } else {
         const prevTr = tr.previousElementSibling;
         if (prevTr) {
-          const prevCells = Array.prototype.slice.call(prevTr.querySelectorAll('td.cell-editable'));
+          const prevCells = getVisibleCells(prevTr);
           if (prevCells.length) setFocusedCell(prevCells[prevCells.length - 1]);
         }
       }
     } else if (direction === 'down') {
       const nextTr = tr.nextElementSibling;
       if (nextTr) {
-        const nextCells = Array.prototype.slice.call(nextTr.querySelectorAll('td.cell-editable'));
-        if (nextCells[colIdx]) setFocusedCell(nextCells[colIdx]);
+        const targetCol = focusedCell.dataset.col;
+        const matchingTd = targetCol ? nextTr.querySelector('td[data-col="' + CSS.escape(targetCol) + '"]') : null;
+        if (matchingTd && matchingTd.style.display !== 'none') {
+          setFocusedCell(matchingTd);
+        } else {
+          const nextCells = getVisibleCells(nextTr);
+          if (nextCells[colIdx] || nextCells[0]) setFocusedCell(nextCells[colIdx] || nextCells[0]);
+        }
       }
     } else if (direction === 'up') {
       const prevTr = tr.previousElementSibling;
       if (prevTr) {
-        const prevCells = Array.prototype.slice.call(prevTr.querySelectorAll('td.cell-editable'));
-        if (prevCells[colIdx]) setFocusedCell(prevCells[colIdx]);
+        const targetCol = focusedCell.dataset.col;
+        const matchingTd = targetCol ? prevTr.querySelector('td[data-col="' + CSS.escape(targetCol) + '"]') : null;
+        if (matchingTd && matchingTd.style.display !== 'none') {
+          setFocusedCell(matchingTd);
+        } else {
+          const prevCells = getVisibleCells(prevTr);
+          if (prevCells[colIdx] || prevCells[0]) setFocusedCell(prevCells[colIdx] || prevCells[0]);
+        }
       }
     }
   }
@@ -1341,6 +1359,368 @@
     });
   }
 
+  // ---- Column Manager (Visibility, Ordering, Sticky Columns) --------------
+
+  function initColumnManager() {
+    const tableEl = document.getElementById('main-table');
+    if (!tableEl) return;
+
+    const modal = document.getElementById('col-manager-modal');
+    const openBtn = document.getElementById('btn-columns-manager');
+    const badgeEl = document.getElementById('col-count-badge');
+    const listEl = document.getElementById('col-manager-list');
+    const searchInput = document.getElementById('col-search');
+    const showAllBtn = document.getElementById('col-btn-show-all');
+    const hideNonPkBtn = document.getElementById('col-btn-hide-non-pk');
+    const resetBtn = document.getElementById('col-btn-reset');
+    const summaryEl = document.getElementById('col-manager-summary');
+
+    const allColHeaders = Array.prototype.slice.call(tableEl.querySelectorAll('thead th[data-col]'));
+    if (!allColHeaders.length) return;
+
+    const defaultColNames = allColHeaders.map((th) => th.dataset.col);
+    const storageKey = 'admindb:col_settings:' + (cfg.table || 'default');
+
+    let colSettings = loadSettings();
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            const validCols = new Set(defaultColNames);
+            const order = Array.isArray(parsed.order) ? parsed.order.filter((c) => validCols.has(c)) : [];
+            defaultColNames.forEach((c) => {
+              if (order.indexOf(c) === -1) order.push(c);
+            });
+            const hidden = Array.isArray(parsed.hidden) ? parsed.hidden.filter((c) => validCols.has(c)) : [];
+            const pinned = Array.isArray(parsed.pinned) ? parsed.pinned.filter((c) => validCols.has(c)) : [];
+            return { order, hidden, pinned };
+          }
+        }
+      } catch (e) {}
+      return { order: defaultColNames.slice(), hidden: [], pinned: [] };
+    }
+
+    function saveSettings() {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(colSettings));
+      } catch (e) {}
+      applyGridSettings();
+      renderModalList();
+    }
+
+    function applyGridSettings() {
+      const order = colSettings.order;
+      const hiddenSet = new Set(colSettings.hidden);
+      const pinnedSet = new Set(colSettings.pinned);
+
+      // 1. Reorder and update visibility of <thead> <th> elements
+      const theadTr = tableEl.querySelector('thead tr');
+      if (theadTr) {
+        const actionsTh = theadTr.querySelector('th.sticky-col-actions');
+        const thMap = {};
+        allColHeaders.forEach((th) => {
+          thMap[th.dataset.col] = th;
+        });
+
+        order.forEach((colName) => {
+          const th = thMap[colName];
+          if (th) {
+            if (actionsTh) theadTr.insertBefore(th, actionsTh);
+            else theadTr.appendChild(th);
+
+            const isHidden = hiddenSet.has(colName);
+            th.style.display = isHidden ? 'none' : '';
+
+            const isPinned = pinnedSet.has(colName) && !isHidden;
+            th.classList.toggle('sticky-col-left', isPinned);
+          }
+        });
+      }
+
+      // 2. Reorder and update visibility of <tbody> <td> elements for every row
+      const tbodyRows = tableEl.querySelectorAll('tbody tr');
+      tbodyRows.forEach((tr) => {
+        const rowCells = Array.prototype.slice.call(tr.querySelectorAll('td[data-col]'));
+        const tdMap = {};
+        rowCells.forEach((td) => {
+          tdMap[td.dataset.col] = td;
+        });
+
+        const actionsTd = tr.querySelector('td.sticky-col-actions');
+
+        order.forEach((colName) => {
+          const td = tdMap[colName];
+          if (td) {
+            if (actionsTd) tr.insertBefore(td, actionsTd);
+            else tr.appendChild(td);
+
+            const isHidden = hiddenSet.has(colName);
+            td.style.display = isHidden ? 'none' : '';
+
+            const isPinned = pinnedSet.has(colName) && !isHidden;
+            td.classList.toggle('sticky-col-left', isPinned);
+          }
+        });
+      });
+
+      // 3. Compute dynamic sticky left offsets
+      updateStickyOffsets();
+
+      // 4. Update badge and summary
+      const visibleCount = defaultColNames.length - colSettings.hidden.length;
+      if (badgeEl) {
+        badgeEl.textContent = visibleCount + '/' + defaultColNames.length;
+        badgeEl.classList.toggle('badge-warning', colSettings.hidden.length > 0);
+      }
+      if (summaryEl) {
+        summaryEl.textContent = visibleCount + ' of ' + defaultColNames.length + ' visible · ' + colSettings.pinned.length + ' pinned';
+      }
+    }
+
+    function updateStickyOffsets() {
+      const pinnedCols = colSettings.order.filter(
+        (col) => colSettings.pinned.includes(col) && !colSettings.hidden.includes(col)
+      );
+
+      const checkboxTh = tableEl.querySelector('thead th.th-select-all');
+      let currentLeft = checkboxTh ? checkboxTh.offsetWidth : 40;
+
+      tableEl.querySelectorAll('.sticky-col-left-last').forEach((el) => el.classList.remove('sticky-col-left-last'));
+
+      pinnedCols.forEach((colName, idx) => {
+        const th = tableEl.querySelector('thead th[data-col="' + CSS.escape(colName) + '"]');
+        const colWidth = th ? th.offsetWidth : 120;
+        const isLast = idx === pinnedCols.length - 1;
+
+        if (th) {
+          th.style.left = currentLeft + 'px';
+          if (isLast) th.classList.add('sticky-col-left-last');
+        }
+
+        tableEl.querySelectorAll('tbody td[data-col="' + CSS.escape(colName) + '"]').forEach((td) => {
+          td.style.left = currentLeft + 'px';
+          if (isLast) td.classList.add('sticky-col-left-last');
+        });
+
+        currentLeft += colWidth;
+      });
+
+      colSettings.order.forEach((colName) => {
+        if (!pinnedCols.includes(colName)) {
+          const th = tableEl.querySelector('thead th[data-col="' + CSS.escape(colName) + '"]');
+          if (th) th.style.left = '';
+          tableEl.querySelectorAll('tbody td[data-col="' + CSS.escape(colName) + '"]').forEach((td) => {
+            td.style.left = '';
+          });
+        }
+      });
+    }
+
+    function renderModalList() {
+      if (!listEl) return;
+      listEl.innerHTML = '';
+      const filterText = (searchInput ? searchInput.value : '').toLowerCase().trim();
+
+      colSettings.order.forEach((colName, idx) => {
+        if (filterText && colName.toLowerCase().indexOf(filterText) === -1) return;
+
+        const isHidden = colSettings.hidden.includes(colName);
+        const isPinned = colSettings.pinned.includes(colName);
+        const isRef = colName.startsWith('ref:');
+        const refTable = isRef ? colName.slice(4) : '';
+        const isPkCol = !isRef && isPk(colName);
+        const c = !isRef ? colInfo(colName) : null;
+        const colType = c ? c.type : '';
+        const displayName = isRef ? refTable : colName;
+
+        const item = document.createElement('div');
+        item.className = 'col-manager-item' + (isHidden ? ' is-hidden' : '') + (isPinned ? ' is-pinned' : '');
+        item.dataset.col = colName;
+        item.dataset.index = String(idx);
+        item.draggable = true;
+
+        item.innerHTML =
+          '<div class="flex items-center gap-2 min-w-0 flex-1">' +
+            '<span class="col-drag-handle" title="Drag to reorder">' +
+              '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="7" r="1.5"/><circle cx="15" cy="7" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17" r="1.5"/><circle cx="15" cy="17" r="1.5"/></svg>' +
+            '</span>' +
+            '<input type="checkbox" class="checkbox checkbox-primary checkbox-xs js-col-toggle" ' + (isHidden ? '' : 'checked') + ' title="Toggle visibility" />' +
+            '<span class="font-mono font-medium truncate text-base-content text-[13px]" title="' + (isRef ? 'Referencing table: ' + escapeHtml(refTable) : escapeHtml(colName)) + '">' + escapeHtml(displayName) + '</span>' +
+            (isRef ? '<span class="chip chip-type text-[9px] font-mono bg-secondary/15 text-secondary">REF</span>' : '') +
+            (isPkCol ? '<span class="chip chip-pk text-[9px]">PK</span>' : '') +
+            (colType ? '<span class="chip chip-type text-[9px] font-mono opacity-70">' + escapeHtml(colType) + '</span>' : '') +
+          '</div>' +
+          '<div class="flex items-center gap-1 shrink-0">' +
+            '<button type="button" class="btn btn-ghost btn-xs btn-square js-col-pin ' + (isPinned ? 'text-primary bg-primary/10' : 'text-base-content/40 hover:text-base-content') + '" title="' + (isPinned ? 'Unpin column' : 'Pin column to left (sticky)') + '">' +
+              '<svg class="h-3.5 w-3.5" fill="' + (isPinned ? 'currentColor' : 'none') + '" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 13.5l-5-5m3-3.5a2.121 2.121 0 00-3 0L9.5 9.5 5 10l5 5 .5 4.5 4.5-4.5a2.121 2.121 0 000-3zM4 20l5-5" /></svg>' +
+            '</button>' +
+            '<button type="button" class="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-base-content js-col-up" ' + (idx === 0 ? 'disabled' : '') + ' title="Move Up">' +
+              '<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>' +
+            '</button>' +
+            '<button type="button" class="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-base-content js-col-down" ' + (idx === colSettings.order.length - 1 ? 'disabled' : '') + ' title="Move Down">' +
+              '<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>' +
+            '</button>' +
+          '</div>';
+
+        const toggleCb = item.querySelector('.js-col-toggle');
+        if (toggleCb) {
+          toggleCb.addEventListener('change', () => {
+            if (toggleCb.checked) {
+              colSettings.hidden = colSettings.hidden.filter((c) => c !== colName);
+            } else {
+              if (!colSettings.hidden.includes(colName)) colSettings.hidden.push(colName);
+            }
+            saveSettings();
+          });
+        }
+
+        const pinBtn = item.querySelector('.js-col-pin');
+        if (pinBtn) {
+          pinBtn.addEventListener('click', () => {
+            if (colSettings.pinned.includes(colName)) {
+              colSettings.pinned = colSettings.pinned.filter((c) => c !== colName);
+            } else {
+              colSettings.pinned.push(colName);
+              colSettings.hidden = colSettings.hidden.filter((c) => c !== colName);
+            }
+            saveSettings();
+          });
+        }
+
+        const upBtn = item.querySelector('.js-col-up');
+        if (upBtn && idx > 0) {
+          upBtn.addEventListener('click', () => {
+            const temp = colSettings.order[idx - 1];
+            colSettings.order[idx - 1] = colSettings.order[idx];
+            colSettings.order[idx] = temp;
+            saveSettings();
+          });
+        }
+
+        const downBtn = item.querySelector('.js-col-down');
+        if (downBtn && idx < colSettings.order.length - 1) {
+          downBtn.addEventListener('click', () => {
+            const temp = colSettings.order[idx + 1];
+            colSettings.order[idx + 1] = colSettings.order[idx];
+            colSettings.order[idx] = temp;
+            saveSettings();
+          });
+        }
+
+        setupDragAndDrop(item, colName);
+        listEl.appendChild(item);
+      });
+    }
+
+    let draggedCol = null;
+
+    function setupDragAndDrop(item, colName) {
+      item.addEventListener('dragstart', (e) => {
+        draggedCol = colName;
+        item.classList.add('is-dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', colName);
+        }
+      });
+
+      item.addEventListener('dragend', () => {
+        draggedCol = null;
+        item.classList.remove('is-dragging');
+        listEl.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach((el) => {
+          el.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+      });
+
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        if (!draggedCol || draggedCol === colName) return;
+
+        const rect = item.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          item.classList.add('drag-over-top');
+          item.classList.remove('drag-over-bottom');
+        } else {
+          item.classList.add('drag-over-bottom');
+          item.classList.remove('drag-over-top');
+        }
+      });
+
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('drag-over-top', 'drag-over-bottom');
+      });
+
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        item.classList.remove('drag-over-top', 'drag-over-bottom');
+        if (!draggedCol || draggedCol === colName) return;
+
+        const fromIdx = colSettings.order.indexOf(draggedCol);
+        let toIdx = colSettings.order.indexOf(colName);
+        if (fromIdx === -1 || toIdx === -1) return;
+
+        const rect = item.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+
+        colSettings.order.splice(fromIdx, 1);
+        toIdx = colSettings.order.indexOf(colName);
+        if (e.clientY >= midY) toIdx += 1;
+        colSettings.order.splice(toIdx, 0, draggedCol);
+
+        saveSettings();
+      });
+    }
+
+    if (showAllBtn) {
+      showAllBtn.addEventListener('click', () => {
+        colSettings.hidden = [];
+        saveSettings();
+      });
+    }
+
+    if (hideNonPkBtn) {
+      hideNonPkBtn.addEventListener('click', () => {
+        colSettings.hidden = defaultColNames.filter((c) => !isPk(c));
+        saveSettings();
+      });
+    }
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        colSettings = { order: defaultColNames.slice(), hidden: [], pinned: [] };
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (e) {}
+        saveSettings();
+        UI.showToast('Columns reset to default.', 'info');
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', renderModalList);
+    }
+
+    if (openBtn && modal) {
+      openBtn.addEventListener('click', () => {
+        renderModalList();
+        if (typeof modal.showModal === 'function') modal.showModal();
+        else modal.classList.add('modal-open');
+        if (searchInput) {
+          searchInput.value = '';
+          setTimeout(() => searchInput.focus(), 50);
+        }
+      });
+    }
+
+    applyGridSettings();
+    window.addEventListener('resize', updateStickyOffsets);
+  }
+
   // ---- Init ---------------------------------------------------------------
 
   async function init() {
@@ -1354,6 +1734,7 @@
     } catch (e) {
       fkOptions = {};
     }
+    initColumnManager();
     initFilters();
     initRowActions();
     initInlineEditing();

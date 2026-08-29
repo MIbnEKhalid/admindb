@@ -5,23 +5,14 @@ import { isServerlessEnvironment } from '../serverless';
 import { errorMessage } from '../utils/common';
 
 export interface DatabaseConfigFile {
-  /** Database connections mapped by name: { "name": "postgresql://...", "name1": "postgresql://..." } */
   connections?: Record<string, string>;
-  /** Single database connection string */
   connection?: string;
-  /** Port override */
   port?: number;
-  /** Host override */
   host?: string;
-  /** Base path */
   basePath?: string;
-  /** Readonly flag */
   readonly?: boolean;
-  /** Serverless flag */
   serverless?: boolean;
-  /** Auth options */
   auth?: boolean | { username?: string; password?: string; secret?: string };
-  /** Log level */
   logLevel?: LogLevel;
 }
 
@@ -36,7 +27,6 @@ export function parseConfigFile(filePath: string): DatabaseConfigFile | null {
     const result: DatabaseConfigFile = {};
     const conns: Record<string, string> = {};
 
-    // 1. If parsed has a nested "databases" or "connections" map
     const topDbs = parsed.databases || parsed.connections;
     if (topDbs && typeof topDbs === 'object' && !Array.isArray(topDbs)) {
       for (const [k, v] of Object.entries(topDbs)) {
@@ -47,7 +37,6 @@ export function parseConfigFile(filePath: string): DatabaseConfigFile | null {
       }
     }
 
-    // 2. Direct key-value map of { "name": "postgresql://...", "name1": "postgresql://..." }
     for (const [k, v] of Object.entries(parsed)) {
       if (['databases', 'connections', 'port', 'host', 'basePath', 'readonly', 'serverless', 'auth', 'logLevel', 'username', 'password', 'secret'].includes(k)) {
         continue;
@@ -59,22 +48,16 @@ export function parseConfigFile(filePath: string): DatabaseConfigFile | null {
       }
     }
 
-    if (typeof parsed.connection === 'string' && parsed.connection.trim()) {
-      result.connection = parsed.connection.trim();
-    }
+    if (typeof parsed.connection === 'string' && parsed.connection.trim()) result.connection = parsed.connection.trim();
     if (typeof parsed.port === 'number') result.port = parsed.port;
     if (typeof parsed.host === 'string') result.host = parsed.host;
     if (typeof parsed.basePath === 'string') result.basePath = parsed.basePath;
     if (typeof parsed.readonly === 'boolean') result.readonly = parsed.readonly;
     if (typeof parsed.serverless === 'boolean') result.serverless = parsed.serverless;
-    if (typeof parsed.auth === 'boolean' || (parsed.auth && typeof parsed.auth === 'object')) {
-      result.auth = parsed.auth;
-    }
+    if (typeof parsed.auth === 'boolean' || (parsed.auth && typeof parsed.auth === 'object')) result.auth = parsed.auth;
     if (typeof parsed.logLevel === 'string') result.logLevel = parsed.logLevel as LogLevel;
 
-    if (Object.keys(conns).length > 0) {
-      result.connections = conns;
-    }
+    if (Object.keys(conns).length > 0) result.connections = conns;
     return result;
   } catch (err) {
     throw new Error(`Failed to parse configuration file "${filePath}": ${errorMessage(err)}`);
@@ -84,33 +67,21 @@ export function parseConfigFile(filePath: string): DatabaseConfigFile | null {
 export interface Config {
   host: string;
   port: number;
-  /** Single-database file or connection string. */
   dbPath: string;
-  /** Database connection string (PostgreSQL or SQLite). */
   connection?: string;
-  /** Named database connections map. */
   connections?: Record<string, string>;
-  /** Directory of managed database files (multi-db mode source 1). */
   dbDir?: string;
-  /** Explicit database file locations (multi-db mode source 2). */
   dbFiles?: string[];
   basePath: string;
   logLevel: LogLevel;
-  /** Open the database read-only (writes disabled). */
   readonly: boolean;
-  /** Serverless environment mode (enforces read-only). */
   serverless: boolean;
-  /** Whether authentication is enabled (default: true). */
   auth: boolean;
-  /** Custom admin username (default: 'admin'). */
   authUsername?: string;
-  /** Custom admin password (default: 'admin'). */
   authPassword?: string;
-  /** Custom secret for signing session cookies. */
   authSecret?: string;
 }
 
-/** Load configuration from environment variables with sensible defaults. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const portRaw = env.ADMINDB_PORT ?? env.PORT ?? '45531';
   const port = Number.parseInt(portRaw, 10);
@@ -136,12 +107,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (configJsonRaw) {
     try {
       const parsed = JSON.parse(configJsonRaw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        connections = parsed;
-      }
-    } catch {
-      /* ignore */
-    }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) connections = parsed;
+    } catch {}
   }
 
   const configPath = env.ADMINDB_CONFIG;
@@ -159,12 +126,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     connection: connectionRaw ? String(connectionRaw) : undefined,
     connections,
     dbDir: dbDirRaw ? String(dbDirRaw) : undefined,
-    dbFiles: dbFilesRaw
-      ? String(dbFilesRaw)
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined,
+    dbFiles: dbFilesRaw ? String(dbFilesRaw).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
     basePath: String(basePathRaw).replace(/\/+$/, ''),
     logLevel: logLevelRaw as LogLevel,
     readonly,

@@ -4,73 +4,13 @@
  * mutating operation share these functions.
  */
 
-export const SQLITE_DESIGNER_TYPES = [
-  'TEXT',
-  'INTEGER',
-  'REAL',
-  'BLOB',
-  'BOOLEAN',
-  'DATE',
-  'DATETIME',
-  'NUMERIC',
-  'VARCHAR(255)',
-  'JSON',
-] as const;
+export const SQLITE_DESIGNER_TYPES = [ 'TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME', 'NUMERIC', 'VARCHAR(255)', 'JSON', ] as const;
 
-export const POSTGRES_DESIGNER_TYPES = [
-  'TEXT',
-  'VARCHAR(255)',
-  'INTEGER',
-  'BIGINT',
-  'SMALLINT',
-  'SERIAL',
-  'BIGSERIAL',
-  'REAL',
-  'DECIMAL(10,2)',
-  'NUMERIC',
-  'BOOLEAN',
-  'DATE',
-  'DATETIME',
-  'TIMESTAMP',
-  'TIMESTAMPTZ',
-  'TIME',
-  'INTERVAL',
-  'JSON',
-  'JSONB',
-  'UUID',
-  'BYTEA',
-  'INET',
-] as const;
+export const POSTGRES_DESIGNER_TYPES = [ 'TEXT', 'VARCHAR(255)', 'INTEGER', 'BIGINT', 'SMALLINT', 'SERIAL', 'BIGSERIAL', 'REAL', 'DECIMAL(10,2)', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMPTZ', 'TIME', 'INTERVAL', 'JSON', 'JSONB', 'UUID', 'BYTEA', 'INET', ] as const;
 
-export const DESIGNER_TYPES = [
-  'TEXT',
-  'VARCHAR(255)',
-  'INTEGER',
-  'BIGINT',
-  'SMALLINT',
-  'SERIAL',
-  'BIGSERIAL',
-  'REAL',
-  'DECIMAL(10,2)',
-  'NUMERIC',
-  'BOOLEAN',
-  'DATE',
-  'DATETIME',
-  'TIMESTAMP',
-  'TIMESTAMPTZ',
-  'TIME',
-  'INTERVAL',
-  'JSON',
-  'JSONB',
-  'UUID',
-  'BYTEA',
-  'BLOB',
-  'INET',
-] as const;
+export const DESIGNER_TYPES = [ 'TEXT', 'VARCHAR(255)', 'INTEGER', 'BIGINT', 'SMALLINT', 'SERIAL', 'BIGSERIAL', 'REAL', 'DECIMAL(10,2)', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMPTZ', 'TIME', 'INTERVAL', 'JSON', 'JSONB', 'UUID', 'BYTEA', 'BLOB', 'INET', ] as const;
 
-export function getDesignerTypes(dialect: 'sqlite' | 'postgres' = 'sqlite'): readonly string[] {
-  return dialect === 'postgres' ? POSTGRES_DESIGNER_TYPES : SQLITE_DESIGNER_TYPES;
-}
+export const getDesignerTypes = (dialect: 'sqlite' | 'postgres' = 'sqlite'): readonly string[] => dialect === 'postgres' ? POSTGRES_DESIGNER_TYPES : SQLITE_DESIGNER_TYPES;
 
 export type DesignerColumnType = (typeof DESIGNER_TYPES)[number];
 
@@ -93,18 +33,14 @@ export interface FieldValue {
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 
 /** Quote an SQL identifier (table/column name), escaping embedded double quotes. */
-export function quoteIdentifier(identifier: string): string {
-  return `"${String(identifier).replace(/"/g, '""')}"`;
-}
+export const quoteIdentifier = (identifier: string): string => `"${String(identifier).replace(/"/g, '""')}"`;
 
 /** Escape a string for use inside a single-quoted SQL literal. */
-export function escapeString(value: string): string {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
+export const escapeString = (value: string): string => `'${String(value).replace(/'/g, "''")}'`;
 
 /** Render a JS value as a safe SQL literal. */
 export function sqlValue(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL';
+  if (value == null) return 'NULL';
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
   if (typeof value === 'bigint') return String(value);
   if (typeof value === 'boolean') return value ? '1' : '0';
@@ -126,6 +62,7 @@ export interface MappedType {
 export function mapColumnType(type: string): MappedType {
   const t = String(type ?? '').trim().toUpperCase();
   if (!t) return { sqlType: 'TEXT' };
+
   switch (t) {
     case 'INTEGER':
     case 'INT':
@@ -137,7 +74,6 @@ export function mapColumnType(type: string): MappedType {
     case 'BIGSERIAL':
     case 'SMALLSERIAL':
       return { sqlType: t };
-
     case 'TEXT':
     case 'VARCHAR':
     case 'CHAR':
@@ -170,12 +106,10 @@ export function mapColumnType(type: string): MappedType {
     case 'TIMESTAMPTZ':
     case 'TIMESTAMP WITHOUT TIME ZONE':
     case 'TIMESTAMP WITH TIME ZONE':
-      return { sqlType: t };
     case 'TIME':
     case 'TIMETZ':
     case 'TIME WITHOUT TIME ZONE':
     case 'TIME WITH TIME ZONE':
-      return { sqlType: t };
     case 'INTERVAL':
     case 'JSON':
     case 'JSONB':
@@ -183,18 +117,12 @@ export function mapColumnType(type: string): MappedType {
     case 'INET':
     case 'CIDR':
     case 'MACADDR':
-    case 'SERIAL':
-    case 'BIGSERIAL':
-    case 'SMALLSERIAL':
       return { sqlType: t };
     default:
-      if (/^[A-Za-z0-9_(),\s\[\]]+$/.test(t)) {
-        return { sqlType: t };
-      }
+      if (/^[A-Za-z0-9_(),\s\[\]]+$/.test(t)) return { sqlType: t };
       throw new Error(`Unsupported column type: "${type}". Supported types include: ${DESIGNER_TYPES.join(', ')} or standard SQL types.`);
   }
 }
-
 
 function validateIdentifier(kind: string, name: string): void {
   const label = kind.charAt(0).toUpperCase() + kind.slice(1);
@@ -217,8 +145,7 @@ export function formatSqlDefault(raw: string, colType?: string): string {
   if (/^null$/i.test(s)) return 'NULL';
   if (/^[-+]?\d+(\.\d+)?$/.test(s)) return s;
   if (/^(true|false)$/i.test(s)) return s.toUpperCase() === 'TRUE' ? '1' : '0';
-  if (/^'.*'$/s.test(s) || /^".*"$/s.test(s)) return s;
-  if (/^[a-zA-Z_]\w*\s*\(.*\)$/s.test(s)) return s;
+  if (/^'.*'$/s.test(s) || /^".*"$/s.test(s) || /^[a-zA-Z_]\w*\s*\(.*\)$/s.test(s)) return s;
   if (/^CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME$/i.test(s)) return s.toUpperCase();
   const t = (colType || '').toUpperCase();
   if (t.includes('TEXT') || t.includes('CHAR') || t.includes('CLOB') || t.includes('VARCHAR') || t.includes('STRING')) {
@@ -253,8 +180,9 @@ export function renderColumnDef(col: ColumnDef, opts: RenderOptions = {}): strin
 
   const rawDefault = formatSqlDefault(String(col.defaultValue ?? ''), col.type);
   const dflt = rawDefault || mapped.defaultAuto || '';
-  if (dflt) def += ` DEFAULT ${dflt}`;
-  else if (opts.forAddColumn && col.notNull) {
+  if (dflt) {
+    def += ` DEFAULT ${dflt}`;
+  } else if (opts.forAddColumn && col.notNull) {
     throw new Error(`Cannot add "${colName}" as NOT NULL without a default value.`);
   }
 
@@ -286,13 +214,11 @@ export function generateCreateTable(tableName: string, columns: ColumnDef[]): st
     validateIdentifier('column', colName);
     if (seen.has(colName)) throw new Error(`Duplicate column name: "${colName}".`);
     seen.add(colName);
-
-    if (col.primaryKey) pkCount += 1;
+    if (col.primaryKey) pkCount++;
     parts.push(renderColumnDef(col));
   }
 
   if (pkCount > 1) throw new Error('At most one primary key column is allowed.');
-
   return `CREATE TABLE ${quoteIdentifier(table)} (\n  ${parts.join(',\n  ')}\n);`;
 }
 
@@ -300,8 +226,7 @@ export function generateCreateTable(tableName: string, columns: ColumnDef[]): st
 export function generateAddColumn(tableName: string, col: ColumnDef): string {
   const table = String(tableName ?? '').trim();
   validateIdentifier('table', table);
-  const def = renderColumnDef(col, { forAddColumn: true });
-  return `ALTER TABLE ${quoteIdentifier(table)} ADD COLUMN ${def};`;
+  return `ALTER TABLE ${quoteIdentifier(table)} ADD COLUMN ${renderColumnDef(col, { forAddColumn: true })};`;
 }
 
 /** Build an `ALTER TABLE … RENAME TO …` statement. */
@@ -346,8 +271,7 @@ export function generateCreateIndex(tableName: string, index: IndexDef): string 
   if (!cols.length) throw new Error('At least one column is required for an index.');
   for (const c of cols) validateIdentifier('column', c);
   const unique = index.unique ? 'UNIQUE ' : '';
-  let name = String(index?.name ?? '').trim();
-  if (!name) name = `idx_${tableName}_${cols.join('_')}`;
+  const name = String(index?.name ?? '').trim() || `idx_${tableName}_${cols.join('_')}`;
   validateIdentifier('index', name);
   return `CREATE ${unique}INDEX ${quoteIdentifier(name)} ON ${quoteIdentifier(tableName)} (${cols.map(quoteIdentifier).join(', ')});`;
 }

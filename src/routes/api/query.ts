@@ -15,7 +15,6 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
 
     const { kind } = classifySql(rawSql);
 
-    // Multi-statement script detection
     if (db.hasMultipleStatements(rawSql)) {
       if (db.isReadOnly) {
         return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
@@ -25,10 +24,7 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
         const details = await analyzeSqlError(rawSql, r.error ?? 'Script execution failed.', db);
         return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
       }
-      return ok(res, {
-        kind: 'script',
-        message: 'Script executed successfully.',
-      });
+      return ok(res, { kind: 'script', message: 'Script executed successfully.' });
     }
 
     if (kind === 'select' || kind === 'read' || kind === 'count') {
@@ -38,11 +34,9 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
         return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
       }
       const rows = ((r.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
-      const columns = rows.length ? Object.keys(rows[0]) : [];
-      return ok(res, { kind: 'select', columns, rows });
+      return ok(res, { kind: 'select', columns: rows.length ? Object.keys(rows[0]) : [], rows });
     }
 
-    // write statement
     if (db.isReadOnly) {
       return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
     }

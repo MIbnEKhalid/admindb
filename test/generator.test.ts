@@ -1,22 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  generateCreateTable,
-  generateInsert,
-  generateUpdate,
-  generateAddColumn,
-  generateRenameTable,
-  generateRenameColumn,
-  generateDropColumn,
-  generateDropTable,
-  generateCreateIndex,
-  generateDropIndex,
-  renderColumnDef,
-  quoteIdentifier,
-  sqlValue,
-  mapColumnType,
-  getDesignerTypes,
-} from '../src/sql/generator';
+import { generateCreateTable, generateInsert, generateUpdate, generateAddColumn, generateRenameTable, generateRenameColumn, generateDropColumn, generateDropTable, generateCreateIndex, generateDropIndex, renderColumnDef, quoteIdentifier, sqlValue, mapColumnType, getDesignerTypes } from '../src/sql/generator';
 
 test('quoteIdentifier quotes and escapes double quotes', () => {
   assert.equal(quoteIdentifier('user name'), '"user name"');

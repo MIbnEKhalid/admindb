@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { IDatabase, TableInfoData, WhereClause, SQLInputValue } from '../../db/index';
 import type { Logger } from '../../utils/logger';
 import { coerceFormValue, decodePk, errorMessage } from '../../utils/common';
-import { sanitizeColumnPlan, MAX_SEED_ROWS, type ColumnPlan, type ErChainScope } from '../../data/index';
+import { sanitizeColumnPlan, MAX_SEED_ROWS, type ColumnPlan, type ErChainScope, type GenerationPlan, type TableGenerationMode, type TableGenerationSpec, type RelationshipConfig } from '../../data/index';
 import { quoteIdentifier } from '../../sql/generator';
 
 export interface ApiContext {
@@ -10,30 +10,25 @@ export interface ApiContext {
   logger: Logger;
 }
 
-export function ok(res: Response, data: unknown, status = 200): Response {
-  return res.status(status).json({ success: true, data });
-}
+export const ok = (res: Response, data: unknown, status = 200): Response =>
+  res.status(status).json({ success: true, data });
 
-export function fail(res: Response, error: string, status = 400, details?: Record<string, unknown> | null): Response {
-  return res.status(status).json({ success: false, error, ...(details ? { details } : {}) });
-}
+export const fail = (res: Response, error: string, status = 400, details?: Record<string, unknown> | null): Response =>
+  res.status(status).json({ success: false, error, ...(details ? { details } : {}) });
 
-export function wrap(fn: (req: Request, res: Response) => unknown) {
-  return async (req: Request, res: Response): Promise<void> => {
+export const wrap = (fn: (req: Request, res: Response) => unknown) =>
+  async (req: Request, res: Response): Promise<void> => {
     try {
       await fn(req, res);
     } catch (err) {
       fail(res, errorMessage(err), 500);
     }
   };
-}
 
 export async function requireTable(db: IDatabase, table: string): Promise<TableInfoData | null> {
   const info = await db.getTableInfo(table);
-  if (!info.success || !info.data || info.data.columns.length === 0) return null;
-  return info.data;
+  return info.success && info.data?.columns?.length ? info.data : null;
 }
-
 
 export function buildFields(
   info: TableInfoData,
@@ -83,10 +78,11 @@ export function pkWhere(info: TableInfoData, encodedId: string): { column: strin
 
 export const MAX_BULK_ROWS = 1000;
 
-export function parseSeedRequest(body: unknown): { count: number; plan: Record<string, ColumnPlan>; truncate: boolean } {
-  const b = (body ?? {}) as { count?: unknown; plan?: unknown; truncate?: unknown };
+export function parseSeedRequest(body: unknown): { count: number; plan: Record<string, ColumnPlan>; truncate: boolean; seed?: number | null } {
+  const b = (body ?? {}) as { count?: unknown; plan?: unknown; truncate?: unknown; seed?: unknown };
   const count = Math.max(1, Math.min(MAX_SEED_ROWS, Number.parseInt(String(b.count ?? '10'), 10) || 10));
   const truncate = Boolean(b.truncate);
+  const seed = b.seed != null && b.seed !== '' ? Number(b.seed) : null;
   const plan: Record<string, ColumnPlan> = {};
   if (b.plan && typeof b.plan === 'object') {
     for (const [k, v] of Object.entries(b.plan as Record<string, unknown>)) {
@@ -94,7 +90,7 @@ export function parseSeedRequest(body: unknown): { count: number; plan: Record<s
       if (p) plan[k] = p;
     }
   }
-  return { count, plan, truncate };
+  return { count, plan, truncate, seed };
 }
 
 export function parseChainSeedRequest(body: unknown): {
@@ -102,23 +98,37 @@ export function parseChainSeedRequest(body: unknown): {
   counts: Record<string, number>;
   plans: Record<string, Record<string, ColumnPlan>>;
   truncate: boolean;
+  modes?: Record<string, TableGenerationMode>;
+  seed?: number | null;
 } {
   const b = (body ?? {}) as {
     scope?: unknown;
     counts?: unknown;
     plans?: unknown;
     truncate?: unknown;
+    modes?: unknown;
+    seed?: unknown;
   };
   const scope: ErChainScope =
     b.scope === 'ancestors' || b.scope === 'descendants' || b.scope === 'all' || b.scope === 'single'
       ? b.scope
       : 'chain';
   const truncate = Boolean(b.truncate);
+  const seed = b.seed != null && b.seed !== '' ? Number(b.seed) : null;
   const counts: Record<string, number> = {};
   if (b.counts && typeof b.counts === 'object') {
     for (const [table, rawN] of Object.entries(b.counts as Record<string, unknown>)) {
       const n = Number.parseInt(String(rawN), 10);
       if (Number.isFinite(n) && n > 0) counts[table] = Math.min(2000, n);
+    }
+  }
+  const modes: Record<string, TableGenerationMode> = {};
+  if (b.modes && typeof b.modes === 'object') {
+    for (const [table, rawM] of Object.entries(b.modes as Record<string, unknown>)) {
+      const m = String(rawM);
+      if (m === 'generate' || m === 'use_existing' || m === 'generate_if_empty' || m === 'skip') {
+        modes[table] = m;
+      }
     }
   }
   const plans: Record<string, Record<string, ColumnPlan>> = {};
@@ -134,9 +144,57 @@ export function parseChainSeedRequest(body: unknown): {
       }
     }
   }
-  return { scope, counts, plans, truncate };
+  return { scope, counts, plans, truncate, modes, seed };
 }
 
+export function parseUnifiedGenerationPlan(body: unknown): GenerationPlan {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const rawPlan = (b.plan && typeof b.plan === 'object' ? b.plan : b) as Record<string, unknown>;
+
+  const tables: Record<string, TableGenerationSpec> = {};
+  if (rawPlan.tables && typeof rawPlan.tables === 'object') {
+    for (const [tableName, rawSpec] of Object.entries(rawPlan.tables as Record<string, unknown>)) {
+      if (!rawSpec || typeof rawSpec !== 'object') continue;
+      const spec = rawSpec as Record<string, unknown>;
+      const rawMode = String(spec.mode || 'generate');
+      const mode: TableGenerationMode =
+        rawMode === 'use_existing' || rawMode === 'generate_if_empty' || rawMode === 'skip' ? rawMode : 'generate';
+      const rows = Math.max(1, Math.min(MAX_SEED_ROWS, Number.parseInt(String(spec.rows ?? '10'), 10) || 10));
+      const columns: Record<string, ColumnPlan> = {};
+      if (spec.columns && typeof spec.columns === 'object') {
+        for (const [colName, rawColPlan] of Object.entries(spec.columns as Record<string, unknown>)) {
+          const sanitized = sanitizeColumnPlan(rawColPlan);
+          if (sanitized) columns[colName] = sanitized;
+        }
+      }
+      tables[tableName] = {
+        mode,
+        rows,
+        columns,
+        truncate: Boolean(spec.truncate),
+      };
+    }
+  }
+
+  const rawSeed = b.seed !== undefined ? b.seed : (rawPlan.options as Record<string, unknown> | undefined)?.seed;
+  const seed = rawSeed != null && rawSeed !== '' ? Number(rawSeed) : null;
+
+  return {
+    name: typeof rawPlan.name === 'string' ? rawPlan.name : undefined,
+    description: typeof rawPlan.description === 'string' ? rawPlan.description : undefined,
+    rootTable: typeof rawPlan.rootTable === 'string' ? rawPlan.rootTable : undefined,
+    scope: (rawPlan.scope as ErChainScope) || 'chain',
+    tables,
+    relationships: Array.isArray(rawPlan.relationships) ? (rawPlan.relationships as RelationshipConfig[]) : undefined,
+    options: {
+      seed: Number.isFinite(seed) ? seed : null,
+      transaction: rawPlan.options ? Boolean((rawPlan.options as Record<string, unknown>).transaction ?? true) : true,
+      rollbackOnError: rawPlan.options ? Boolean((rawPlan.options as Record<string, unknown>).rollbackOnError ?? true) : true,
+      truncateAll: Boolean(b.truncate || (rawPlan.options as Record<string, unknown> | undefined)?.truncateAll),
+      batchSize: Number((rawPlan.options as Record<string, unknown> | undefined)?.batchSize ?? 500) || 500,
+    },
+  };
+}
 
 export function resolvePkRows(info: TableInfoData, ids: unknown): WhereClause[][] | null {
   const list = Array.isArray(ids) ? ids : ids == null ? [] : [ids];
@@ -185,4 +243,3 @@ export async function computeBulkImpact(
   const total = results.reduce((acc: number, r: { count: number }) => acc + r.count, 0);
   return { references: results, total };
 }
-

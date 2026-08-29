@@ -4,13 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
-import {
-  createRouter,
-  SqliteDatabase,
-  isServerlessEnvironment,
-  createServerlessHandler,
-  createLambdaHandler,
-} from '../src/index';
+import { createRouter, SqliteDatabase, isServerlessEnvironment, createServerlessHandler, createLambdaHandler } from '../src/index';
 import { createLogger } from '../src/utils/logger';
 
 test('Serverless: isServerlessEnvironment detects serverless runtimes', () => {

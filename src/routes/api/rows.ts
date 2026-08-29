@@ -3,19 +3,7 @@ import { parseFilters, normalizeRow } from '../../utils/common';
 import { sniffMimeType, analyzeBlob } from '../../utils/datatype';
 import { toCsv, toJson } from '../../utils/csv';
 import { generateInsert, generateUpdate } from '../../sql/generator';
-import {
-  type ApiContext,
-  ok,
-  fail,
-  wrap,
-  requireTable,
-  buildFields,
-  buildUpdateFields,
-  pkWhere,
-  resolvePkRows,
-  computeBulkImpact,
-  MAX_BULK_ROWS,
-} from './helpers';
+import { type ApiContext, ok, fail, wrap, requireTable, buildFields, buildUpdateFields, pkWhere, resolvePkRows, computeBulkImpact, MAX_BULK_ROWS } from './helpers';
 import type { WhereClause } from '../../db/database';
 
 export function registerRowRoutes(router: Router, ctx: ApiContext): void {
@@ -51,7 +39,6 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { count: r.data });
   }));
 
-  // Fetch single row
   router.get('/api/tables/:table/row/:id', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -63,7 +50,6 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, normalizeRow(r.data));
   }));
 
-  // Serve raw BLOB binary data with auto-detected Content-Type and download support
   router.get('/api/tables/:table/row/:id/blob/:column', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -103,7 +89,6 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     res.end(buf);
   }));
 
-  // Return BLOB metadata and formatted hex dump
   router.get('/api/tables/:table/row/:id/blob/:column/meta', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -124,7 +109,6 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { isNull: false, ...meta });
   }));
 
-  // Update BLOB binary value directly (accepts Base64 or Hex payload)
   router.put('/api/tables/:table/row/:id/blob/:column', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -137,7 +121,6 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (req.body?.data !== undefined) {
       const format = req.body.format || 'base64';
       if (format === 'base64') {
-        // Strip data:image/...;base64, prefix if present
         const base64Str = String(req.body.data).replace(/^data:[^;]+;base64,/, '');
         buf = Buffer.from(base64Str, 'base64');
       } else if (format === 'hex') {
@@ -155,17 +138,14 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Updated BLOB in column "${colName}".`, size: buf.length });
   }));
 
-  // Preview generated INSERT SQL without executing
   router.post('/api/tables/:table/rows/generate', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const fields = buildFields(info, req.body?.values ?? req.body ?? {});
     if (!fields.length) return fail(res, 'No valid column values provided.');
-    const sql = generateInsert(req.params.table, fields);
-    ok(res, { sql });
+    ok(res, { sql: generateInsert(req.params.table, fields) });
   }));
 
-  // Preview generated UPDATE SQL without executing
   const generateUpdateHandler = wrap(async (req: Request, res: Response) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -176,8 +156,7 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const nulls = Array.isArray(req.body?.nulls) ? (req.body.nulls as string[]) : [];
     const fields = buildUpdateFields(info, req.body?.values ?? req.body ?? {}, nulls);
     if (!fields.length) return fail(res, 'No fields to update.');
-    const sql = generateUpdate(req.params.table, fields, where);
-    ok(res, { sql });
+    ok(res, { sql: generateUpdate(req.params.table, fields, where) });
   });
 
   router.put('/api/tables/:table/row/:id/generate', generateUpdateHandler);
@@ -295,13 +274,12 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
         const fkR = await db.getRowsByFk(item.table, ref.from, val);
         if (fkR.success && fkR.data) {
           const rows = fkR.data.rows.map(normalizeRow);
-          const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
           results.push({
             table: item.table,
             from: ref.from,
             to: targetCol,
             value: val,
-            columns,
+            columns: rows.length > 0 ? Object.keys(rows[0]) : [],
             rows,
             count: fkR.data.total,
             total: fkR.data.total,
@@ -340,8 +318,7 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const wheres = resolvePkRows(info, ids);
     if (!wheres) return ok(res, { references: [], total: 0 });
 
-    const impact = await computeBulkImpact(db, info, wheres);
-    ok(res, impact);
+    ok(res, await computeBulkImpact(db, info, wheres));
   }));
 
   router.post('/api/tables/:table/rows/bulk-export', wrap(async (req, res) => {

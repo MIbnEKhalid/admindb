@@ -1,5 +1,11 @@
 export * from './types';
 export * from './datasets';
+export * from './prng';
+export { GeneratorRegistry, generateColumnValue, type GeneratorDefinition, type GeneratorFn, type GeneratorContext } from './registry';
+export * from './templates';
+export * from './schema-graph';
+export * from './validator';
+export * from './profiles';
 export * from './strategies';
 export * from './detector';
 export * from './engine';

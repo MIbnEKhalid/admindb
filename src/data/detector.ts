@@ -1,9 +1,5 @@
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfoData } from '../db/index';
-import {
-  type ColumnGeneratorConfig,
-  type ColumnPlan,
-  type GeneratorStrategyId,
-} from './types';
+import { type ColumnGeneratorConfig, type ColumnPlan, type GeneratorStrategyId } from './types';
 import { fallbackPlanFor, isTextishType, strategiesFor } from './strategies';
 
 export interface OrderingConstraint {
@@ -59,31 +55,31 @@ export function extractCheckExprs(sql: string): string[] {
     while (i < sql.length && depth > 0) {
       const ch = sql[i];
       if (ch === "'") {
-        i += 1;
+        i++;
         while (i < sql.length) {
           if (sql[i] === "'") {
             if (sql[i + 1] === "'") i += 2;
-            else { i += 1; break; }
-          } else i += 1;
+            else { i++; break; }
+          } else i++;
         }
         continue;
       }
       if (ch === '"' || ch === '`' || ch === '[') {
         const close = ch === '[' ? ']' : ch;
-        i += 1;
+        i++;
         while (i < sql.length && sql[i] !== close) {
           if (sql[i] === close && sql[i + 1] === close) i += 2;
-          else i += 1;
+          else i++;
         }
-        i += 1;
+        i++;
         continue;
       }
-      if (ch === '(') depth += 1;
+      if (ch === '(') depth++;
       else if (ch === ')') {
-        depth -= 1;
+        depth--;
         if (depth === 0) break;
       }
-      i += 1;
+      i++;
     }
     out.push(sql.slice(start, i));
   }
@@ -136,14 +132,13 @@ export function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // 2. Direct column IN lists (handles arbitrary parentheses like (((action)IN ('a', 'b'))))
+    // 2. Direct column IN lists
     const colIn = /(?:^|[^\w"'\`\[])(?:\s*\(\s*)*(?:(?:lower|upper|trim|coalesce)\s*\(\s*)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*,\s*[^)]+)?(?:\s*\)\s*)*\s*IN\s*\(([^)]*)\)/gi;
     let mColIn: RegExpExecArray | null;
     while ((mColIn = colIn.exec(expr))) {
       const col = mColIn[1] || mColIn[2] || mColIn[3] || mColIn[4];
       if (!col || ['json_extract', 'strftime', 'datetime', 'date', 'length', 'typeof'].includes(col.toLowerCase())) continue;
-      const matchPos = mColIn.index;
-      if (expr.slice(Math.max(0, matchPos - 5), matchPos).includes('->')) continue;
+      if (expr.slice(Math.max(0, mColIn.index - 5), mColIn.index).includes('->')) continue;
 
       const inContent = mColIn[5];
       const strValues = (inContent.match(/'(?:[^']|'')*'/g) ?? []).map((s) => s.slice(1, -1).replace(/''/g, "'"));
@@ -181,7 +176,7 @@ export function parseChecks(sql: string | null): CheckInfo {
       }
     }
 
-    // 5. Length constraints (e.g. length("UserId") = 12, length(code) >= 6, length(title) <= 100)
+    // 5. Length constraints
     const lenRe1 = /length\s*\(\s*(?:\s*\(\s*)*(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))(?:\s*\)\s*)*\s*\)\s*(=|==|>=|>|<=|<)\s*(\d+)/gi;
     let mLen1: RegExpExecArray | null;
     while ((mLen1 = lenRe1.exec(expr))) {
@@ -256,7 +251,6 @@ function extractJsonColumns(sql: string): { col: string; keys: string[] }[] {
   return out;
 }
 
-/** Name heuristics pattern table for text-ish columns. */
 const TEXT_PATTERNS: [RegExp, (name: string) => ColumnPlan][] = [
   [/avatar|picture|photo|image|img|thumbnail|icon|logo/, () => ({ strategy: 'avatar' })],
   [/company|organization|org|firm|corp|employer|agency/, () => ({ strategy: 'company' })],
@@ -306,7 +300,6 @@ export function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPl
     return { strategy: 'bool' };
   }
   if (type === 'DATE' || /^date|birthdate|dob|birthday/.test(rawName)) {
-
     return name.includes('birth') ? { strategy: 'date', from: '1950-01-01', to: '2000-12-31' } : { strategy: 'date', from: '2020-01-01', to: '2026-12-31' };
   }
   if (type === 'DATETIME' || type === 'TIMESTAMP' || isTimestampName(name)) {
@@ -336,7 +329,6 @@ export function detectPlan(col: ColumnInfo, fk: ForeignKeyInfo | null): ColumnPl
 
   if (type === 'BLOB') return { strategy: 'bytes', minLen: 8, maxLen: 32 };
 
-  // Explicit text heuristics checked in exact order
   if (/currency|curr|currencycode/.test(name)) return { strategy: 'currency' };
   if (/countrycode|countryiso|isocountry|cca2/.test(name)) return { strategy: 'countryCode' };
   if (/state|province|region/.test(name) && !/status|statement/.test(name)) return { strategy: 'state' };
@@ -381,13 +373,18 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
     let uqM: RegExpExecArray | null;
     while ((uqM = uqRe.exec(info.sql))) {
       const rawCols = uqM[1].split(',').map((s) => s.trim().replace(/[`"\[\]]/g, ''));
-      if (rawCols.length === 1 && rawCols[0]) {
-        uniqueCols.add(rawCols[0]);
-      }
+      if (rawCols.length === 1 && rawCols[0]) uniqueCols.add(rawCols[0]);
     }
   }
 
   const checkInfo = parseChecks(info.sql ?? null);
+  const colNames = info.columns.map((c) => c.name.toLowerCase());
+  const hasFirstName = colNames.includes('first_name') || colNames.includes('firstname');
+  const hasLastName = colNames.includes('last_name') || colNames.includes('lastname');
+  const fullNameCol = info.columns.find((c) => {
+    const lc = c.name.toLowerCase();
+    return lc === 'full_name' || lc === 'fullname' || lc === 'name' || lc === 'customer_name';
+  });
 
   return info.columns.map((col) => {
     const fk = fkByColumn.get(col.name) ?? null;
@@ -434,6 +431,18 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
       }
     }
 
+    if (defaultPlan.strategy === 'email' && !col.pk) {
+      if (hasFirstName && hasLastName) {
+        defaultPlan = { strategy: 'template', template: '{{first_name}}.{{last_name}}@example.com' };
+      } else if (fullNameCol && fullNameCol.name !== col.name) {
+        defaultPlan = { strategy: 'template', template: `{{${fullNameCol.name}}}@example.com` };
+      }
+    }
+
+    if ((col.name.toLowerCase() === 'full_name' || col.name.toLowerCase() === 'fullname') && hasFirstName && hasLastName && !col.pk) {
+      defaultPlan = { strategy: 'template', template: '{{first_name}} {{last_name}}' };
+    }
+
     if (!strategies.some((s) => s.id === defaultPlan.strategy) || (!col.pk && col.notnull && col.dflt_value == null && (defaultPlan.strategy === 'skip' || defaultPlan.strategy === 'null'))) {
       defaultPlan = fallbackPlanFor(col);
     }
@@ -442,7 +451,7 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
       name: col.name,
       type: col.type,
       pk: col.pk > 0,
-      notnull: !!col.notnull,
+      notnull: Boolean(col.notnull),
       hasDefault: col.dflt_value != null,
       unique,
       fk,
@@ -452,7 +461,7 @@ export function buildColumnConfigs(info: TableInfoData): ColumnGeneratorConfig[]
   });
 }
 
-const STR_PLAN_KEYS = ['value', 'from', 'to', 'prefix', 'suffix', 'pattern', 'format'] as const;
+const STR_PLAN_KEYS = ['value', 'from', 'to', 'prefix', 'suffix', 'pattern', 'format', 'template', 'refTable', 'refColumn'] as const;
 const NUM_PLAN_KEYS = ['min', 'max', 'precision', 'minLen', 'maxLen', 'nullPct', 'start', 'step'] as const;
 
 export function sanitizeColumnPlan(raw: unknown): ColumnPlan | null {
@@ -461,24 +470,23 @@ export function sanitizeColumnPlan(raw: unknown): ColumnPlan | null {
   if (typeof r.strategy !== 'string' || !r.strategy) return null;
 
   const out: ColumnPlan = { strategy: r.strategy as GeneratorStrategyId };
-  if (r.values !== undefined && r.values !== null && Array.isArray(r.values)) {
-    out.values = (r.values as unknown[]).map((x) => String(x));
+  if (Array.isArray(r.values)) {
+    out.values = (r.values as unknown[]).map(String);
+  }
+  if (r.unique !== undefined && r.unique !== null) {
+    out.unique = Boolean(r.unique);
   }
   if (r.jsonKeys !== undefined && r.jsonKeys !== null) {
     const rawKeys = Array.isArray(r.jsonKeys) ? (r.jsonKeys as unknown[]).map(String) : String(r.jsonKeys).split(/[,;]/);
     out.jsonKeys = rawKeys.map((s) => s.trim()).filter(Boolean);
   }
   for (const key of STR_PLAN_KEYS) {
-    if (r[key] !== undefined && r[key] !== null) {
-      out[key] = String(r[key]);
-    }
+    if (r[key] !== undefined && r[key] !== null) out[key] = String(r[key]);
   }
   for (const key of NUM_PLAN_KEYS) {
     if (r[key] !== undefined && r[key] !== null) {
       const n = Number(r[key]);
-      if (Number.isFinite(n)) {
-        out[key] = n;
-      }
+      if (Number.isFinite(n)) out[key] = n;
     }
   }
 

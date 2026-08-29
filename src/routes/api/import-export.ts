@@ -6,8 +6,6 @@ import { type ApiContext, ok, fail, wrap, requireTable } from './helpers';
 export function registerImportExportRoutes(router: Router, ctx: ApiContext): void {
   const { db } = ctx;
 
-  // ---- Export / Import ---------------------------------------------------
-
   router.get('/api/tables/:table/export', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -51,8 +49,7 @@ export function registerImportExportRoutes(router: Router, ctx: ApiContext): voi
       for (let i = 0; i < header.length; i++) {
         const col = header[i];
         if (!typeMap.has(col)) continue;
-        const raw = line[i] ?? '';
-        fields.push({ column: col, value: coerceFormValue(raw, typeMap.get(col)!) });
+        fields.push({ column: col, value: coerceFormValue(line[i] ?? '', typeMap.get(col)!) });
       }
       return fields;
     });

@@ -1,18 +1,11 @@
 import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
-export function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
+export const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** Check if a given string or target is a PostgreSQL connection string */
-export function isPostgresConnectionString(target: unknown): boolean {
-  return (
-    typeof target === 'string' &&
-    (target.startsWith('postgres://') || target.startsWith('postgresql://'))
-  );
-}
+export const isPostgresConnectionString = (target: unknown): boolean =>
+  typeof target === 'string' && /^(postgres|postgresql):\/\//.test(target);
 
 /** Mask credentials/password in a database connection URI for safe display and logging */
 export function sanitizeConnectionString(conn: string): string {
@@ -27,32 +20,25 @@ export function sanitizeConnectionString(conn: string): string {
   return conn.replace(/:([^:@]+)@/, ':****@');
 }
 
-
 /**
  * True when `p` is equal to `root` or lives inside it (both treated as
  * absolute). Used to sandbox the filesystem file-browser to an allowed folder.
  * Resolves symlinks and rejects null-byte injections.
  */
 export function isPathWithinRoot(root: string, p: string): boolean {
-  if (!root || !p || typeof root !== 'string' || typeof p !== 'string') return false;
-  if (p.includes('\0') || root.includes('\0')) return false;
-
-  const absRoot = path.resolve(root);
-  const absPath = path.resolve(p);
-
-  let realRoot = absRoot;
-  let realPath = absPath;
-  try {
-    if (existsSync(absRoot)) realRoot = realpathSync(absRoot);
-  } catch {}
-  try {
-    if (existsSync(absPath)) realPath = realpathSync(absPath);
-  } catch {}
-
-  const rel = path.relative(realRoot, realPath);
+  if (!root || !p || typeof root !== 'string' || typeof p !== 'string' || p.includes('\0') || root.includes('\0')) {
+    return false;
+  }
+  const resolveReal = (target: string) => {
+    const abs = path.resolve(target);
+    try {
+      if (existsSync(abs)) return realpathSync(abs);
+    } catch {}
+    return abs;
+  };
+  const rel = path.relative(resolveReal(root), resolveReal(p));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
-
 
 /** Operators understood by the structured (type-aware) filter conditions. */
 export type FilterOp =
@@ -121,32 +107,25 @@ export function filtersToQS(filters: RowFilters | undefined): string {
     if (v === undefined || v === null) continue;
     if (Array.isArray(v)) {
       if (v.length) out[k] = v;
-      continue;
-    }
-    if (typeof v === 'object') {
+    } else if (typeof v === 'object') {
       if (Object.keys(v).length) out[k] = v;
-      continue;
+    } else if (String(v).trim() !== '') {
+      out[k] = String(v).trim();
     }
-    if (String(v).trim() !== '') out[k] = String(v).trim();
   }
-  const keys = Object.keys(out);
-  if (!keys.length) return '';
-  return 'f=' + encodeURIComponent(JSON.stringify(out));
+  return Object.keys(out).length ? `f=${encodeURIComponent(JSON.stringify(out))}` : '';
 }
 
 /** Internal tables (kept out of user-facing pickers) start with an underscore. */
-export function isInternalTable(name: string): boolean {
-  return name.startsWith('_');
-}
+export const isInternalTable = (name: string): boolean => name.startsWith('_');
 
 /** Encode primary-key values into a single URL path segment (comma-joined, URL-encoded). */
-export function encodePk(values: unknown[]): string {
-  return values.map((v) => encodeURIComponent(v == null ? '' : String(v))).join(',');
-}
+export const encodePk = (values: unknown[]): string =>
+  values.map((v) => encodeURIComponent(v == null ? '' : String(v))).join(',');
 
 /** Decode a primary-key path segment back into individual values. */
-export function decodePk(encoded: string): string[] {
-  return String(encoded)
+export const decodePk = (encoded: string): string[] =>
+  String(encoded)
     .split(',')
     .map((s) => {
       try {
@@ -155,21 +134,15 @@ export function decodePk(encoded: string): string[] {
         return s;
       }
     });
-}
 
 /** Normalize a single cell for JSON / display (BLOB → 0x-hex string, undefined → null). */
 export function normalizeCell(value: unknown): unknown {
   if (value instanceof Uint8Array || Buffer.isBuffer(value)) {
     return `0x${Buffer.from(value).toString('hex')}`;
   }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (typeof value === 'object' && value !== null) {
-    return JSON.stringify(value);
-  }
-  if (value === undefined) return null;
-  return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return value ?? null;
 }
 
 /** Normalize every cell in a row. */
@@ -188,8 +161,8 @@ export function normalizeRow(row: Record<string, unknown>): Record<string, unkno
  * - BLOB / BYTEA → Buffer (0x-hex, \x-hex, or raw text)
  */
 export function coerceFormValue(raw: unknown, columnType: string, dialect: 'sqlite' | 'postgres' = 'sqlite'): unknown {
-  const type = (columnType || '').toUpperCase();
   if (raw === undefined || raw === null) return null;
+  const type = (columnType || '').toUpperCase();
 
   if (type === 'BOOLEAN' || type === 'BOOL') {
     const s = String(raw).trim().toLowerCase();
@@ -217,30 +190,23 @@ export function coerceFormValue(raw: unknown, columnType: string, dialect: 'sqli
 
   if (type === 'BLOB' || type === 'BYTEA') {
     const s = String(raw);
-    if (/^0x[0-9a-f]*$/i.test(s)) return Buffer.from(s.slice(2), 'hex');
-    if (/^\\x[0-9a-f]*$/i.test(s)) return Buffer.from(s.slice(2), 'hex');
-    return Buffer.from(s, 'utf8');
+    return /^(0x|\\x)[0-9a-f]*$/i.test(s) ? Buffer.from(s.slice(2), 'hex') : Buffer.from(s, 'utf8');
   }
 
   if (type === 'JSON' || type === 'JSONB') {
     const s = String(raw).trim();
-    if (s === '') return null;
-    return s;
+    return s === '' ? null : s;
   }
 
   if (type.endsWith('[]') || type.startsWith('_') || type.includes('ARRAY')) {
     if (Array.isArray(raw)) return raw;
     const s = String(raw).trim();
-    if (s === '') return null;
-    return s;
+    return s === '' ? null : s;
   }
 
   const s = String(raw);
-  if (s === '') return null;
-  return s;
+  return s === '' ? null : s;
 }
-
-
 
 /** Format byte size to human readable string (e.g. 1.2 MB). */
 export function formatBytes(bytes: number): string {
@@ -252,7 +218,5 @@ export function formatBytes(bytes: number): string {
 }
 
 /** Truncate a string with an ellipsis if it exceeds maxLength. */
-export function truncate(str: string, maxLength: number): string {
-  if (!str || str.length <= maxLength) return str;
-  return `${str.slice(0, maxLength)}…`;
-}
+export const truncate = (str: string, maxLength: number): string =>
+  !str || str.length <= maxLength ? str : `${str.slice(0, maxLength)}…`;

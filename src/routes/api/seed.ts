@@ -1,45 +1,72 @@
 import type { Router } from 'express';
 import { quoteIdentifier } from '../../sql/generator';
-import {
-  buildColumnConfigs,
-  buildSeedInsertSql,
-  generateRows,
-  getErChainConfig,
-  generateChainRows,
-  executeChainInsert,
-  MAX_SEED_ROWS,
-  type ErChainScope,
-} from '../../data/index';
-import {
-  type ApiContext,
-  ok,
-  fail,
-  wrap,
-  requireTable,
-  parseSeedRequest,
-  parseChainSeedRequest,
-} from './helpers';
+import { buildColumnConfigs, buildSeedInsertSql, generateRows, getErChainConfig, generateChainRows, executeChainInsert, MAX_SEED_ROWS, SeedEngine, validateGenerationPlan, listSeedProfiles, saveSeedProfile, deleteSeedProfile, type ErChainScope } from '../../data/index';
+import { type ApiContext, ok, fail, wrap, requireTable, parseSeedRequest, parseChainSeedRequest, parseUnifiedGenerationPlan } from './helpers';
 
 export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
   const { db } = ctx;
 
-  // ---- Single Table Data generator / seeder ---------------------------------
+  // ---- Unified Generation Specification Endpoints -------------------------
 
-  // Per-column generator config (strategies + detected defaults) for the "Seed data" page
-  router.get('/api/tables/:table/seed/config', wrap(async (req, res) => {
+  router.post('/api/seed/validate', wrap(async (req, res) => {
+    ok(res, await validateGenerationPlan(db, parseUnifiedGenerationPlan(req.body)));
+  }));
+
+  router.post('/api/seed/preview', wrap(async (req, res) => {
+    ok(res, await SeedEngine.executePlan(db, parseUnifiedGenerationPlan(req.body), { previewLimit: 50 }));
+  }));
+
+  router.post('/api/seed/generate', wrap(async (req, res) => {
+    ok(res, await SeedEngine.executePlan(db, parseUnifiedGenerationPlan(req.body)));
+  }));
+
+  router.post('/api/seed/execute', wrap(async (req, res) => {
+    const plan = parseUnifiedGenerationPlan(req.body);
+    const truncate = Boolean(req.body?.truncate || plan.options?.truncateAll);
+    const gen = await SeedEngine.executePlan(db, plan, { truncateAll: truncate });
+    const exec = await executeChainInsert(db, gen, truncate);
+    ok(
+      res,
+      {
+        message: `${truncate ? 'Cleared tables and seeded' : 'Seeded'} ${exec.totalInserted} row(s) across ${Object.keys(exec.inserted).length} table(s) in ${exec.elapsedMs}ms.`,
+        inserted: exec.inserted,
+        totalInserted: exec.totalInserted,
+        elapsedMs: exec.elapsedMs,
+        warnings: exec.warnings,
+      },
+      201,
+    );
+  }));
+
+  router.get('/api/seed/profiles', wrap(async (_req, res) => {
+    ok(res, await listSeedProfiles(db));
+  }));
+
+  router.post('/api/seed/profiles', wrap(async (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    if (!name) return fail(res, 'Profile name is required.', 400);
+    const description = req.body?.description ? String(req.body.description) : undefined;
+    const id = req.body?.id ? String(req.body.id) : undefined;
+    const plan = parseUnifiedGenerationPlan(req.body);
+    ok(res, await saveSeedProfile(db, name, plan, description, id), 201);
+  }));
+
+  router.delete('/api/seed/profiles/:id', wrap(async (req, res) => {
+    const success = await deleteSeedProfile(db, req.params.id);
+    ok(res, { success, id: req.params.id });
+  }));
+
+  // ---- Single Table Data generator / seeder (Backward Compatible) ----------
+
+  const getSeedConfigHandler = wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     ok(res, { table: req.params.table, columns: buildColumnConfigs(info), maxRows: MAX_SEED_ROWS });
-  }));
+  });
 
-  // Legacy alias for seed config
-  router.get('/api/tables/:table/seed/plan', wrap(async (req, res) => {
-    const info = await requireTable(db, req.params.table);
-    if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    ok(res, { table: req.params.table, columns: buildColumnConfigs(info), maxRows: MAX_SEED_ROWS });
-  }));
+  router.get('/api/tables/:table/seed/config', getSeedConfigHandler);
+  router.get('/api/tables/:table/seed/plan', getSeedConfigHandler);
 
-  // Preview: generate the rows and return the INSERT statements without executing them
   router.post('/api/tables/:table/seed/generate', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -55,7 +82,6 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  // Interactive grid preview
   router.post('/api/tables/:table/seed/preview', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -69,7 +95,6 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  // Insert the generated rows inside a single transaction
   router.post('/api/tables/:table/seed', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -101,9 +126,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     );
   }));
 
-  // ---- Advanced ER Chain Relational Seeder ---------------------------------
+  // ---- Advanced ER Chain Relational Seeder (Backward Compatible) -----------
 
-  // GET /api/tables/:table/seed/chain: Resolve ER chain graph & topological execution nodes
   router.get('/api/tables/:table/seed/chain', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -112,44 +136,37 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
       rawScope === 'ancestors' || rawScope === 'descendants' || rawScope === 'all' || rawScope === 'single'
         ? rawScope
         : 'chain';
-    const config = await getErChainConfig(db, req.params.table, scope);
-    ok(res, config);
+    ok(res, await getErChainConfig(db, req.params.table, scope));
   }));
 
-  // POST /api/tables/:table/seed/chain/preview: Generate multi-table grid preview rows with FK propagation
   router.post('/api/tables/:table/seed/chain/preview', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    const { scope, counts, plans } = parseChainSeedRequest(req.body);
+    const { scope, counts, plans, modes, seed } = parseChainSeedRequest(req.body);
     const config = await getErChainConfig(db, req.params.table, scope);
 
-    // Limit preview counts
     const previewCounts: Record<string, number> = {};
     for (const t of config.tables) {
       previewCounts[t.name] = Math.min(50, counts[t.name] ?? t.suggestedCount ?? 10);
     }
 
-    const gen = await generateChainRows(db, config, plans, previewCounts);
-    ok(res, gen);
+    ok(res, await generateChainRows(db, config, plans, previewCounts, false, modes, seed));
   }));
 
-  // POST /api/tables/:table/seed/chain/generate: Generate complete SQL script for the chain
   router.post('/api/tables/:table/seed/chain/generate', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    const { scope, counts, plans } = parseChainSeedRequest(req.body);
+    const { scope, counts, plans, modes, seed } = parseChainSeedRequest(req.body);
     const config = await getErChainConfig(db, req.params.table, scope);
-    const gen = await generateChainRows(db, config, plans, counts);
-    ok(res, gen);
+    ok(res, await generateChainRows(db, config, plans, counts, false, modes, seed));
   }));
 
-  // POST /api/tables/:table/seed/chain: Execute atomic multi-table seeding with reverse-topological truncate
   router.post('/api/tables/:table/seed/chain', wrap(async (req, res) => {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
-    const { scope, counts, plans, truncate } = parseChainSeedRequest(req.body);
+    const { scope, counts, plans, truncate, modes, seed } = parseChainSeedRequest(req.body);
     const config = await getErChainConfig(db, req.params.table, scope);
-    const gen = await generateChainRows(db, config, plans, counts, truncate);
+    const gen = await generateChainRows(db, config, plans, counts, truncate, modes, seed);
     const exec = await executeChainInsert(db, gen, truncate);
     ok(
       res,
@@ -164,7 +181,6 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     );
   }));
 
-  // Global ER Chain Seed endpoints (for seeding from ER diagram or global DB tools)
   router.get('/api/seed/chain', wrap(async (req, res) => {
     const rawRoot = String(req.query.table ?? '');
     const rawScope = String(req.query.scope ?? (rawRoot ? 'chain' : 'all'));
@@ -174,17 +190,16 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
         : 'all';
     const rootTable = rawRoot || (await db.listTables()).data?.[0]?.name || '';
     if (!rootTable) return fail(res, 'No tables found in database.', 404);
-    const config = await getErChainConfig(db, rootTable, scope);
-    ok(res, config);
+    ok(res, await getErChainConfig(db, rootTable, scope));
   }));
 
   router.post('/api/seed/chain', wrap(async (req, res) => {
-    const { scope, counts, plans, truncate } = parseChainSeedRequest(req.body);
+    const { scope, counts, plans, truncate, modes, seed } = parseChainSeedRequest(req.body);
     const rawRoot = String(req.body?.rootTable ?? '');
     const rootTable = rawRoot || (await db.listTables()).data?.[0]?.name || '';
     if (!rootTable) return fail(res, 'No tables found in database.', 404);
     const config = await getErChainConfig(db, rootTable, scope);
-    const gen = await generateChainRows(db, config, plans, counts, truncate);
+    const gen = await generateChainRows(db, config, plans, counts, truncate, modes, seed);
     const exec = await executeChainInsert(db, gen, truncate);
     ok(
       res,
@@ -199,4 +214,3 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     );
   }));
 }
-

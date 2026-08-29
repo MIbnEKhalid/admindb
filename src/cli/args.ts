@@ -1,8 +1,5 @@
 /**
  * Command-line argument parsing for the standalone `admindb` server.
- *
- * The CLI supports flags to pick the port/host, open a single database file,
- * manage a folder of databases, or pass a JSON config file with multiple connections.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -15,37 +12,21 @@ const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 export interface CliArgs {
   help: boolean;
   version: boolean;
-  /** Bind host/interface (`--host`, `-H`). */
   host?: string;
-  /** Port to listen on (`--port`, `-p`). */
   port?: number;
-  /** A single database file to open directly (`--open`/`--db`/`--file`/`--db-path`). */
   dbPath?: string;
-  /** PostgreSQL or database connection string (`--connection`/`--conn`/`--pg`). */
   connection?: string;
-  /** Database connections map (from JSON config file). */
   connections?: Record<string, string>;
-  /** Path to a JSON configuration file (`--config`, `-C`). */
   configPath?: string;
-  /** Directory of database files to manage (`--dir`/`--folder`/`--db-dir`, `-d`). */
   dbDir?: string;
-  /** Explicit database file paths (`--files`/`--db-files`). */
   dbFiles?: string[];
-  /** URL prefix to serve under (`--base-path`/`--base`, `-b`). */
   basePath?: string;
-  /** Log level filter (`--log-level`, `-l`). */
   logLevel?: LogLevel;
-  /** Open databases read-only (`--readonly`, `-r`). */
   readonly: boolean;
-  /** Serverless mode (enforces read-only database operations) (`--serverless`). */
   serverless?: boolean;
-  /** Whether authentication is enabled (defaults to true). Set to false via `--no-auth`. */
   auth?: boolean;
-  /** Custom admin username (`--username`/`--user`/`--auth-username`, `-u`). */
   authUsername?: string;
-  /** Custom admin password (`--password`/`--pass`/`--auth-password`, `-P`). */
   authPassword?: string;
-  /** Secret key for session cookie signing (`--auth-secret`/`--secret`). */
   authSecret?: string;
 }
 
@@ -106,43 +87,34 @@ function packageVersion(): string {
     ];
     for (const p of candidates) {
       if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf8');
-        const pkg = JSON.parse(raw) as { version?: string };
+        const pkg = JSON.parse(readFileSync(p, 'utf8')) as { version?: string };
         if (pkg.version) return pkg.version;
       }
     }
-    return '';
-  } catch {
-    return '';
-  }
+  } catch {}
+  return '';
 }
 
-/** The installed `admindb` package version (from package.json), or '' when unknown. */
-export function getPackageVersion(): string {
-  return packageVersion();
-}
-
-export function versionText(): string {
+export const getPackageVersion = (): string => packageVersion();
+export const versionText = (): string => {
   const v = packageVersion();
   return v ? `admindb v${v}` : 'admindb';
-}
+};
 
-/** True when a token is exactly a flag or `flag=value` (for long flags). */
-function isFlag(tok: string, ...names: string[]): boolean {
-  return names.includes(tok) || names.some((n) => n.length > 2 && tok.startsWith(n + '='));
-}
+const isFlag = (tok: string, ...names: string[]): boolean =>
+  names.includes(tok) || names.some((n) => n.length > 2 && tok.startsWith(`${n}=`));
 
 export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
   const args: CliArgs = { help: false, version: false, readonly: false };
   const positional: string[] = [];
   let i = 0;
 
-  const invalid = (error: string): { args: CliArgs; error?: string } => ({ args, error });
+  const invalid = (error: string) => ({ args, error });
 
   const takeValue = (flag: string): string | undefined => {
     const eq = argv[i].indexOf('=');
     if (eq !== -1) return argv[i].slice(eq + 1);
-    i += 1;
+    i++;
     return argv[i];
   };
 
@@ -197,9 +169,7 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       const v = takeValue('--open');
       if (v === undefined) return invalid('Missing value for --open / --db-path.');
       args.dbPath = v;
-      if (isPostgresConnectionString(v)) {
-        args.connection = v;
-      }
+      if (isPostgresConnectionString(v)) args.connection = v;
     } else if (isFlag(tok, '-d', '--dir', '--folder', '--db-dir')) {
       const v = takeValue('--dir');
       if (v === undefined) return invalid('Missing value for --dir / --db-dir.');
@@ -207,10 +177,7 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
     } else if (isFlag(tok, '--files', '--db-files')) {
       const v = takeValue('--files');
       if (v === undefined) return invalid('Missing value for --files / --db-files.');
-      args.dbFiles = v
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      args.dbFiles = v.split(',').map((s) => s.trim()).filter(Boolean);
     } else if (isFlag(tok, '-b', '--base-path', '--base')) {
       const v = takeValue('--base-path');
       if (v === undefined) return invalid('Missing value for --base-path.');
@@ -248,7 +215,7 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
     } else {
       positional.push(tok);
     }
-    i += 1;
+    i++;
   }
 
   if (positional.length > 1) {
@@ -290,9 +257,7 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
           args.dbPath = p;
         }
       } catch (err) {
-        if (p.endsWith('.json')) {
-          return invalid((err as Error).message);
-        }
+        if (p.endsWith('.json')) return invalid((err as Error).message);
         args.dbPath = p;
       }
     } else {

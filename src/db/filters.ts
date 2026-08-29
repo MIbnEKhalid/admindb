@@ -2,18 +2,10 @@ import { quoteIdentifier } from '../sql/generator';
 import type { FilterCondition, RowFilters, SQLInputValue } from './types';
 
 /** Escape LIKE wildcards so user filter text is matched literally. */
-export function escapeLike(s: string): string {
-  return String(s).replace(/[\\%_]/g, (m) => '\\' + m);
-}
+export const escapeLike = (s: string): string => String(s).replace(/[\\%_]/g, '\\$&');
 
 /**
  * Build a parameterized WHERE clause from per-column filters.
- *
- * A filter value is either:
- *   - the legacy string syntax: `=value` exact, `!=value`, `>value`, `>=value`,
- *     `<value`, `<=value`, `value*` prefix, anything else → substring match; or
- *   - a structured `FilterCondition` (or array of them) produced by the
- *     type-aware filter form (FK dropdowns, boolean toggles, date/number ranges).
  */
 export function pushFilterCondition(
   conds: string[],
@@ -49,25 +41,21 @@ export function pushFilterCondition(
       break;
     case 'like':
       conds.push(`${quotedCol} LIKE ? ESCAPE '\\'`);
-      params.push('%' + escapeLike(value) + '%');
+      params.push(`%${escapeLike(value)}%`);
       break;
     case 'prefix':
       conds.push(`${quotedCol} LIKE ? ESCAPE '\\'`);
-      params.push(escapeLike(value) + '%');
+      params.push(`${escapeLike(value)}%`);
       break;
     case 'between':
-      conds.push(`${quotedCol} >= ?`);
-      params.push(value);
-      conds.push(`${quotedCol} <= ?`);
-      params.push(String(c.max ?? ''));
+      conds.push(`${quotedCol} >= ?`, `${quotedCol} <= ?`);
+      params.push(value, String(c.max ?? ''));
       break;
     case 'null':
       conds.push(`${quotedCol} IS NULL`);
       break;
     case 'notnull':
       conds.push(`${quotedCol} IS NOT NULL`);
-      break;
-    default:
       break;
   }
 }
@@ -79,6 +67,7 @@ export function buildFilterClause(
   const conds: string[] = [];
   const params: SQLInputValue[] = [];
   const colSet = new Set(availableCols);
+
   for (const [col, raw] of Object.entries(filters ?? {})) {
     if (!colSet.has(col)) continue;
     const q = quoteIdentifier(col);
@@ -94,35 +83,23 @@ export function buildFilterClause(
       continue;
     }
 
-    // Legacy string syntax.
     const value = String(raw ?? '').trim();
-    if (value === '') continue;
-    if (value.startsWith('>=')) {
-      conds.push(`${q} >= ?`);
-      params.push(value.slice(2).trim());
-    } else if (value.startsWith('<=')) {
-      conds.push(`${q} <= ?`);
-      params.push(value.slice(2).trim());
-    } else if (value.startsWith('!=')) {
-      conds.push(`${q} != ?`);
-      params.push(value.slice(2).trim());
-    } else if (value.startsWith('=')) {
-      conds.push(`${q} = ?`);
-      params.push(value.slice(1).trim());
-    } else if (value.startsWith('>')) {
-      conds.push(`${q} > ?`);
-      params.push(value.slice(1).trim());
-    } else if (value.startsWith('<')) {
-      conds.push(`${q} < ?`);
-      params.push(value.slice(1).trim());
+    if (!value) continue;
+
+    const opMatch = value.match(/^(>=|<=|!=|=|>|<)(.*)$/);
+    if (opMatch) {
+      const [, op, val] = opMatch;
+      conds.push(`${q} ${op} ?`);
+      params.push(val.trim());
     } else if (value.endsWith('*')) {
       conds.push(`${q} LIKE ? ESCAPE '\\'`);
-      params.push(escapeLike(value.slice(0, -1)) + '%');
+      params.push(`${escapeLike(value.slice(0, -1))}%`);
     } else {
       conds.push(`${q} LIKE ? ESCAPE '\\'`);
-      params.push('%' + escapeLike(value) + '%');
+      params.push(`%${escapeLike(value)}%`);
     }
   }
+
   return { where: conds.length ? ` WHERE ${conds.join(' AND ')}` : '', params };
 }
 
@@ -134,6 +111,7 @@ export function convertPlaceholdersToPostgres(sql: string, startIdx = 1): string
   let idx = startIdx;
   let inString = false;
   let result = '';
+
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (ch === "'") {
@@ -152,4 +130,3 @@ export function convertPlaceholdersToPostgres(sql: string, startIdx = 1): string
   }
   return result;
 }
-

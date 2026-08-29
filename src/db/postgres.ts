@@ -2,26 +2,7 @@ import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import type { Logger } from '../utils/logger';
 import { quoteIdentifier, type ColumnDef, type IndexDef } from '../sql/generator';
 import { errorMessage, sanitizeConnectionString } from '../utils/common';
-import type {
-  ColumnDetail,
-  ColumnInfo,
-  DatabaseDialect,
-  ForeignKeyInfo,
-  IDatabase,
-  IndexInfo,
-  MutationResult,
-  PostgresOptions,
-  QueryOptions,
-  ReferencingTableInfo,
-  Result,
-  RowFilters,
-  SavedQuery,
-  SchemaInfo,
-  SQLInputValue,
-  TableInfoData,
-  TableListItem,
-  WhereClause,
-} from './types';
+import type { ColumnDetail, ColumnInfo, DatabaseDialect, ForeignKeyInfo, IDatabase, IndexInfo, MutationResult, PostgresOptions, QueryOptions, ReferencingTableInfo, Result, RowFilters, SavedQuery, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
 import { INTERNAL_TABLES } from './types';
 import { buildFilterClause, convertPlaceholdersToPostgres } from './filters';
 
@@ -56,22 +37,14 @@ export class PostgresDatabase implements IDatabase {
 
         if (sslMode === 'disable') {
           sslConfig = false;
-        } else if (sslConfig === undefined) {
-          // Auto-enable SSL for remote/cloud hosts (e.g. Neon, Supabase, Render, Railway, AWS RDS, etc.)
-          // or whenever sslmode is specified or not explicitly local
-          if (sslMode === 'require' || sslMode === 'prefer' || sslMode === 'no-verify' || !isLocal) {
-            sslConfig = { rejectUnauthorized: false };
-          }
+        } else if (sslConfig === undefined && (sslMode === 'require' || sslMode === 'prefer' || sslMode === 'no-verify' || !isLocal)) {
+          sslConfig = { rejectUnauthorized: false };
         }
-      } catch {
-        /* ignore URL parse error */
-      }
+      } catch {}
     } else if (opts.host && sslConfig === undefined) {
       const host = opts.host.toLowerCase();
       const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
-      if (!isLocal) {
-        sslConfig = { rejectUnauthorized: false };
-      }
+      if (!isLocal) sslConfig = { rejectUnauthorized: false };
     }
 
     const poolConfig: PoolConfig = {
@@ -93,9 +66,6 @@ export class PostgresDatabase implements IDatabase {
       : `${opts.user || 'postgres'}@${opts.host || 'localhost'}:${opts.port || 5432}/${opts.database || 'postgres'}`;
 
     this.pool = new Pool(poolConfig);
-
-
-
     this.pool.on('error', (err) => {
       this.logger.error(`Unexpected PostgreSQL client error: ${errorMessage(err)}`);
     });
@@ -123,8 +93,7 @@ export class PostgresDatabase implements IDatabase {
 
   private async tryRun<T>(fn: () => Promise<T>): Promise<Result<T>> {
     try {
-      const data = await fn();
-      return { success: true, data };
+      return { success: true, data: await fn() };
     } catch (err) {
       const msg = errorMessage(err);
       this.logger.error(msg);
@@ -132,7 +101,6 @@ export class PostgresDatabase implements IDatabase {
     }
   }
 
-  /** Run a callback inside an atomic transaction on a dedicated client. */
   private async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<Result<T>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     const client = await this.pool.connect();
@@ -142,11 +110,7 @@ export class PostgresDatabase implements IDatabase {
       await client.query('COMMIT');
       return { success: true, data: res };
     } catch (err) {
-      try {
-        await client.query('ROLLBACK');
-      } catch {
-        /* ignore */
-      }
+      try { await client.query('ROLLBACK'); } catch {}
       const msg = errorMessage(err);
       this.logger.error(msg);
       return { success: false, error: msg };
@@ -156,15 +120,14 @@ export class PostgresDatabase implements IDatabase {
   }
 
   private async initSchema(): Promise<void> {
-    const sql = `
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL UNIQUE,
         sql TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `;
-    await this.pool.query(sql);
+    `);
   }
 
   hasMultipleStatements(sql: string): boolean {
@@ -180,10 +143,8 @@ export class PostgresDatabase implements IDatabase {
           continue;
         }
         inString = !inString;
-      } else if (ch === ';' && !inString) {
-        // Only count if there are non-whitespace characters following
-        const rest = s.slice(i + 1).trim();
-        if (rest.length > 0) count++;
+      } else if (ch === ';' && !inString && s.slice(i + 1).trim().length > 0) {
+        count++;
       }
     }
     return count > 0;
@@ -191,8 +152,7 @@ export class PostgresDatabase implements IDatabase {
 
   async all(sql: string, params: SQLInputValue[] = []): Promise<Result<unknown[]>> {
     return this.tryRun(async () => {
-      const pgSql = convertPlaceholdersToPostgres(sql);
-      const res = await this.pool.query(pgSql, params as unknown[]);
+      const res = await this.pool.query(convertPlaceholdersToPostgres(sql), params as unknown[]);
       return res.rows;
     });
   }
@@ -200,12 +160,8 @@ export class PostgresDatabase implements IDatabase {
   async run(sql: string, params: SQLInputValue[] = []): Promise<Result<MutationResult>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      const pgSql = convertPlaceholdersToPostgres(sql);
-      const res = await this.pool.query(pgSql, params as unknown[]);
-      return {
-        changes: res.rowCount ?? 0,
-        lastInsertRowid: null,
-      };
+      const res = await this.pool.query(convertPlaceholdersToPostgres(sql), params as unknown[]);
+      return { changes: res.rowCount ?? 0, lastInsertRowid: null };
     });
   }
 
@@ -221,14 +177,7 @@ export class PostgresDatabase implements IDatabase {
   }
 
   async runWrite(sql: string): Promise<Result<{ changes?: number }>> {
-    if (this.isReadOnly) return this.readonlyBlocked();
-    return this.tryRun(async () => {
-      const res = await this.pool.query(sql);
-      const changes = Array.isArray(res)
-        ? res.reduce((acc, r) => acc + (r.rowCount ?? 0), 0)
-        : res.rowCount ?? undefined;
-      return { changes };
-    });
+    return this.execResult(sql);
   }
 
   async listTables(): Promise<Result<TableListItem[]>> {
@@ -246,9 +195,7 @@ export class PostgresDatabase implements IDatabase {
 
   async getTableInfo(table: string): Promise<Result<TableInfoData>> {
     return this.tryRun(async () => {
-      // Execute all 4 metadata queries concurrently in parallel
       const [colRes, pkRes, fkRes, idxRes] = await Promise.all([
-        // 1. Columns
         this.pool.query<{
           cid: number;
           name: string;
@@ -269,8 +216,6 @@ export class PostgresDatabase implements IDatabase {
            ORDER BY ordinal_position;`,
           [this.schema, table],
         ),
-
-        // 2. Primary Keys
         this.pool.query<{ column_name: string }>(
           `SELECT kcu.column_name
            FROM information_schema.table_constraints tc
@@ -283,8 +228,6 @@ export class PostgresDatabase implements IDatabase {
            ORDER BY kcu.ordinal_position;`,
           [this.schema, table],
         ),
-
-        // 3. Foreign Keys
         this.pool.query<{
           id: number;
           seq: number;
@@ -317,8 +260,6 @@ export class PostgresDatabase implements IDatabase {
              AND tc.table_name = $2;`,
           [this.schema, table],
         ),
-
-        // 4. Indexes
         this.pool.query<{
           name: string;
           unique: boolean;
@@ -344,7 +285,6 @@ export class PostgresDatabase implements IDatabase {
       ]);
 
       const primaryKey = pkRes.rows.map((r) => r.column_name);
-
       const columns: ColumnInfo[] = colRes.rows.map((c) => {
         const isPk = primaryKey.includes(c.name);
         const displayType = c.type === 'USER-DEFINED' ? c.udt_name : c.type;
@@ -367,7 +307,6 @@ export class PostgresDatabase implements IDatabase {
         sql: ix.sql,
       }));
 
-      // Approximate DDL for display
       const colDefs = columns.map((c) => {
         let def = `  ${quoteIdentifier(c.name)} ${c.type}`;
         if (c.notnull) def += ' NOT NULL';
@@ -377,7 +316,6 @@ export class PostgresDatabase implements IDatabase {
       if (primaryKey.length) {
         colDefs.push(`  PRIMARY KEY (${primaryKey.map(quoteIdentifier).join(', ')})`);
       }
-      const synthesizedSql = `CREATE TABLE ${quoteIdentifier(table)} (\n${colDefs.join(',\n')}\n);`;
 
       return {
         table,
@@ -393,7 +331,7 @@ export class PostgresDatabase implements IDatabase {
         })),
         primaryKey,
         indexes,
-        sql: synthesizedSql,
+        sql: `CREATE TABLE ${quoteIdentifier(table)} (\n${colDefs.join(',\n')}\n);`,
       };
     });
   }
@@ -407,8 +345,10 @@ export class PostgresDatabase implements IDatabase {
         pgWhere = convertPlaceholdersToPostgres(where);
         params = p as unknown[];
       }
-      const sql = `SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)}${pgWhere}`;
-      const res = await this.pool.query<{ c: string | number }>(sql, params);
+      const res = await this.pool.query<{ c: string | number }>(
+        `SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)}${pgWhere}`,
+        params,
+      );
       return Number(res.rows[0]?.c ?? 0);
     });
   }
@@ -431,17 +371,13 @@ export class PostgresDatabase implements IDatabase {
 
       const nextParamIdx = filterParams.length + 1;
       let sql = `SELECT * FROM ${quoteIdentifier(table)}${pgWhere}`;
-      if (orderCol) {
-        sql += ` ORDER BY ${quoteIdentifier(orderCol)} ${orderDir}`;
-      }
+      if (orderCol) sql += ` ORDER BY ${quoteIdentifier(orderCol)} ${orderDir}`;
       sql += ` LIMIT $${nextParamIdx} OFFSET $${nextParamIdx + 1}`;
-      const allParams = [...filterParams, limit, offset];
 
-      const res = await this.pool.query(sql, allParams);
+      const res = await this.pool.query(sql, [...filterParams, limit, offset]);
       return res.rows;
     });
   }
-
 
   async getAllRows(table: string): Promise<Result<Record<string, unknown>[]>> {
     return this.tryRun(async () => {
@@ -466,10 +402,7 @@ export class PostgresDatabase implements IDatabase {
       const placeholders = fields.map((_, idx) => `$${idx + 1}`);
       const sql = `INSERT INTO ${quoteIdentifier(table)} (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
       const res = await this.pool.query(sql, fields.map((f) => f.value));
-      return {
-        changes: res.rowCount ?? 1,
-        lastInsertRowid: null,
-      };
+      return { changes: res.rowCount ?? 1, lastInsertRowid: null };
     });
   }
 
@@ -495,10 +428,7 @@ export class PostgresDatabase implements IDatabase {
       const conds = where.map((w, idx) => `${quoteIdentifier(w.column)} = $${fields.length + idx + 1}`);
       const sql = `UPDATE ${quoteIdentifier(table)} SET ${sets.join(', ')} WHERE ${conds.join(' AND ')}`;
       const res = await this.pool.query(sql, [...fields.map((f) => f.value), ...where.map((w) => w.value)]);
-      return {
-        changes: res.rowCount ?? 0,
-        lastInsertRowid: null,
-      };
+      return { changes: res.rowCount ?? 0, lastInsertRowid: null };
     });
   }
 
@@ -526,10 +456,7 @@ export class PostgresDatabase implements IDatabase {
       const conds = where.map((w, idx) => `${quoteIdentifier(w.column)} = $${idx + 1}`);
       const sql = `DELETE FROM ${quoteIdentifier(table)} WHERE ${conds.join(' AND ')}`;
       const res = await this.pool.query(sql, where.map((w) => w.value));
-      return {
-        changes: res.rowCount ?? 0,
-        lastInsertRowid: null,
-      };
+      return { changes: res.rowCount ?? 0, lastInsertRowid: null };
     });
   }
 
@@ -610,10 +537,7 @@ export class PostgresDatabase implements IDatabase {
         `INSERT INTO ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} (name, sql) VALUES ($1, $2) RETURNING id`,
         [name, sql],
       );
-      return {
-        changes: res.rowCount ?? 1,
-        lastInsertRowid: Number(res.rows[0]?.id ?? null),
-      };
+      return { changes: res.rowCount ?? 1, lastInsertRowid: Number(res.rows[0]?.id ?? null) };
     });
   }
 
@@ -623,10 +547,7 @@ export class PostgresDatabase implements IDatabase {
         `DELETE FROM ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} WHERE id = $1`,
         [Number(id)],
       );
-      return {
-        changes: res.rowCount ?? 0,
-        lastInsertRowid: null,
-      };
+      return { changes: res.rowCount ?? 0, lastInsertRowid: null };
     });
   }
 
@@ -637,13 +558,10 @@ export class PostgresDatabase implements IDatabase {
       try {
         const res = await this.pool.query(
           `SELECT name, setting FROM pg_settings WHERE name = ANY($1::text[])`,
-          [keys]
+          [keys],
         );
-        for (const row of res.rows) {
-          settings[row.name] = String(row.setting);
-        }
-      } catch (err) {
-        // Fallback for limited permission environments
+        for (const row of res.rows) settings[row.name] = String(row.setting);
+      } catch {
         try {
           const ver = await this.pool.query('SHOW server_version');
           settings['server_version'] = String(ver.rows[0]?.server_version);
@@ -659,7 +577,6 @@ export class PostgresDatabase implements IDatabase {
       if (!infoR.success || !infoR.data) throw new Error(infoR.error || `Table ${table} not found.`);
       const { columns, foreignKeys, indexes, primaryKey } = infoR.data;
 
-      // Find references in other tables that point to this table
       const refRes = await this.pool.query<{ table: string; from: string; to: string }>(
         `SELECT
            tc.table_name AS table,
@@ -679,7 +596,6 @@ export class PostgresDatabase implements IDatabase {
       );
 
       const references = refRes.rows;
-
       const columnDetails: ColumnDetail[] = columns.map((col) => {
         const isPk = primaryKey.includes(col.name);
         const fk = foreignKeys.find((f) => f.from === col.name) ?? null;
@@ -749,11 +665,7 @@ export class PostgresDatabase implements IDatabase {
           const countRes = await this.pool.query<{ c: string | number }>(
             `SELECT COUNT(*) AS c FROM ${quoteIdentifier(tbl)} WHERE ${refs.map((r) => `${quoteIdentifier(r.from)} IS NOT NULL`).join(' OR ')}`,
           );
-          results.push({
-            table: tbl,
-            refs,
-            refCount: Number(countRes.rows[0]?.c ?? 0),
-          });
+          results.push({ table: tbl, refs, refCount: Number(countRes.rows[0]?.c ?? 0) });
         } catch {
           results.push({ table: tbl, refs, refCount: 0 });
         }
@@ -800,7 +712,6 @@ export class PostgresDatabase implements IDatabase {
     return this.tryRun(async () => {
       const newName = String(newColDef.name || oldColName).trim();
 
-      // Rename column first if name changed
       if (oldColName !== newName) {
         await this.pool.query(
           `ALTER TABLE ${quoteIdentifier(table)} RENAME COLUMN ${quoteIdentifier(oldColName)} TO ${quoteIdentifier(newName)};`,
@@ -809,14 +720,12 @@ export class PostgresDatabase implements IDatabase {
 
       const colToModify = newName;
 
-      // Alter Type if provided
       if (newColDef.type) {
         await this.pool.query(
           `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} TYPE ${newColDef.type} USING ${quoteIdentifier(colToModify)}::${newColDef.type};`,
         );
       }
 
-      // Alter NOT NULL
       if (newColDef.notNull !== undefined) {
         const action = newColDef.notNull ? 'SET NOT NULL' : 'DROP NOT NULL';
         await this.pool.query(
@@ -824,20 +733,15 @@ export class PostgresDatabase implements IDatabase {
         );
       }
 
-      // Alter DEFAULT
       if (newColDef.defaultValue !== undefined) {
-        if (newColDef.defaultValue === null || newColDef.defaultValue === '') {
-          await this.pool.query(
-            `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} DROP DEFAULT;`,
-          );
-        } else {
-          await this.pool.query(
-            `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} SET DEFAULT ${newColDef.defaultValue};`,
-          );
-        }
+        const action = newColDef.defaultValue === null || newColDef.defaultValue === ''
+          ? 'DROP DEFAULT'
+          : `SET DEFAULT ${newColDef.defaultValue}`;
+        await this.pool.query(
+          `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} ${action};`,
+        );
       }
 
-      // Handle unique index
       if (newColDef.unique !== undefined) {
         const idxName = `idx_${table}_${colToModify}_unique`;
         if (newColDef.unique) {

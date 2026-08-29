@@ -7,15 +7,7 @@ import type { Server } from 'node:http';
 import { SqliteDatabase } from '../src/db/database';
 import { createLogger } from '../src/utils/logger';
 import { createRouter } from '../src/app';
-import {
-  buildErGraph,
-  resolveErChain,
-  topologicalSort,
-  getErChainConfig,
-  generateChainRows,
-  executeChainInsert,
-  buildChainInsertSql,
-} from '../src/data/index';
+import { buildErGraph, resolveErChain, topologicalSort, getErChainConfig, generateChainRows, executeChainInsert, buildChainInsertSql } from '../src/data/index';
 
 function openDb(seedSql?: string): { db: SqliteDatabase; cleanup: () => void } {
   const root = mkdtempSync(path.join(tmpdir(), 'admindb-chain-test-'));

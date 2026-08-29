@@ -10,16 +10,15 @@ export function authenticateRequest(
   req: Request,
   config: ResolvedAuthConfig,
 ): { authenticated: boolean; user?: string } {
-  if (!config.enabled) {
-    return { authenticated: true, user: 'anonymous' };
-  }
+  if (!config.enabled) return { authenticated: true, user: 'anonymous' };
 
   // 1. Check HTTP Authorization header (Basic or Bearer)
   const authHeader = req.headers.authorization;
   if (authHeader) {
     const [scheme, credentials] = authHeader.split(/\s+/, 2);
     if (scheme && credentials) {
-      if (scheme.toLowerCase() === 'basic') {
+      const lowerScheme = scheme.toLowerCase();
+      if (lowerScheme === 'basic') {
         try {
           const decoded = Buffer.from(credentials, 'base64').toString('utf8');
           const colonIdx = decoded.indexOf(':');
@@ -31,14 +30,11 @@ export function authenticateRequest(
             }
           }
         } catch {
-          // Ignore parse errors
+          /* ignore parse error */
         }
-      } else if (scheme.toLowerCase() === 'bearer') {
+      } else if (lowerScheme === 'bearer') {
         const user = verifySessionToken(credentials, config.secret, config.username);
-        if (user) {
-          return { authenticated: true, user };
-        }
-        // Direct password comparison as bearer token
+        if (user) return { authenticated: true, user };
         if (verifyPassword(credentials, config.password)) {
           return { authenticated: true, user: config.username };
         }
@@ -47,13 +43,10 @@ export function authenticateRequest(
   }
 
   // 2. Check Cookie session
-  const cookies = parseCookies(req.headers.cookie);
-  const sessionCookie = cookies[SESSION_COOKIE_NAME];
+  const sessionCookie = parseCookies(req.headers.cookie)[SESSION_COOKIE_NAME];
   if (sessionCookie) {
     const user = verifySessionToken(sessionCookie, config.secret, config.username);
-    if (user) {
-      return { authenticated: true, user };
-    }
+    if (user) return { authenticated: true, user };
   }
 
   return { authenticated: false };
@@ -68,7 +61,6 @@ export function createAuthMiddleware(
   _logger: Logger,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Expose auth state to templates
     res.locals.authEnabled = config.enabled;
     res.locals.isDefaultPassword = config.isDefaultPassword;
 
@@ -78,15 +70,8 @@ export function createAuthMiddleware(
     }
 
     const p = req.path;
-
     // Public static assets and auth endpoints bypass authentication
-    if (
-      p.startsWith('/css/') ||
-      p.startsWith('/js/') ||
-      p === '/favicon.ico' ||
-      p === '/login' ||
-      p === '/logout'
-    ) {
+    if (p.startsWith('/css/') || p.startsWith('/js/') || p === '/favicon.ico' || p === '/login' || p === '/logout') {
       return next();
     }
 
@@ -98,7 +83,7 @@ export function createAuthMiddleware(
     }
 
     // Unauthenticated: API requests get 401 JSON
-    if (p.startsWith('/api/') || req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    if (p.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
       res.setHeader('WWW-Authenticate', 'Basic realm="AdminDB", Bearer');
       res.status(401).json({
         success: false,

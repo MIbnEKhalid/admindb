@@ -4,12 +4,6 @@ import type { Router } from 'express';
 export function registerErdRoutes(router: Router, ctx: ApiContext): void {
   const { db } = ctx;
 
-  /**
-   * GET /api/erd
-   * Returns the full schema graph: tables with columns + foreign-key edges.
-   * Used by the ER diagram page to render the interactive canvas without
-   * needing to make N+1 individual API requests.
-   */
   router.get('/api/erd', async (_req, res) => {
     try {
       const tablesResult = await db.listTables();
@@ -19,16 +13,11 @@ export function registerErdRoutes(router: Router, ctx: ApiContext): void {
 
       const tableNames = (tablesResult.data as { name: string }[]).map((t) => t.name);
 
-      const tableDetails = await Promise.all(
+      const tables = await Promise.all(
         tableNames.map(async (name) => {
           const infoResult = await db.getTableInfo(name);
           if (!infoResult.success || !infoResult.data) {
-            return {
-              name,
-              columns: [],
-              foreignKeys: [],
-              primaryKey: [] as string[],
-            };
+            return { name, columns: [], foreignKeys: [], primaryKey: [] as string[] };
           }
           const { columns, foreignKeys, primaryKey } = infoResult.data;
           return {
@@ -52,7 +41,7 @@ export function registerErdRoutes(router: Router, ctx: ApiContext): void {
         }),
       );
 
-      ok(res, { tables: tableDetails });
+      ok(res, { tables });
     } catch (err) {
       fail(res, (err as Error).message ?? 'Unknown error.', 500);
     }

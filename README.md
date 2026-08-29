@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/npm/v/admindb.svg)](https://www.npmjs.com/package/admindb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Downloads](https://img.shields.io/npm/dm/admindb.svg)](https://www.npmjs.com/package/admindb)
 [![Publish](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml)
 
@@ -103,6 +103,10 @@ Runtime operations produce crisp, color-coded status logs:
 
 ### 🔍 Browse & Edit Rows
 * **Table Browser:** High-density compact grid by default, column-header sorting, sticky headers, and pinned right-aligned action columns. Composite primary keys are fully supported.
+* **Column Manager (Visibility, Custom Ordering & Sticky Freezing):**
+  * **Interactive Column Drawer/Modal:** Click **Columns** in the table toolbar to toggle column visibility, reorder columns via drag-and-drop or <kbd>↑</kbd> <kbd>↓</kbd> buttons, and freeze columns on the left (sticky pinning).
+  * **Instant Search & Presets:** Filter columns instantly with live search, or use fast presets like *Show All*, *PKs only*, or *Reset*.
+  * **Persistent Per-Table Preferences:** Automatically stores your customized layout, hidden fields, and pinned columns in `localStorage`.
 * **Spreadsheet-Style Inline Editing & Keyboard Navigation:**
   * **Full Grid Navigation:** Navigate cells with <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> or <kbd>Tab</kbd> / <kbd>Shift+Tab</kbd>.
   * **In-Place Type-Aware Controls:** Double-click or press <kbd>Enter</kbd> to edit in place (FK dropdowns, boolean toggles, date/time pickers with instant calendar triggers, array tags, numeric inputs). Pressing <kbd>Enter</kbd> commits and shifts focus to the cell below. Pressing <kbd>Space</kbd> on boolean cells toggles immediately.

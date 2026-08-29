@@ -51,7 +51,6 @@ async function getDatabaseRows(manager: DbManager): Promise<DatabaseRow[]> {
   );
 }
 
-
 export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): void {
   const { manager } = ctx;
   const allowBrowse = ctx.allowBrowse ?? true;
@@ -69,12 +68,11 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
 
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const databases = await getDatabaseRows(manager);
       res.render('pages/databases', {
         title: 'Databases',
-        databases,
+        databases: await getDatabaseRows(manager),
         dbDir: manager.directory,
-        readonly: !!ctx.readonly,
+        readonly: Boolean(ctx.readonly),
         allowBrowse,
         browseRoot,
         config: { basePath: ctx.basePath },
@@ -85,8 +83,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
   });
 
   router.get('/api/databases', wrap(async (_req, res) => {
-    const data = await getDatabaseRows(manager);
-    res.json({ success: true, data });
+    res.json({ success: true, data: await getDatabaseRows(manager) });
   }));
 
   const BLOCKED_NAMES = new Set([
@@ -104,8 +101,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
   function listDirectory(abs: string): FsEntry[] {
     const entries: FsEntry[] = [];
     for (const name of readdirSync(abs)) {
-      if (name.startsWith('.')) continue;
-      if (BLOCKED_NAMES.has(name) || name.toLowerCase().startsWith('.env')) continue;
+      if (name.startsWith('.') || BLOCKED_NAMES.has(name) || name.toLowerCase().startsWith('.env')) continue;
       const full = path.join(abs, name);
       let isDir = false;
       let size = 0;
@@ -131,9 +127,8 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
       return res.status(403).json({ success: false, error: 'File browsing is disabled — this server was started with specific database files.' });
     }
     const raw = String(req.query.path ?? '').trim();
-    if (raw.includes('\0')) {
-      return res.status(400).json({ success: false, error: 'Invalid path.' });
-    }
+    if (raw.includes('\0')) return res.status(400).json({ success: false, error: 'Invalid path.' });
+
     const base = raw ? path.resolve(raw) : manager.directory;
     if (browseRoot && !isPathWithinRoot(browseRoot, base)) {
       return res.status(403).json({ success: false, error: `Path is outside the allowed folder: ${browseRoot}` });
@@ -171,15 +166,9 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
       return res.status(403).json({ success: false, error: `Cannot open a database outside the allowed folder: ${browseRoot}` });
     }
     const isRo = req.body?.readonly !== undefined ? Boolean(req.body.readonly) : undefined;
-    let id: string;
-    try {
-      id = manager.openFile(p, isRo);
-    } catch (err) {
-      return res.status(400).json({ success: false, error: errorMessage(err) });
-    }
+    const id = manager.openFile(p, isRo);
     res.json({ success: true, data: { id, message: `Opened "${id}".` } });
   }));
-
 
   router.post('/api/databases/connect-postgres', wrap(async (req, res) => {
     if (ctx.readonly) return res.status(403).json({ success: false, error: 'Read-only mode — adding connections is disabled.' });
@@ -195,13 +184,10 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     let id: string;
     try {
       id = manager.addConnection(name, connectionString, isRo);
-      // Verify the connection works
       const db = manager.open(id);
       await db.listTables();
     } catch (err) {
-      if (id!) {
-        manager.remove(id);
-      }
+      if (id!) manager.remove(id);
       return res.status(400).json({ success: false, error: `Failed to connect to PostgreSQL: ${errorMessage(err)}` });
     }
     res.status(201).json({ success: true, data: { id, message: `Connected to PostgreSQL database "${id}".` } });
@@ -230,12 +216,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     if (ctx.readonly) return res.status(403).json({ success: false, error: 'Read-only mode — creating databases is disabled.' });
     const name = String(req.body?.name ?? '').trim();
     if (!name) return res.status(400).json({ success: false, error: 'Database name is required.' });
-    let id: string;
-    try {
-      id = manager.create(name);
-    } catch (err) {
-      return res.status(400).json({ success: false, error: errorMessage(err) });
-    }
+    const id = manager.create(name);
     res.status(201).json({ success: true, data: { id, message: `Database "${id}" created.` } });
   }));
 
@@ -248,5 +229,3 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     res.json({ success: true, data: { message: `Database "${id}" removed.` } });
   }));
 }
-
-

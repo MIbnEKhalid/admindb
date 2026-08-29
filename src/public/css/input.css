@@ -170,6 +170,52 @@
     box-shadow: -3px 0 8px -2px rgba(0,0,0,0.35);
   }
 
+  /* Sticky Pinned Left Columns */
+  .sticky-col-left {
+    position: sticky !important;
+    z-index: 15 !important;
+    background-color: var(--fallback-b1,oklch(var(--b1)/1)) !important;
+  }
+  thead th.sticky-col-left {
+    z-index: 25 !important;
+    background-color: var(--fallback-b2,oklch(var(--b2)/0.95)) !important;
+  }
+  tr.group:hover td.sticky-col-left {
+    background-color: var(--fallback-b1,oklch(var(--b1)/1)) !important;
+  }
+  .sticky-col-left-last {
+    box-shadow: 3px 0 6px -2px rgba(0,0,0,0.08);
+  }
+  [data-theme='admindbDark'] .sticky-col-left-last {
+    box-shadow: 3px 0 8px -2px rgba(0,0,0,0.45);
+  }
+
+  /* Column Manager styles */
+  .col-manager-item {
+    @apply flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-base-200 bg-base-100 transition-all text-xs select-none;
+  }
+  .col-manager-item:hover {
+    @apply border-base-300 bg-base-200/50;
+  }
+  .col-manager-item.is-hidden {
+    @apply opacity-50 bg-base-200/30;
+  }
+  .col-manager-item.is-pinned {
+    @apply border-primary/40 bg-primary/[0.04];
+  }
+  .col-manager-item.is-dragging {
+    @apply opacity-30 border-dashed border-primary bg-primary/10;
+  }
+  .col-manager-item.drag-over-top {
+    border-top: 2px solid oklch(var(--p));
+  }
+  .col-manager-item.drag-over-bottom {
+    border-bottom: 2px solid oklch(var(--p));
+  }
+  .col-drag-handle {
+    @apply cursor-grab active:cursor-grabbing text-base-content/40 hover:text-base-content/80 p-0.5 rounded;
+  }
+
   /* Elevate table row and action cell stacking context when dropdown is active */
   tr:has(.dropdown:focus-within),
   tr:focus-within {
@@ -395,18 +441,46 @@
     transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Seed column cards (rendered by JS) — accent bar */
+  /* Seed column cards */
   .seed-col-card {
-    @apply relative overflow-hidden rounded-xl border border-base-200 p-4 bg-base-100 space-y-3 transition-shadow duration-150 hover:shadow-soft;
+    @apply relative overflow-hidden rounded-2xl border border-base-200/90 p-4 bg-base-100 space-y-3 transition-all duration-200 hover:border-primary/40 hover:shadow-soft;
   }
   .seed-col-card::before {
     content: '';
-    @apply absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-base-300 transition-colors duration-200;
+    @apply absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-base-300 transition-colors duration-200;
   }
-  .seed-col-card[data-strategy-type='generate']::before { @apply bg-success; }
+  .seed-col-card[data-strategy-type='generate']::before { @apply bg-primary; }
   .seed-col-card[data-strategy-type='skip']::before    { @apply bg-base-300; }
   .seed-col-card[data-strategy-type='null']::before    { @apply bg-warning; }
   .seed-col-card[data-strategy-type='fixed']::before   { @apply bg-info; }
+  .seed-col-card[data-strategy-type='template']::before{ @apply bg-secondary; }
+
+  /* Token chips for template expressions */
+  .token-chip {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold bg-base-200 text-base-content/75 border border-base-300/60 hover:bg-primary/15 hover:text-primary hover:border-primary/40 active:scale-95 transition-all cursor-pointer select-none;
+  }
+
+  /* Sample Value Pill */
+  .sample-pill {
+    @apply font-mono text-[11px] px-2 py-1 rounded-lg bg-base-200/80 text-primary border border-primary/20 max-w-[200px] truncate select-all inline-block;
+  }
+
+  /* Pipeline timeline node cards */
+  .pipeline-node {
+    @apply relative overflow-hidden rounded-2xl border border-base-200 bg-base-100 p-4 transition-all duration-200 hover:border-base-300 shadow-soft;
+  }
+  .pipeline-node[data-node-mode='generate'] {
+    @apply border-l-4 border-l-primary;
+  }
+  .pipeline-node[data-node-mode='use_existing'] {
+    @apply border-l-4 border-l-info;
+  }
+  .pipeline-node[data-node-mode='generate_if_empty'] {
+    @apply border-l-4 border-l-warning;
+  }
+  .pipeline-node[data-node-mode='skip'] {
+    @apply border-l-4 border-l-base-300 opacity-65;
+  }
 
   /* Execute button pulsing ring on hover */
   #seed-insert {
@@ -417,3 +491,4 @@
     @apply absolute inset-0 rounded-[inherit] animate-ping opacity-20 bg-primary pointer-events-none;
   }
 }
+

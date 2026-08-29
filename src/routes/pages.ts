@@ -1,7 +1,7 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import type { IDatabase, TableInfoData } from '../db/index';
 import type { Logger } from '../utils/logger';
-import { generateSqlDump, generateSchemaDump } from '../db/export';
+import { generateSqlDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
 import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS, formatBytes } from '../utils/common';
 import { sniffMimeType, isJsonString } from '../utils/datatype';
@@ -11,7 +11,6 @@ interface PageContext {
   db: IDatabase;
   logger: Logger;
 }
-
 
 interface DisplayCell {
   name: string;
@@ -61,9 +60,7 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
             let buf: Buffer;
             if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
               buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
-            } else if (typeof v === 'string' && /^0x[0-9a-f]*$/i.test(v)) {
-              buf = Buffer.from(v.slice(2), 'hex');
-            } else if (typeof v === 'string' && /^\\x[0-9a-f]*$/i.test(v)) {
+            } else if (typeof v === 'string' && (/^0x[0-9a-f]*$/i.test(v) || /^\\x[0-9a-f]*$/i.test(v))) {
               buf = Buffer.from(v.slice(2), 'hex');
             } else {
               buf = Buffer.from(str, 'utf8');
@@ -79,14 +76,10 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
           } else if (isJsonString(v) || typeUpper.includes('JSON')) {
             isJson = isJsonString(v);
           } else {
-            if (/^https?:\/\/[^\s$.?#].[^\s]*$/i.test(str)) {
-              isUrl = true;
-            } else if (/^#(?:[0-9a-fA-F]{3}){1,2}$|^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/i.test(str)) {
-              isColor = true;
-            }
+            if (/^https?:\/\/[^\s$.?#].[^\s]*$/i.test(str)) isUrl = true;
+            else if (/^#(?:[0-9a-fA-F]{3}){1,2}$|^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/i.test(str)) isColor = true;
           }
         }
-
 
         return {
           name: c.name,
@@ -117,13 +110,12 @@ export function registerPages(router: Router, ctx: PageContext): void {
     res.status(404).render('pages/error', { title: 'Not found', status: 404, error: message });
   };
 
-  // Home / browse overview.
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const names: string[] = (res.locals.tables as string[]) ?? [];
       const internalNames: string[] = (res.locals.internalTables as string[]) ?? [];
 
-      let colCountsMap: Record<string, number> = {};
+      const colCountsMap: Record<string, number> = {};
       if (db.dialect === 'postgres') {
         const colRes = await db.all(
           `SELECT table_name, count(*)::int AS cols FROM information_schema.columns WHERE table_schema = 'public' GROUP BY table_name;`,
@@ -136,7 +128,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
           }
         }
       }
-
 
       const [stats, saved] = await Promise.all([
         Promise.all(names.map(async (name) => {
@@ -177,8 +168,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Browse a table's rows.
-
   router.get('/tables/:table', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
@@ -216,18 +205,14 @@ export function registerPages(router: Router, ctx: PageContext): void {
           type: c.type,
           active,
           dir: active ? orderDir : null,
-          href: `${basePath}/tables/${encodeURIComponent(table)}?${qs}${filterQS ? '&' + filterQS : ''}`,
+          href: `${basePath}/tables/${encodeURIComponent(table)}?${qs}${filterQS ? `&${filterQS}` : ''}`,
         };
       });
 
       const refColumns = (refsR.data ?? [])
         .filter((r) => !r.table.startsWith('_'))
-        .map((rt) => {
-          const ref = rt.refs[0];
-          return { table: rt.table, from: ref?.from ?? '', to: ref?.to ?? '' };
-        });
+        .map((rt) => ({ table: rt.table, from: rt.refs[0]?.from ?? '', to: rt.refs[0]?.to ?? '' }));
 
-      // Per-row reference counts: parallel query per referencing table.
       const countEntries = await Promise.all(
         refColumns.map(async (col) => {
           const values = rawRows
@@ -296,7 +281,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Table schema editor.
   router.get('/tables/:table/schema', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
@@ -323,7 +307,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Data generator / seeder.
   router.get('/tables/:table/seed', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
@@ -348,7 +331,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Insert form.
   router.get('/tables/:table/rows/new', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
@@ -372,7 +354,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Edit form.
   router.get('/tables/:table/rows/:id/edit', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
@@ -400,12 +381,10 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // ER diagram / relationship visualization.
   router.get('/erd', (_req: Request, res: Response) => {
     res.render('pages/erd', { title: 'ER Diagram' });
   });
 
-  // Table designer.
   router.get('/designer', (_req: Request, res: Response) => {
     res.render('pages/designer', {
       title: 'New table',
@@ -415,7 +394,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     });
   });
 
-  // Query editor.
   router.get('/query', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const queries = await db.listSavedQueries();
@@ -425,7 +403,6 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Export: downloadable SQL dump.
   router.get('/export', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const dump = await generateSqlDump(db);
@@ -439,15 +416,12 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  // Database Info / Settings page
   router.get('/info', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const settingsRes = await db.getSettings();
-      const settings = settingsRes.success ? settingsRes.data : {};
-      
       res.render('pages/info', {
         title: 'Database Info',
-        settings,
+        settings: settingsRes.success ? settingsRes.data : {},
         dialect: db.dialect,
         dbPath: db.path,
       });
