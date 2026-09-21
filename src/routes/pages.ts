@@ -49,6 +49,9 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
         let isImage = false;
         let isUrl = false;
         let isColor = false;
+        let isAudio = false;
+        let isVideo = false;
+        let isPdf = false;
         let blobSize = '';
         let blobMime = '';
         let blobExt = '';
@@ -70,6 +73,9 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
             blobMime = mimeInfo.mime;
             blobExt = mimeInfo.ext;
             isImage = mimeInfo.isImage;
+            isAudio = mimeInfo.isAudio;
+            isVideo = mimeInfo.isVideo;
+            isPdf = mimeInfo.isPdf;
             if (table && pkEncoded) {
               blobUrl = `${basePath}/api/tables/${encodeURIComponent(table)}/row/${encodeURIComponent(pkEncoded)}/blob/${encodeURIComponent(c.name)}`;
             }
@@ -90,6 +96,9 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
           isBlob,
           isJson,
           isImage,
+          isAudio,
+          isVideo,
+          isPdf,
           isUrl,
           isColor,
           blobSize,
@@ -307,24 +316,79 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  router.get('/tables/:table/seed', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/seed', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tableNames: string[] = (res.locals.tables as string[]) ?? [];
+      if (tableNames.length === 0) {
+        return res.render('pages/seed-select', {
+          title: 'Seed Data Generator',
+          tables: [],
+          hasTables: false,
+          dialect: db.dialect,
+        });
+      }
+
+      const tableStats = await Promise.all(
+        tableNames.map(async (name) => {
+          const [info, countRes] = await Promise.all([db.getTableInfo(name), db.getRowCount(name)]);
+          const cols = info.success && info.data ? info.data.columns.length : 0;
+          const fks = info.success && info.data ? info.data.foreignKeys.length : 0;
+          const rowCount = countRes.success ? (countRes.data as number) : 0;
+          return {
+            name,
+            cols,
+            fks,
+            rowCount,
+          };
+        }),
+      );
+
+      const defaultTable = req.query.table ? String(req.query.table) : tableStats[0]?.name;
+      const defaultMode = req.query.mode === 'chain' ? 'chain' : 'single';
+
+      res.render('pages/seed-select', {
+        title: 'Seed Data Generator · Choose Table & Mode',
+        tables: tableStats,
+        hasTables: true,
+        defaultTable,
+        defaultMode,
+        dialect: db.dialect,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/tables/:table/seed', (req: Request, res: Response) => {
+    const table = req.params.table;
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    const bp = (res.locals.basePath as string) || '';
+    return res.redirect(301, `${bp}/seed/${encodeURIComponent(table)}${qs}`);
+  });
+
+  router.get('/seed/:table', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const table = req.params.table;
+      const allTables: string[] = (res.locals.tables as string[]) ?? [];
+      const initialMode = req.query.mode === 'chain' ? 'chain' : 'single';
       const [info, countRes] = await Promise.all([db.getTableInfo(table), db.getRowCount(table)]);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
       }
-      const rowCount = countRes.success ? countRes.data : 0;
+      const rowCount = countRes.success ? (countRes.data as number) : 0;
       const columns = buildColumnConfigs(info.data);
       res.locals.currentTable = table;
       res.render('pages/seed', {
         title: `Seed data · ${table}`,
         table,
+        allTables,
+        mode: initialMode,
+        isChainMode: initialMode === 'chain',
         rowCount,
         colCount: info.data.columns.length,
         maxRows: MAX_SEED_ROWS,
         quickCounts: [10, 50, 100, 500, 1000, MAX_SEED_ROWS],
-        seedConfig: { table, columns, rowCount, maxRows: MAX_SEED_ROWS },
+        seedConfig: { table, columns, rowCount, maxRows: MAX_SEED_ROWS, mode: initialMode },
       });
     } catch (err) {
       next(err);

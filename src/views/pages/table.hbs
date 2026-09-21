@@ -2,62 +2,65 @@
 <div class="space-y-5">
 
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div class="flex items-center gap-3.5">
-      <span class="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
-        {{{icon "table" class="h-6 w-6"}}}
-      </span>
-      <div>
-        <div class="flex items-center gap-2">
-          <h1 class="font-mono text-2xl font-bold tracking-tight">{{table}}</h1>
-          {{#if isPostgres}}
-            <span class="rounded bg-info/15 px-2 py-0.5 text-[11px] font-bold font-sans text-info">PostgreSQL</span>
-          {{else}}
-            <span class="rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold font-sans text-emerald-600 dark:text-emerald-400">SQLite</span>
-          {{/if}}
+  <div class="page-header">
+    <div class="page-header-row flex-wrap lg:flex-nowrap">
+      <div class="flex items-center gap-3.5">
+        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+          {{{icon "table" class="h-5 w-5"}}}
+        </span>
+        <div>
+          <div class="page-pretitle">Table Browser</div>
+          <div class="flex items-center gap-2">
+            <h1 class="page-title font-mono text-xl sm:text-2xl">{{table}}</h1>
+            {{#if isPostgres}}
+              <span class="rounded bg-info/15 px-2 py-0.5 text-[10px] font-bold font-sans text-info border border-info/20">PostgreSQL</span>
+            {{else}}
+              <span class="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold font-sans text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">SQLite</span>
+            {{/if}}
+          </div>
+          <p class="text-xs text-base-content/55 mt-0.5">
+            {{count}} row(s) · {{info.columns.length}} column(s)
+            {{#if pkCols.length}}· PK <span class="font-mono font-semibold text-primary">{{join pkCols ", "}}</span>{{/if}}
+          </p>
         </div>
-        <p class="text-sm text-base-content/55">
-          {{count}} row(s) · {{info.columns.length}} column(s)
-          {{#if pkCols.length}}· PK <span class="font-mono">{{join pkCols ", "}}</span>{{/if}}
-        </p>
       </div>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <a href="{{basePath}}/tables/{{table}}/schema" class="btn btn-ghost btn-sm gap-1.5">
-        {{{icon "schema" class="h-4 w-4"}}}
-        Edit schema
-      </a>
-      <a href="{{basePath}}/export" class="btn btn-ghost btn-sm gap-1.5">
-        {{{icon "export" class="h-4 w-4"}}}
-        SQL dump
-      </a>
-      <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-outline btn-sm gap-1.5">
-          {{{icon "export" class="h-4 w-4"}}}
-          Export
-          {{{icon "chevronDown" class="h-3.5 w-3.5"}}}
-        </div>
-        <ul tabindex="0" class="dropdown-content menu z-50 w-40 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-lift">
-          <li><a href="{{basePath}}/api/tables/{{table}}/export?format=csv">CSV</a></li>
-          <li><a href="{{basePath}}/api/tables/{{table}}/export?format=json">JSON</a></li>
-        </ul>
-      </div>
-      {{#unless readonly}}
-        <button id="import-csv" type="button" class="btn btn-outline btn-sm gap-1.5">
-          {{{icon "import" class="h-4 w-4"}}}
-          Import CSV
-        </button>
-      {{/unless}}
-      <a href="{{basePath}}/tables/{{table}}/seed" class="btn btn-outline btn-sm gap-1.5">
-        {{{icon "seed" class="h-4 w-4"}}}
-        Seed data
-      </a>
-      {{#unless readonly}}
-        <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm gap-1.5">
-          {{{icon "plus" class="h-4 w-4"}}}
-          New row
+      <div class="page-actions flex-wrap">
+        <a href="{{basePath}}/tables/{{table}}/schema" class="btn btn-ghost btn-sm gap-1.5">
+          {{{icon "schema" class="h-4 w-4"}}}
+          Edit schema
         </a>
-      {{/unless}}
+        <a href="{{basePath}}/export" class="btn btn-ghost btn-sm gap-1.5">
+          {{{icon "export" class="h-4 w-4"}}}
+          SQL dump
+        </a>
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-outline btn-sm gap-1.5">
+            {{{icon "export" class="h-4 w-4"}}}
+            Export
+            {{{icon "chevronDown" class="h-3.5 w-3.5"}}}
+          </div>
+          <ul tabindex="0" class="dropdown-content menu z-50 w-40 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-lift">
+            <li><a href="{{basePath}}/api/tables/{{table}}/export?format=csv">CSV</a></li>
+            <li><a href="{{basePath}}/api/tables/{{table}}/export?format=json">JSON</a></li>
+          </ul>
+        </div>
+        {{#unless readonly}}
+          <button id="import-csv" type="button" class="btn btn-outline btn-sm gap-1.5">
+            {{{icon "import" class="h-4 w-4"}}}
+            Import CSV
+          </button>
+        {{/unless}}
+        <a href="{{basePath}}/seed/{{table}}" class="btn btn-outline btn-sm gap-1.5">
+          {{{icon "seed" class="h-4 w-4"}}}
+          Seed data
+        </a>
+        {{#unless readonly}}
+          <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm gap-1.5">
+            {{{icon "plus" class="h-4 w-4"}}}
+            New row
+          </a>
+        {{/unless}}
+      </div>
     </div>
   </div>
 
@@ -191,27 +194,50 @@
                 {{#each this.cells}}
                   <td class="max-w-xs align-middle cell-editable {{#unless @root.readonly}}js-inline-cell{{/unless}}"
                       data-col="{{this.name}}" data-null="{{this.isNull}}" data-value="{{this.display}}"
-                      data-blob="{{this.isBlob}}" data-json="{{this.isJson}}" data-type="{{this.type}}">
+                      data-blob="{{this.isBlob}}" data-json="{{this.isJson}}" data-image="{{this.isImage}}"
+                      data-audio="{{this.isAudio}}" data-video="{{this.isVideo}}" data-pdf="{{this.isPdf}}"
+                      data-mime="{{this.blobMime}}" data-type="{{this.type}}">
                     {{#if this.isNull}}
                       <span class="chip chip-null js-cell-value">NULL</span>
                     {{else if this.isImage}}
                       <div class="flex items-center gap-2 js-cell-value">
                         <img src="{{this.blobUrl}}" alt="{{this.name}}" class="h-7 max-w-12 rounded object-cover border border-base-300 bg-base-200 shadow-xs cursor-pointer js-inspect-btn" title="Inspect Image" />
                         <span class="chip chip-type text-[9px] font-mono">{{this.blobExt}} · {{this.blobSize}}</span>
-                        <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Inspect BLOB">
+                        <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Inspect Image">
+                          {{{icon "inspect" class="h-3 w-3"}}}
+                        </button>
+                      </div>
+                    {{else if this.isAudio}}
+                      <div class="flex items-center gap-1.5 js-cell-value">
+                        <span class="inline-flex items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-warning cursor-pointer js-inspect-btn">🎵 {{this.blobExt}} · {{this.blobSize}}</span>
+                        <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Listen & Inspect Audio">
+                          {{{icon "inspect" class="h-3 w-3"}}}
+                        </button>
+                      </div>
+                    {{else if this.isVideo}}
+                      <div class="flex items-center gap-1.5 js-cell-value">
+                        <span class="inline-flex items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-accent cursor-pointer js-inspect-btn">🎬 {{this.blobExt}} · {{this.blobSize}}</span>
+                        <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Watch & Inspect Video">
+                          {{{icon "inspect" class="h-3 w-3"}}}
+                        </button>
+                      </div>
+                    {{else if this.isPdf}}
+                      <div class="flex items-center gap-1.5 js-cell-value">
+                        <span class="inline-flex items-center gap-1 rounded-md bg-error/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-error cursor-pointer js-inspect-btn">📄 PDF · {{this.blobSize}}</span>
+                        <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="View PDF">
                           {{{icon "inspect" class="h-3 w-3"}}}
                         </button>
                       </div>
                     {{else if this.isBlob}}
                       <div class="flex items-center gap-1.5 js-cell-value">
-                        <span class="inline-flex items-center gap-1 rounded-md bg-secondary/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-secondary">🗃️ BLOB · {{this.blobSize}}</span>
+                        <span class="inline-flex items-center gap-1 rounded-md bg-secondary/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-secondary cursor-pointer js-inspect-btn">🗃️ BLOB · {{this.blobSize}}</span>
                         <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Inspect BLOB">
                           {{{icon "inspect" class="h-3 w-3"}}}
                         </button>
                       </div>
                     {{else if this.isJson}}
                       <div class="flex items-center gap-1.5 js-cell-value">
-                        <span class="inline-flex items-center gap-1 rounded-md bg-info/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-info">{ } JSON</span>
+                        <span class="inline-flex items-center gap-1 rounded-md bg-info/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-info cursor-pointer js-inspect-btn">{ } JSON</span>
                         <span class="block max-w-[140px] truncate font-mono text-[12px] text-base-content/70" title="{{this.display}}">{{this.display}}</span>
                         <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity js-inspect-btn" title="Inspect JSON">
                           {{{icon "inspect" class="h-3 w-3"}}}
@@ -336,7 +362,7 @@
       <div class="mt-2 flex gap-2">
         {{#unless readonly}}
           <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm">Insert a row</a>
-          <a href="{{basePath}}/tables/{{table}}/seed" class="btn btn-outline btn-sm">Generate sample data</a>
+          <a href="{{basePath}}/seed/{{table}}" class="btn btn-outline btn-sm">Generate sample data</a>
         {{/unless}}
         <a href="{{basePath}}/query" class="btn btn-outline btn-sm">Run a query</a>
       </div>

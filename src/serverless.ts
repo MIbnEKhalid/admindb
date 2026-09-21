@@ -32,7 +32,13 @@ export function isServerlessEnvironment(env: NodeJS.ProcessEnv = process.env): b
 export function createServerlessHandler(
   options: AppOptions = {},
 ): (req: IncomingMessage, res: ServerResponse) => void {
-  const rawTarget = options.connection || options.dbPath || '';
+  const envTarget =
+    process.env.ADMINDB_CONNECTION ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.PG_CONNECTION ||
+    '';
+  const rawTarget = options.connection || options.dbPath || (isPostgresConnectionString(envTarget) ? envTarget : '');
   const isPg =
     Boolean(options.pgOptions) ||
     isPostgresConnectionString(rawTarget) ||
@@ -42,8 +48,9 @@ export function createServerlessHandler(
 
   const app = createRouter({
     ...options,
+    connection: options.connection || (isPostgresConnectionString(rawTarget) ? rawTarget : undefined),
     serverless: options.serverless ?? true,
-    readonly: options.readonly ?? defaultReadonly,
+    readonly: options.readonly !== undefined ? Boolean(options.readonly) : defaultReadonly,
   });
 
   return (req: IncomingMessage, res: ServerResponse) => {
@@ -63,7 +70,13 @@ export interface LambdaProxyResult {
  * Creates an AWS Lambda handler for API Gateway (REST v1 and HTTP v2 payloads).
  */
 export function createLambdaHandler(options: AppOptions = {}) {
-  const rawTarget = options.connection || options.dbPath || '';
+  const envTarget =
+    process.env.ADMINDB_CONNECTION ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.PG_CONNECTION ||
+    '';
+  const rawTarget = options.connection || options.dbPath || (isPostgresConnectionString(envTarget) ? envTarget : '');
   const isPg =
     Boolean(options.pgOptions) ||
     isPostgresConnectionString(rawTarget) ||
@@ -73,8 +86,9 @@ export function createLambdaHandler(options: AppOptions = {}) {
 
   const app = createRouter({
     ...options,
+    connection: options.connection || (isPostgresConnectionString(rawTarget) ? rawTarget : undefined),
     serverless: options.serverless ?? true,
-    readonly: options.readonly ?? defaultReadonly,
+    readonly: options.readonly !== undefined ? Boolean(options.readonly) : defaultReadonly,
   });
 
   return async (event: any, _context?: any): Promise<LambdaProxyResult> => {

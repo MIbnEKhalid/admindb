@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { ColumnInfo, ForeignKeyInfo } from '../db/index';
 import { coerceFormValue } from '../utils/common';
-import { CITIES, COMPANIES, COUNTRIES, COUNTRY_CODES, CURRENCIES, DOMAINS, FIRST_NAMES, HEX_COLORS, JOB_TITLES, LAST_NAMES, LOREM_WORDS, NAMED_COLORS, STATUSES, US_STATES } from './datasets';
+import { CITIES, COMPANIES, COUNTRIES, COUNTRY_CODES, CURRENCIES, DEPARTMENTS, DOMAINS, FIRST_NAMES, HEX_COLORS, JOB_TITLES, LAST_NAMES, LOREM_WORDS, NAMED_COLORS, ORDER_STATUSES, PAYMENT_METHODS, PRODUCT_CATEGORIES, PRODUCT_NAMES, STATUSES, TECH_SKILLS, TRANSACTION_TYPES, US_STATES } from './datasets';
 import type { RandomSource } from './prng';
 import { createPrng } from './prng';
 import { SKIP, type ColumnPlan, type GeneratorStrategyId, type StrategyCategory, type StrategyDescriptor } from './types';
@@ -765,6 +765,70 @@ class GeneratorRegistryClass {
       description: 'Hardware ethernet MAC address',
       targetTypes: 'text',
       generate: (ctx) => makeMacAddress(ctx.prng),
+    });
+
+    // Commerce, Retail & Domain Strategies
+    this.register({
+      id: 'product',
+      label: 'Product Title',
+      category: 'commerce',
+      description: 'Realistic e-commerce product titles',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(PRODUCT_NAMES),
+    });
+
+    this.register({
+      id: 'productCategory',
+      label: 'Product Category',
+      category: 'commerce',
+      description: 'Retail and product category names',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(PRODUCT_CATEGORIES),
+    });
+
+    this.register({
+      id: 'department',
+      label: 'Company Department',
+      category: 'commerce',
+      description: 'Corporate and business department names',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(DEPARTMENTS),
+    });
+
+    this.register({
+      id: 'paymentMethod',
+      label: 'Payment Method',
+      category: 'commerce',
+      description: 'Payment providers and payment methods',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(PAYMENT_METHODS),
+    });
+
+    this.register({
+      id: 'transactionType',
+      label: 'Transaction Type',
+      category: 'commerce',
+      description: 'Financial and e-commerce transaction types',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(TRANSACTION_TYPES),
+    });
+
+    this.register({
+      id: 'techSkill',
+      label: 'Tech Skill / Tag',
+      category: 'system_crypto',
+      description: 'Programming languages, tools, and developer skills',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(TECH_SKILLS),
+    });
+
+    this.register({
+      id: 'orderStatus',
+      label: 'Order Lifecycle Status',
+      category: 'commerce',
+      description: 'Order lifecycle statuses (pending, shipped, delivered...)',
+      targetTypes: 'text',
+      generate: (ctx) => ctx.prng.pick(ORDER_STATUSES),
     });
 
     // Relational & Database-Aware

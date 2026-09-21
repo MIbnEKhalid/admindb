@@ -34,10 +34,15 @@ export function runCli(): void {
   const authPassword = args.authPassword ?? env.authPassword;
   const authSecret = args.authSecret ?? env.authSecret;
   const serverless = args.serverless !== undefined ? args.serverless : env.serverless;
-  const readonly = serverless || args.readonly || env.readonly;
+  const explicitReadonly = args.explicitReadonly !== undefined ? args.explicitReadonly : env.explicitReadonly;
 
   const connections = args.connections ?? env.connections;
   const hasConnections = Boolean(connections && Object.keys(connections).length > 0);
+
+  const explicitFile = args.connection || args.dbPath || env.connection || env.dbPath;
+  const isPg = Boolean(explicitFile && isPostgresConnectionString(explicitFile));
+  const defaultReadonly = serverless ? !isPg : false;
+  const readonly = explicitReadonly !== undefined ? explicitReadonly : defaultReadonly;
 
   const config = {
     host: args.host ?? env.host,
@@ -50,6 +55,7 @@ export function runCli(): void {
     basePath: (args.basePath ?? env.basePath).replace(/\/+$/, ''),
     logLevel: args.logLevel ?? env.logLevel,
     readonly,
+    explicitReadonly,
     serverless,
     auth: authEnabled
       ? {
@@ -67,8 +73,6 @@ export function runCli(): void {
 
   const hasDir = Boolean(config.dbDir);
   const hasFiles = Boolean(config.dbFiles?.length);
-  const explicitFile = args.connection || args.dbPath || config.connection || config.dbPath;
-  const isPg = Boolean(explicitFile && isPostgresConnectionString(explicitFile));
   const singleFileOnly = !hasConnections && (Boolean(explicitFile) || isPg) && !hasDir && !hasFiles;
   const useManager = !singleFileOnly;
 
@@ -82,12 +86,12 @@ export function runCli(): void {
   const router = useManager
     ? createRouter({
         manager: new DbManager(
-          { dir: managerDir, files: managerFiles, connections, readonly: config.readonly },
+          { dir: managerDir, files: managerFiles, connections, readonly: explicitReadonly, serverless: config.serverless },
           logger,
         ),
         basePath: config.basePath,
         logger,
-        readonly: config.readonly,
+        readonly: explicitReadonly,
         serverless: config.serverless,
         allowBrowse,
         browseRoot,
@@ -98,7 +102,7 @@ export function runCli(): void {
         connection: explicitFile,
         basePath: config.basePath,
         logger,
-        readonly: config.readonly,
+        readonly: explicitReadonly !== undefined ? explicitReadonly : (!isPg && config.serverless),
         serverless: config.serverless,
         auth: config.auth,
       });

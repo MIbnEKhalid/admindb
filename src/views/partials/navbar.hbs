@@ -9,7 +9,7 @@
     </div>
     <div class="flex flex-1 items-center gap-3">
       <a href="{{basePath}}/" class="flex items-center gap-2.5">
-        <span class="text-lg font-bold tracking-tight">Admin<span class="text-primary">DB</span></span>
+        <span class="font-headings text-lg font-bold tracking-tight text-base-content">Admin<span class="text-primary">DB</span></span>
       </a>
       {{#unless databasesMode}}
         {{#if isPostgres}}
@@ -54,19 +54,21 @@
 
       {{#if authEnabled}}
         {{#if authUser}}
-          {{#if isDefaultPassword}}
-            <span class="badge badge-warning badge-sm gap-1 hidden sm:inline-flex font-mono text-[11px]" title="Using default password (admin). Set ADMINDB_PASSWORD in production.">
-              {{{icon "warning" class="h-3.5 w-3.5"}}}
-              default pass
-            </span>
-          {{/if}}
           <div class="dropdown dropdown-end">
             <label tabindex="0" class="btn btn-ghost btn-sm gap-1.5 normal-case font-medium">
               {{{icon "user" class="h-4 w-4 text-base-content/70"}}}
               <span class="max-w-[120px] truncate text-xs">{{authUser}}</span>
             </label>
-            <ul tabindex="0" class="dropdown-content menu p-2 shadow-soft bg-base-100 rounded-xl w-48 border border-base-300 z-50 mt-1 text-sm">
+            <ul tabindex="0" class="dropdown-content menu p-2 shadow-soft bg-base-100 rounded-xl w-56 border border-base-300 z-50 mt-1 text-sm space-y-1">
               <li class="menu-title px-2 py-1 text-xs text-base-content/50">Signed in as <strong class="text-base-content">{{authUser}}</strong></li>
+              {{#if isDefaultPassword}}
+                <li class="rounded-lg bg-warning/10 p-2 text-[11px] text-warning border border-warning/20">
+                  <div class="flex items-center gap-1.5 font-semibold p-0">
+                    {{{icon "warning" class="h-3.5 w-3.5 shrink-0"}}}
+                    <span>Default pass active (admin)</span>
+                  </div>
+                </li>
+              {{/if}}
               <li>
                 <form method="POST" action="{{basePath}}/logout" class="p-0">
                   <button type="submit" class="w-full text-left flex items-center gap-2 px-3 py-2 text-error hover:bg-error/10 rounded-lg">

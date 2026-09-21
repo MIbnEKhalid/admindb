@@ -1,9 +1,9 @@
 import type { ColumnInfo, ForeignKeyInfo, IDatabase, TableInfoData, WhereClause } from '../db/index';
 import { quoteIdentifier, sqlValue } from '../sql/generator';
-import { findInMap, parseChecks, type OrderingConstraint } from './detector';
+import { buildColumnConfigs, findInMap, parseChecks, type OrderingConstraint } from './detector';
 import { createPrng, type RandomSource } from './prng';
 import { generateColumnValue, GeneratorRegistry } from './registry';
-import { buildSchemaGraph, sortTopologically } from './schema-graph';
+import { buildSchemaGraph, resolveScopeTables, sortTopologically } from './schema-graph';
 import { evaluateTemplate, orderColumnDependencies } from './templates';
 import { SKIP, MAX_SEED_ROWS, type ColumnGeneratorConfig, type ColumnPlan, type ErChainResult, type GenerateResult, type GenerationOptions, type GenerationPlan, type TableGenerationSpec } from './types';
 import { validateGenerationPlan } from './validator';
@@ -119,7 +119,7 @@ export class SeedEngine {
     const tableListRes = await db.listTables();
     const tableNames = (tableListRes.data ?? [])
       .map((t) => t.name)
-      .filter((name) => !name.startsWith('sqlite_') && name !== '_saved_queries' && name !== '_admindb_seed_profiles');
+      .filter((name) => !name.startsWith('sqlite_') && name !== '_saved_queries');
 
     const tableInfos = new Map<string, TableInfoData>();
     const allTableData: TableInfoData[] = [];
@@ -139,6 +139,63 @@ export class SeedEngine {
 
     // 3. Build schema graph and determine topological execution order
     const graph = buildSchemaGraph(allTableData);
+
+    // If scope is 'chain' or 'ancestors', resolve all connected scope tables into the plan
+    if (plan.scope && plan.scope !== 'single' && plan.rootTable) {
+      const scopeNodes = resolveScopeTables(graph, plan.rootTable, plan.scope);
+      for (const node of scopeNodes) {
+        if (!plan.tables[node.name]) {
+          const colConfigs = buildColumnConfigs(node.info);
+          const columns: Record<string, ColumnPlan> = {};
+          colConfigs.forEach((c) => {
+            columns[c.name] = c.defaultPlan;
+          });
+          plan.tables[node.name] = {
+            mode: 'generate',
+            rows: node.depth === 0 ? 5 : node.depth === 1 ? 15 : 25,
+            columns,
+            truncate: options.truncateAll,
+          };
+        }
+      }
+    }
+
+    // Auto-resolve any missing upstream parent tables that are referenced by foreign keys and have 0 records in DB (only in chain/relational modes)
+    if (plan.scope && plan.scope !== 'single') {
+      let expanded = true;
+      while (expanded) {
+        expanded = false;
+        const currentPlanTables = Object.keys(plan.tables);
+        for (const tName of currentPlanTables) {
+          const spec = plan.tables[tName];
+          if (spec && spec.mode === 'skip') continue;
+          const info = tableInfos.get(tName);
+          if (!info) continue;
+          for (const fk of info.foreignKeys) {
+            if (fk.table && fk.table !== tName && !plan.tables[fk.table] && tableInfos.has(fk.table)) {
+              const countRes = await db.getRowCount(fk.table);
+              const curCount = countRes.success && typeof countRes.data === 'number' ? countRes.data : 0;
+              if (curCount === 0) {
+                const pInfo = tableInfos.get(fk.table)!;
+                const pColConfigs = buildColumnConfigs(pInfo);
+                const pColumns: Record<string, ColumnPlan> = {};
+                pColConfigs.forEach((c) => {
+                  pColumns[c.name] = c.defaultPlan;
+                });
+                plan.tables[fk.table] = {
+                  mode: 'generate',
+                  rows: 10,
+                  columns: pColumns,
+                  truncate: options.truncateAll,
+                };
+                expanded = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
     const planTableNames = Object.keys(plan.tables);
     const planNodes = planTableNames.map((t) => graph.nodes.get(t)).filter((n): n is NonNullable<typeof n> => n != null);
     const { sorted } = sortTopologically(planNodes.length ? planNodes : Array.from(graph.nodes.values()));
@@ -258,7 +315,12 @@ export class SeedEngine {
           }
 
           if (!pool.length) {
-            if (col.notnull || (col.pk ?? 0) > 0) {
+            const isSelfFk = fkByColumn.get(col.name)?.table === tableName;
+            if (isSelfFk) {
+              // Self-referencing foreign key (e.g. categories.parent_id -> categories.id or employees.manager_id -> employees.id)
+              // Root rows start with NULL, and child rows dynamically reference earlier generated IDs during row generation.
+              // No warning needed for self-referencing hierarchy.
+            } else if (col.notnull || (col.pk ?? 0) > 0) {
               if (col.dflt_value != null) {
                 fkOmit.add(col.name);
               } else {

@@ -959,7 +959,7 @@
     const panelSeed = document.getElementById('erd-panel-seed');
     panelBrowse.href = `${BASE}/tables/${encodeURIComponent(name)}`;
     panelSchema.href = `${BASE}/tables/${encodeURIComponent(name)}/schema`;
-    if (panelSeed) panelSeed.href = `${BASE}/tables/${encodeURIComponent(name)}/seed?mode=chain`;
+    if (panelSeed) panelSeed.href = `${BASE}/seed/${encodeURIComponent(name)}?mode=chain`;
 
     // Columns list
     const fkCols = new Set(t.foreignKeys.map(f => f.from));
@@ -1041,7 +1041,7 @@
     document.getElementById('erd-ctx-browse').href = `${BASE}/tables/${encodeURIComponent(name)}`;
     document.getElementById('erd-ctx-schema').href = `${BASE}/tables/${encodeURIComponent(name)}/schema`;
     const ctxSeed = document.getElementById('erd-ctx-seed');
-    if (ctxSeed) ctxSeed.href = `${BASE}/tables/${encodeURIComponent(name)}/seed?mode=chain`;
+    if (ctxSeed) ctxSeed.href = `${BASE}/seed/${encodeURIComponent(name)}?mode=chain`;
     document.getElementById('erd-ctx-collapse-label').textContent = collapsed.has(name) ? 'Expand table' : 'Collapse table';
 
     const rect = wrap.getBoundingClientRect();

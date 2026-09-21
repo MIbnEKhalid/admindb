@@ -437,7 +437,7 @@ ORDER BY o.total_amount DESC;`;
     await takeScreenshot(`${singleServer.url}/tables/customers/rows/1/edit`, 'form.png');
 
     // 11. Mock Data Seeder with Live Preview
-    await takeScreenshot(`${singleServer.url}/tables/customers/seed`, 'seed.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/seed/customers`, 'seed.png', async (p) => {
       await p.evaluate(() => {
         const previewBtn = document.getElementById('seed-preview');
         if (previewBtn) {

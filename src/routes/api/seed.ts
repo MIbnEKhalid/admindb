@@ -1,6 +1,6 @@
 import type { Router } from 'express';
 import { quoteIdentifier } from '../../sql/generator';
-import { buildColumnConfigs, buildSeedInsertSql, generateRows, getErChainConfig, generateChainRows, executeChainInsert, MAX_SEED_ROWS, SeedEngine, validateGenerationPlan, listSeedProfiles, saveSeedProfile, deleteSeedProfile, type ErChainScope } from '../../data/index';
+import { buildColumnConfigs, buildSeedInsertSql, generateRows, getErChainConfig, generateChainRows, executeChainInsert, MAX_SEED_ROWS, SeedEngine, validateGenerationPlan, type ErChainScope } from '../../data/index';
 import { type ApiContext, ok, fail, wrap, requireTable, parseSeedRequest, parseChainSeedRequest, parseUnifiedGenerationPlan } from './helpers';
 
 export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
@@ -36,24 +36,6 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
       },
       201,
     );
-  }));
-
-  router.get('/api/seed/profiles', wrap(async (_req, res) => {
-    ok(res, await listSeedProfiles(db));
-  }));
-
-  router.post('/api/seed/profiles', wrap(async (req, res) => {
-    const name = String(req.body?.name || '').trim();
-    if (!name) return fail(res, 'Profile name is required.', 400);
-    const description = req.body?.description ? String(req.body.description) : undefined;
-    const id = req.body?.id ? String(req.body.id) : undefined;
-    const plan = parseUnifiedGenerationPlan(req.body);
-    ok(res, await saveSeedProfile(db, name, plan, description, id), 201);
-  }));
-
-  router.delete('/api/seed/profiles/:id', wrap(async (req, res) => {
-    const success = await deleteSeedProfile(db, req.params.id);
-    ok(res, { success, id: req.params.id });
   }));
 
   // ---- Single Table Data generator / seeder (Backward Compatible) ----------

@@ -2,16 +2,21 @@
 <div class="mx-auto max-w-3xl space-y-5">
 
   <!-- Header -->
-  <div class="flex items-center gap-3">
-    <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
-      {{{icon "arrowLeft" class="h-5 w-5"}}}
-    </a>
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">
-        {{#if (eq mode 'edit')}}Edit row{{else}}New row{{/if}}
-        <span class="text-base-content/40">in</span> <span class="font-mono text-primary">{{table}}</span>
-      </h1>
-      <p class="text-sm text-base-content/55">{{infoSummary}}</p>
+  <div class="page-header">
+    <div class="page-header-row">
+      <div class="flex items-center gap-3">
+        <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
+          {{{icon "arrowLeft" class="h-4 w-4"}}}
+        </a>
+        <div>
+          <div class="page-pretitle">{{#if (eq mode 'edit')}}Record Editor{{else}}Record Inserter{{/if}}</div>
+          <h1 class="page-title text-xl sm:text-2xl">
+            {{#if (eq mode 'edit')}}Edit row{{else}}New row{{/if}}
+            <span class="text-base-content/40 font-normal">in</span> <span class="font-mono text-primary">{{table}}</span>
+          </h1>
+          <p class="text-xs text-base-content/55 mt-0.5">{{infoSummary}}</p>
+        </div>
+      </div>
     </div>
   </div>
 

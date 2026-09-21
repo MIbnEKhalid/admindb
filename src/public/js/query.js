@@ -1,10 +1,12 @@
 /* Query editor: Fast, zero-desync SQL IDE with real-time token syntax coloring,
  * Undo/Redo history stack (Ctrl+Z / Ctrl+Y), line numbers gutter, smart indentation,
- * error analysis & visual pointers, save/load, and results table. */
+ * error analysis & visual pointers, save/load, smooth results sliding, and export. */
 (function () {
   'use strict';
 
-  const editor = document.getElementById('query-sql');
+  const textarea = document.getElementById('query-sql');
+  const highlightCode = document.getElementById('query-code');
+  const highlightPre = document.getElementById('query-highlight');
   const gutter = document.getElementById('query-gutter');
   const cursorPosEl = document.getElementById('editor-cursor-pos');
   const statsEl = document.getElementById('editor-stats');
@@ -26,7 +28,6 @@
 
   let queriesCache = [];
   let errorLineNum = null;
-  let isUpdatingHighlight = false;
 
   const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
   const highlightSql = window.Utils ? window.Utils.highlightSql : function(s) { return escapeHtml(s); };
@@ -92,124 +93,53 @@
   const history = new HistoryManager(100);
 
   // ---------------------------------------------------------------------------
-  // Editor Text & Selection Management
+  // Editor Text & Highlighting Sync
   // ---------------------------------------------------------------------------
 
   function getEditorText() {
-    if (!editor) return '';
-    let text = editor.innerText || editor.textContent || '';
-    return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    return textarea ? textarea.value : '';
   }
 
-  function saveSelection(containerEl) {
-    const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return { start: 0, end: 0 };
-    const range = sel.getRangeAt(0);
-    const preSelectionRange = range.cloneRange();
-    preSelectionRange.selectNodeContents(containerEl);
-    preSelectionRange.setEnd(range.startContainer, range.startOffset);
-    const start = preSelectionRange.toString().length;
-    return {
-      start: start,
-      end: start + range.toString().length,
-    };
+  function syncHighlight() {
+    if (!textarea || !highlightCode) return;
+    const val = textarea.value;
+    // Add extra space/newline to prevent <pre> height collapse on trailing newlines
+    highlightCode.innerHTML = highlightSql(val) + (val.endsWith('\n') ? ' ' : '');
+    updateGutter();
+    updateCursorStats();
+    syncScroll();
   }
 
-  function restoreSelection(containerEl, savedSel) {
-    const sel = window.getSelection();
-    if (!sel) return;
-    let charIndex = 0;
-    const range = document.createRange();
-    range.setStart(containerEl, 0);
-    range.collapse(true);
-    const nodeStack = [containerEl];
-    let node, foundStart = false, stop = false;
-
-    while (!stop && (node = nodeStack.pop())) {
-      if (node.nodeType === 3) {
-        const nextCharIndex = charIndex + node.length;
-        if (!foundStart && savedSel.start >= charIndex && savedSel.start <= nextCharIndex) {
-          range.setStart(node, savedSel.start - charIndex);
-          foundStart = true;
-        }
-        if (foundStart && savedSel.end >= charIndex && savedSel.end <= nextCharIndex) {
-          range.setEnd(node, savedSel.end - charIndex);
-          stop = true;
-        }
-        charIndex = nextCharIndex;
-      } else {
-        let i = node.childNodes.length;
-        while (i--) {
-          nodeStack.push(node.childNodes[i]);
-        }
-      }
+  function syncScroll() {
+    if (!textarea) return;
+    if (highlightPre) {
+      highlightPre.scrollTop = textarea.scrollTop;
+      highlightPre.scrollLeft = textarea.scrollLeft;
     }
-
-    sel.removeAllRanges();
-    sel.addRange(range);
+    if (gutter) {
+      gutter.scrollTop = textarea.scrollTop;
+    }
   }
 
   function setEditorValue(val, recordHistory = true) {
-    if (!editor) return;
-    isUpdatingHighlight = true;
-    if (!val) {
-      editor.innerHTML = '';
-    } else {
-      editor.innerHTML = highlightSql(val);
-    }
-    isUpdatingHighlight = false;
-    updateGutter();
-    updateCursorStats();
+    if (!textarea) return;
+    textarea.value = val || '';
+    syncHighlight();
     if (recordHistory) {
       const len = (val || '').length;
       history.record(val || '', { start: len, end: len }, 0);
     }
   }
 
-  function applyHighlightPreservingSelection(recordHistory = true) {
-    if (!editor || isUpdatingHighlight) return;
-    isUpdatingHighlight = true;
-    const sel = saveSelection(editor);
-    const text = getEditorText();
-    if (!text) {
-      editor.innerHTML = '';
-    } else {
-      editor.innerHTML = highlightSql(text);
-      restoreSelection(editor, sel);
-    }
-    isUpdatingHighlight = false;
-    updateGutter();
-    updateCursorStats();
-    if (recordHistory) {
-      // For large SQL files, applying syntax highlight shouldn't record to the history 
-      // stack as long as it wasn't triggered by typing. If it was, the history should have 
-      // already recorded it during the 'input' event via history.record.
-      // But we still update the selection here just in case.
-    }
-  }
-
-  function insertTextAtSelection(insertStr) {
-    if (!editor) return;
-    const text = getEditorText();
-    const sel = saveSelection(editor);
-    const newText = text.slice(0, sel.start) + insertStr + text.slice(sel.end);
-    const newPos = sel.start + insertStr.length;
-    isUpdatingHighlight = true;
-    editor.innerHTML = highlightSql(newText);
-    restoreSelection(editor, { start: newPos, end: newPos });
-    isUpdatingHighlight = false;
-    updateGutter();
-    updateCursorStats();
-    history.record(newText, { start: newPos, end: newPos }, 0);
-  }
-
   function doUndo() {
     const item = history.undo();
     if (!item) return;
-    isUpdatingHighlight = true;
-    editor.innerHTML = highlightSql(item.text);
-    restoreSelection(editor, item.selection || { start: 0, end: 0 });
-    isUpdatingHighlight = false;
+    textarea.value = item.text;
+    syncHighlight();
+    if (item.selection) {
+      textarea.setSelectionRange(item.selection.start, item.selection.end);
+    }
+    textarea.focus();
     errorLineNum = null;
     updateGutter();
     updateCursorStats();
@@ -218,10 +148,12 @@
   function doRedo() {
     const item = history.redo();
     if (!item) return;
-    isUpdatingHighlight = true;
-    editor.innerHTML = highlightSql(item.text);
-    restoreSelection(editor, item.selection || { start: 0, end: 0 });
-    isUpdatingHighlight = false;
+    textarea.value = item.text;
+    syncHighlight();
+    if (item.selection) {
+      textarea.setSelectionRange(item.selection.start, item.selection.end);
+    }
+    textarea.focus();
     errorLineNum = null;
     updateGutter();
     updateCursorStats();
@@ -232,8 +164,8 @@
   // ---------------------------------------------------------------------------
 
   function updateGutter() {
-    if (!editor || !gutter) return;
-    const text = getEditorText();
+    if (!textarea || !gutter) return;
+    const text = textarea.value;
     const lines = text.split('\n');
     const lineCount = Math.max(1, lines.length);
 
@@ -243,14 +175,15 @@
       gutterHtml += '<div class="sql-gutter-line' + (isErr ? ' has-error' : '') + '" data-line="' + i + '" title="' + (isErr ? 'Error on line ' + i : 'Line ' + i) + '">' + i + '</div>';
     }
     gutter.innerHTML = gutterHtml;
-    gutter.scrollTop = editor.scrollTop;
+    gutter.scrollTop = textarea.scrollTop;
   }
 
   function updateCursorStats() {
-    if (!editor || !cursorPosEl) return;
-    const text = getEditorText();
-    const sel = saveSelection(editor);
-    const textBefore = text.slice(0, sel.start);
+    if (!textarea || !cursorPosEl) return;
+    const text = textarea.value;
+    const selStart = textarea.selectionStart || 0;
+    const selEnd = textarea.selectionEnd || 0;
+    const textBefore = text.slice(0, selStart);
     const lines = textBefore.split('\n');
     const line = lines.length;
     const col = lines[lines.length - 1].length + 1;
@@ -260,7 +193,7 @@
     if (statsEl) {
       const totalLen = text.length;
       const totalLines = text.split('\n').length;
-      const selLen = Math.abs(sel.end - sel.start);
+      const selLen = Math.abs(selEnd - selStart);
       if (selLen > 0) {
         statsEl.textContent = totalLen + ' chars (' + selLen + ' selected) · ' + totalLines + ' lines';
       } else {
@@ -270,8 +203,8 @@
   }
 
   function jumpToLine(line, col) {
-    if (!editor) return;
-    const text = getEditorText();
+    if (!textarea) return;
+    const text = textarea.value;
     const lines = text.split('\n');
     const targetLine = Math.max(1, Math.min(lines.length, line || 1));
     let charPos = 0;
@@ -281,11 +214,11 @@
     if (col && col > 1) {
       charPos += Math.min(lines[targetLine - 1].length, col - 1);
     }
-    editor.focus();
-    restoreSelection(editor, { start: charPos, end: charPos });
+    textarea.focus();
+    textarea.setSelectionRange(charPos, charPos);
     const lineHeight = 21;
-    editor.scrollTop = Math.max(0, (targetLine - 3) * lineHeight);
-    updateGutter();
+    textarea.scrollTop = Math.max(0, (targetLine - 3) * lineHeight);
+    syncScroll();
     updateCursorStats();
   }
 
@@ -331,6 +264,7 @@
       const text = getEditorText();
       if (!text.trim()) return;
       setEditorValue(formatSql(text));
+      textarea.focus();
       if (window.UI && UI.showToast) UI.showToast('SQL formatted.', 'info');
     });
   }
@@ -350,7 +284,7 @@
       setEditorValue('');
       errorLineNum = null;
       setMessage('', 'info');
-      editor.focus();
+      textarea.focus();
     });
   }
 
@@ -362,7 +296,7 @@
       setEditorValue(snippet.replace(/\\n/g, '\n'));
       errorLineNum = null;
       setMessage('', 'info');
-      editor.focus();
+      textarea.focus();
     });
   });
 
@@ -379,36 +313,20 @@
   // Editor Event Listeners
   // ---------------------------------------------------------------------------
 
-  if (editor) {
-    editor.addEventListener('input', function () {
+  if (textarea) {
+    textarea.addEventListener('input', function () {
       errorLineNum = null;
-      // Record history on input BEFORE we potentially wreck the DOM during syntax highlighting
-      const text = getEditorText();
-      const sel = saveSelection(editor);
-      history.record(text, sel, 0);
-      applyHighlightPreservingSelection(false); // Don't let applyHighlight record history again
+      syncHighlight();
+      history.record(textarea.value, { start: textarea.selectionStart, end: textarea.selectionEnd }, 250);
     });
 
-    editor.addEventListener('paste', function (e) {
-      e.preventDefault();
-      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-      if (text) insertTextAtSelection(text);
-    });
+    textarea.addEventListener('scroll', syncScroll);
+    textarea.addEventListener('click', updateCursorStats);
+    textarea.addEventListener('keyup', updateCursorStats);
+    textarea.addEventListener('select', updateCursorStats);
 
-    editor.addEventListener('scroll', function () {
-      if (gutter) gutter.scrollTop = editor.scrollTop;
-    });
-
-    editor.addEventListener('click', function () {
-      updateCursorStats();
-    });
-
-    editor.addEventListener('keyup', function () {
-      updateCursorStats();
-    });
-
-    editor.addEventListener('keydown', function (e) {
-      // 1. Undo: Ctrl+Z / Cmd+Z
+    textarea.addEventListener('keydown', function (e) {
+      // 1. Undo: Ctrl+Z / Cmd+Z (when not shift)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         doUndo();
@@ -433,23 +351,30 @@
       // 4. Enter -> Clean newline with auto-indent
       if (e.key === 'Enter') {
         e.preventDefault();
-        const text = getEditorText();
-        const sel = saveSelection(editor);
-        const textBefore = text.slice(0, sel.start);
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+        const textBefore = text.slice(0, start);
         const lastLine = textBefore.split('\n').pop() || '';
         const match = lastLine.match(/^(\s+)/);
         const indent = match ? match[1] : '';
-        insertTextAtSelection('\n' + indent);
+        const insertion = '\n' + indent;
+
+        textarea.setRangeText(insertion, start, end, 'end');
+        syncHighlight();
+        history.record(textarea.value, { start: textarea.selectionStart, end: textarea.selectionEnd }, 0);
         return;
       }
 
       // 5. Ctrl+/ or Cmd+/ -> Toggle line comment
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
-        const sel = saveSelection(editor);
-        const text = getEditorText();
-        const lineStart = text.lastIndexOf('\n', sel.start - 1) + 1;
-        let lineEnd = text.indexOf('\n', sel.end);
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+
+        const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+        let lineEnd = text.indexOf('\n', end);
         if (lineEnd === -1) lineEnd = text.length;
 
         const selBlock = text.slice(lineStart, lineEnd);
@@ -464,25 +389,27 @@
           }
         }).join('\n');
 
-        const newText = text.slice(0, lineStart) + modified + text.slice(lineEnd);
-        setEditorValue(newText);
-        restoreSelection(editor, { start: lineStart, end: lineStart + modified.length });
+        textarea.setRangeText(modified, lineStart, lineEnd, 'preserve');
+        textarea.setSelectionRange(lineStart, lineStart + modified.length);
+        syncHighlight();
+        history.record(textarea.value, { start: lineStart, end: lineStart + modified.length }, 0);
         return;
       }
 
       // 6. Tab / Shift+Tab -> Indentation
       if (e.key === 'Tab') {
         e.preventDefault();
-        const sel = saveSelection(editor);
-        const text = getEditorText();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
 
-        if (sel.start === sel.end) {
-          if (!e.shiftKey) {
-            insertTextAtSelection('  ');
-          }
+        if (start === end && !e.shiftKey) {
+          textarea.setRangeText('  ', start, end, 'end');
+          syncHighlight();
+          history.record(textarea.value, { start: textarea.selectionStart, end: textarea.selectionEnd }, 0);
         } else {
-          const lineStart = text.lastIndexOf('\n', sel.start - 1) + 1;
-          let lineEnd = text.indexOf('\n', sel.end);
+          const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+          let lineEnd = text.indexOf('\n', end);
           if (lineEnd === -1) lineEnd = text.length;
           const selLines = text.slice(lineStart, lineEnd).split('\n');
 
@@ -494,9 +421,10 @@
             }
           }).join('\n');
 
-          const newText = text.slice(0, lineStart) + transformed + text.slice(lineEnd);
-          setEditorValue(newText);
-          restoreSelection(editor, { start: lineStart, end: lineStart + transformed.length });
+          textarea.setRangeText(transformed, lineStart, lineEnd, 'preserve');
+          textarea.setSelectionRange(lineStart, lineStart + transformed.length);
+          syncHighlight();
+          history.record(textarea.value, { start: lineStart, end: lineStart + transformed.length }, 0);
         }
         return;
       }
@@ -684,14 +612,16 @@
   }
 
   if (bodyEl) {
+    let queryPeekTimer = null;
+
     bodyEl.addEventListener('click', function (e) {
       const inspectBtn = e.target.closest('.js-query-inspect');
       const cell = e.target.closest('.js-query-cell');
-      if (!inspectBtn && (!cell || e.detail < 2)) return;
+      if (!inspectBtn && (!cell || (e.detail < 2 && !e.altKey))) return;
       const targetCell = inspectBtn ? inspectBtn.closest('.js-query-cell') : cell;
       if (!targetCell) return;
 
-      const col = targetCell.dataset.col || 'result';
+      const col = targetCell.dataset.col || 'Result';
       const val = targetCell.dataset.value || '';
       const isBlob = targetCell.dataset.blob === 'true';
       const isJson = targetCell.dataset.json === 'true';
@@ -706,6 +636,33 @@
           readonly: true,
         });
       }
+    });
+
+    // Quick peek on mouse hover
+    bodyEl.addEventListener('mouseover', function (e) {
+      const cell = e.target.closest('.js-query-cell');
+      if (!cell) return;
+      clearTimeout(queryPeekTimer);
+      queryPeekTimer = setTimeout(function () {
+        const val = cell.dataset.value || '';
+        if (!val || val.length < 30) return;
+        const col = cell.dataset.col || 'Result';
+        const isBlob = cell.dataset.blob === 'true';
+        const isJson = cell.dataset.json === 'true';
+        if (window.Inspector && window.Inspector.peek) {
+          window.Inspector.peek(cell, {
+            col: col,
+            value: val,
+            isBlob: isBlob,
+            isJson: isJson,
+            readonly: true,
+          });
+        }
+      }, 450);
+    });
+
+    bodyEl.addEventListener('mouseout', function (e) {
+      clearTimeout(queryPeekTimer);
     });
   }
 
@@ -747,11 +704,23 @@
     messageEl.innerHTML = '';
     resultEl.classList.add('hidden');
     setExportEnabled(false);
+
+    const originalBtnHtml = runBtn ? runBtn.innerHTML : '';
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Running…';
+    }
+
     const started = performance.now();
     try {
       const data = await Api.post('/api/query', { sql });
       const elapsed = Math.max(1, Math.round(performance.now() - started));
+      
       resultEl.classList.remove('hidden');
+      resultEl.classList.remove('js-result-slide');
+      void resultEl.offsetWidth;
+      resultEl.classList.add('js-result-slide');
+
       if (data.kind === 'count') {
         renderMessageRow(String(data.count), 'count');
         setSummary('Count query · ' + elapsed + 'ms');
@@ -763,9 +732,23 @@
         renderMessageRow(data.message || 'Statement executed.', 'write');
         setSummary(data.changes != null ? data.changes + ' row(s) affected · ' + elapsed + 'ms' : elapsed + 'ms');
       }
+
+      // Smoothly slide / scroll to results
+      setTimeout(function () {
+        resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+
     } catch (e) {
       resultEl.classList.add('hidden');
       setDetailedError(e);
+      setTimeout(function () {
+        messageEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    } finally {
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.innerHTML = originalBtnHtml;
+      }
     }
   }
 
@@ -841,6 +824,7 @@
         saveName.value = q.name;
         errorLineNum = null;
         setMessage('Loaded "' + q.name + '".', 'info');
+        textarea.focus();
       }
     });
   }
@@ -853,6 +837,5 @@
   } else {
     history.record('', { start: 0, end: 0 }, 0);
   }
-  updateGutter();
-  updateCursorStats();
+  syncHighlight();
 })();

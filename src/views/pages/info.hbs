@@ -2,16 +2,28 @@
 <div class="space-y-6">
 
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <p class="text-sm font-semibold uppercase tracking-wider text-primary">{{dialect}} Database</p>
-      <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Info & Settings</h1>
-      <p class="mt-1.5 text-sm text-base-content/55">Database configuration, settings, and schema DDL overview.</p>
+  <div class="page-header">
+    <div class="page-header-row">
+      <div>
+        <div class="page-pretitle">{{dialect}} Database</div>
+        <h1 class="page-title">Info & Settings</h1>
+        <p class="mt-0.5 text-xs text-base-content/60">Database configuration, settings, and schema DDL overview.</p>
+      </div>
     </div>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div class="lg:col-span-1 space-y-6">
+      {{#if isDefaultPassword}}
+        <div class="alert alert-warning text-xs shadow-xs rounded-2xl border border-warning/30 p-3.5">
+          {{{icon "warning" class="h-5 w-5 shrink-0 text-warning"}}}
+          <div>
+            <div class="font-bold text-sm">Default Password in Use</div>
+            <div class="text-base-content/80 mt-0.5 leading-relaxed">Console is running with default password (<code class="font-mono font-semibold">admin</code>). Run <code class="font-mono font-semibold">npm run generatehash</code> and set <code class="font-mono font-semibold">ADMINDB_PASSWORD</code>.</div>
+          </div>
+        </div>
+      {{/if}}
+
       <div class="app-card overflow-hidden">
         <div class="border-b border-base-200 bg-base-200/40 px-4 py-3">
           <h2 class="text-sm font-bold uppercase tracking-wider text-base-content/80">Settings / Configuration</h2>

@@ -10,10 +10,12 @@
   const cfg = JSON.parse(cfgEl.textContent);
   const rootTableName = cfg.table;
   const rootColumns = cfg.columns || [];
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialMode = cfg.mode || urlParams.get('mode') || 'single';
 
   // ---- Application State ----
-  let currentStep = 1;
-  let mode = null; // 'single' | 'chain'
+  let currentStep = 2; // In workspace view, active config studio is primary
+  let mode = initialMode === 'chain' ? 'chain' : 'single';
   let prngSeed = null;
   const stateByTable = {}; // tableName -> { colName -> plan }
   const tableModes = {}; // tableName -> 'generate' | 'use_existing' | 'generate_if_empty' | 'skip'
@@ -21,6 +23,7 @@
   let chainConfigData = null; // ER chain / schema data
   let lastPreviewResult = null;
   let activePreviewTable = rootTableName;
+  let previewDebounceTimer = null;
 
   // Initialize root table column state
   stateByTable[rootTableName] = {};
@@ -143,9 +146,25 @@
     if (st === 'bool') return samplePick(['true', 'false']);
     if (st === 'sequence') return String(plan.start || 1);
     if (st === 'uuid') return '550e8400-e29b-41d4-a716-446655440000';
+    if (st === 'product') return 'Wireless Noise-Canceling Earbuds';
+    if (st === 'productCategory') return 'Electronics';
+    if (st === 'department') return 'Engineering';
+    if (st === 'paymentMethod') return 'Credit Card';
+    if (st === 'transactionType') return 'purchase';
+    if (st === 'techSkill') return 'TypeScript';
+    if (st === 'orderStatus') return 'delivered';
     if (st === 'fk') return `[FK -> ${col.fk ? col.fk.table : 'parent'}]`;
     if (st === 'sampleExisting') return '[Sampled DB Value]';
     return '(sample)';
+  }
+
+  // Debounced preview generator
+  function triggerPreviewUpdate(delay = 400) {
+    if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => {
+      runPlanValidation();
+      generateDataPreview();
+    }, delay);
   }
 
   // ---- Generation Plan Builder ----
@@ -167,7 +186,7 @@
     if (isSingle) {
       plan.tables[rootTableName] = {
         mode: 'generate',
-        rows: Math.max(1, parseInt(singleCountInput.value, 10) || 10),
+        rows: Math.max(1, parseInt(singleCountInput?.value, 10) || 10),
         columns: stateByTable[rootTableName] || {},
         truncate: truncateCheckbox?.checked ?? false,
       };
@@ -189,6 +208,9 @@
 
   // ---- Pre-flight Validation ----
   async function runPlanValidation() {
+    if (mode === 'chain' && !chainConfigData) {
+      await loadChainPipeline();
+    }
     const plan = buildCurrentGenerationPlan();
     try {
       const report = await Api.post('/api/seed/validate', { plan });
@@ -203,48 +225,42 @@
     const errors = (report.issues || []).filter((i) => i.type === 'error');
     const warnings = (report.issues || []).filter((i) => i.type === 'warning');
 
-    if (errors.length === 0) {
-      validationStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_8px_rgba(34,197,94,0.6)]';
-      validationStatusText.textContent = warnings.length ? `${warnings.length} Warning(s)` : 'Plan Ready';
-      validationSummaryChip.className = 'badge badge-sm badge-success font-bold font-mono';
-      validationSummaryChip.textContent = 'All Checks Passed';
-    } else {
-      validationStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-error animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]';
-      validationStatusText.textContent = `${errors.length} Issue(s)`;
-      validationSummaryChip.className = 'badge badge-sm badge-error font-bold font-mono';
-      validationSummaryChip.textContent = 'Action Required';
+    if (validationStatusDot && validationStatusText && validationSummaryChip) {
+      if (errors.length === 0) {
+        validationStatusDot.className = 'w-2 h-2 rounded-full bg-success';
+        validationStatusText.textContent = warnings.length ? `${warnings.length} Warning(s)` : 'Plan Ready';
+        validationSummaryChip.className = 'badge badge-sm badge-success font-mono text-[10px] font-bold';
+        validationSummaryChip.textContent = warnings.length ? 'Warnings' : 'All Checks Passed';
+      } else {
+        validationStatusDot.className = 'w-2 h-2 rounded-full bg-error animate-pulse';
+        validationStatusText.textContent = `${errors.length} Issue(s)`;
+        validationSummaryChip.className = 'badge badge-sm badge-error font-mono text-[10px] font-bold';
+        validationSummaryChip.textContent = 'Action Required';
+      }
     }
 
     if (validationIssuesList) {
       validationIssuesList.innerHTML = '';
       if (errors.length === 0 && warnings.length === 0) {
         validationIssuesList.innerHTML = `
-          <div class="flex items-center gap-2 text-success font-medium">
-            <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-            <span>Primary key strategy valid across all target tables</span>
-          </div>
-          <div class="flex items-center gap-2 text-success font-medium">
-            <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-            <span>Foreign key dependency relationships resolvable</span>
-          </div>
-          <div class="flex items-center gap-2 text-success font-medium">
-            <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-            <span>Unique constraints and template expressions validated</span>
+          <div class="flex items-center gap-2 text-success font-medium text-[11px]">
+            <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            <span>Primary key & constraint strategies valid</span>
           </div>
         `;
       } else {
         errors.forEach((err) => {
           validationIssuesList.innerHTML += `
-            <div class="flex items-start gap-2 text-error font-semibold">
-              <svg class="h-4 w-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            <div class="flex items-start gap-1.5 text-error font-medium text-[11px]">
+              <svg class="h-3.5 w-3.5 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
               <span><strong>${escapeHtml(err.table || '')}:</strong> ${escapeHtml(err.message)}</span>
             </div>
           `;
         });
         warnings.forEach((warn) => {
           validationIssuesList.innerHTML += `
-            <div class="flex items-start gap-2 text-warning font-semibold">
-              <svg class="h-4 w-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            <div class="flex items-start gap-1.5 text-warning font-medium text-[11px]">
+              <svg class="h-3.5 w-3.5 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
               <span><strong>${escapeHtml(warn.table || '')}:</strong> ${escapeHtml(warn.message)}</span>
             </div>
           `;
@@ -253,59 +269,35 @@
     }
   }
 
-  // ---- Wizard Step Navigation ----
+  // ---- Workspace Navigation & Mode Switching ----
   function goToStep(step) {
     currentStep = step;
-    const pct = { 1: '0%', 2: '50%', 3: '100%' };
-    if (progressBar) progressBar.style.width = pct[step] || '0%';
-
-    [stepNav1, stepNav2, stepNav3].forEach((el, i) => {
-      if (!el) return;
-      const s = i + 1;
-      const circle = el.querySelector('.seed-step-circle');
-      const num = el.querySelector('.seed-step-num');
-      const check = el.querySelector('.seed-step-check');
-
-      if (s < step) {
-        circle.className = 'seed-step-circle w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black border-2 transition-all bg-success border-success text-success-content shadow-[0_0_12px_rgba(34,197,94,0.4)]';
-        num.classList.add('hidden');
-        check.classList.remove('hidden');
-      } else if (s === step) {
-        circle.className = 'seed-step-circle w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black border-2 transition-all bg-primary border-primary text-primary-content shadow-[0_0_16px_rgba(109,93,246,0.5)]';
-        num.classList.remove('hidden');
-        check.classList.add('hidden');
-      } else {
-        circle.className = 'seed-step-circle w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black border-2 transition-all bg-base-200 border-base-300 text-base-content/40';
-        num.classList.remove('hidden');
-        check.classList.add('hidden');
-      }
-    });
-
-    content1.classList.toggle('hidden', step !== 1);
-    content2.classList.toggle('hidden', step !== 2);
-    content3.classList.toggle('hidden', step !== 3);
-
-    if (step === 2) {
-      configSingle.classList.toggle('hidden', mode !== 'single');
-      configChain.classList.toggle('hidden', mode !== 'chain');
-      if (mode === 'single' && singleColumnsBox.children.length === 0) {
-        renderSingleTableColumns(rootTableName, rootColumns, singleColumnsBox);
-      } else if (mode === 'chain' && !chainConfigData) {
-        loadChainPipeline();
-      }
-      runPlanValidation();
-    }
-
-    if (step === 3) {
-      generateDataPreview();
-    }
   }
 
-  function selectMode(selected) {
-    mode = selected;
-    btnSelectSingle.classList.toggle('seed-mode-card--selected-single', mode === 'single');
-    btnSelectChain.classList.toggle('seed-mode-card--selected-chain', mode === 'chain');
-    btnNext1.disabled = false;
+  function selectMode(targetMode, updateUrl = false) {
+    mode = targetMode === 'chain' ? 'chain' : 'single';
+    if (btnSelectSingle) btnSelectSingle.classList.toggle('active', mode === 'single');
+    if (btnSelectChain) btnSelectChain.classList.toggle('active', mode === 'chain');
+    if (configSingle) configSingle.classList.toggle('hidden', mode !== 'single');
+    if (configChain) configChain.classList.toggle('hidden', mode !== 'chain');
+
+    if (mode === 'single') {
+      if (singleColumnsBox && singleColumnsBox.children.length === 0) {
+        renderSingleTableColumns(rootTableName, rootColumns, singleColumnsBox);
+      }
+    } else if (mode === 'chain') {
+      if (!chainConfigData) {
+        loadChainPipeline();
+      }
+    }
+
+    if (updateUrl && window.history && window.history.replaceState) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('mode', mode);
+      window.history.replaceState({}, '', url.toString());
+    }
+
+    triggerPreviewUpdate(100);
   }
 
   // ---- Single Table Column Plan Renderer ----
@@ -319,53 +311,46 @@
       }
       const plan = stateByTable[tableName][col.name];
 
-      const card = document.createElement('div');
-      card.className = 'seed-col-card';
-      card.dataset.colName = col.name.toLowerCase();
-      card.dataset.strategyType = plan.strategy === 'template' ? 'template' : (plan.strategy === 'skip' ? 'skip' : (plan.strategy === 'null' ? 'null' : (plan.strategy === 'fixed' ? 'fixed' : 'generate')));
+      const row = document.createElement('div');
+      row.className = 'seed-col-row';
+      row.dataset.colName = col.name.toLowerCase();
+      row.dataset.strategyType = plan.strategy === 'template' ? 'template' : (plan.strategy === 'skip' ? 'skip' : (plan.strategy === 'null' ? 'null' : (plan.strategy === 'fixed' ? 'fixed' : 'generate')));
 
       // Badges
       let badges = '';
-      if (col.pk) badges += '<span class="badge badge-xs badge-warning font-black font-mono">PK</span>';
-      if (col.notnull) badges += '<span class="badge badge-xs badge-error font-bold font-mono">REQ</span>';
-      if (col.unique) badges += '<span class="badge badge-xs badge-secondary font-bold font-mono">UNIQUE</span>';
-      if (col.fk) badges += `<span class="badge badge-xs badge-outline font-mono text-[10px] text-base-content/70">FK->${escapeHtml(col.fk.table)}</span>`;
+      if (col.pk) badges += '<span class="badge badge-xs badge-warning font-mono font-bold text-[9px] px-1">PK</span>';
+      if (col.notnull) badges += '<span class="badge badge-xs badge-error font-mono font-bold text-[9px] px-1">REQ</span>';
+      if (col.unique) badges += '<span class="badge badge-xs badge-secondary font-mono font-bold text-[9px] px-1">UQ</span>';
+      if (col.fk) badges += `<span class="badge badge-xs badge-outline font-mono text-[9px] text-base-content/60">↳ ${escapeHtml(col.fk.table)}.${escapeHtml(col.fk.column)}</span>`;
 
-      card.innerHTML = `
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="font-black font-mono text-sm tracking-tight text-base-content truncate">${escapeHtml(col.name)}</span>
-              ${badges}
-            </div>
-            <div class="text-[10px] text-base-content/40 uppercase font-mono font-bold mt-0.5">${escapeHtml(col.type)}</div>
+      row.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2.5">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="font-mono font-bold text-xs text-base-content truncate">${escapeHtml(col.name)}</span>
+            <span class="font-mono text-[10px] text-base-content/40 uppercase">${escapeHtml(col.type)}</span>
+            ${badges}
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <select class="col-strategy-select field-select !py-0.5 text-xs font-mono font-semibold w-40">
+              ${(col.strategies || []).map((s) => `<option value="${s.id}" ${s.id === plan.strategy ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+            <span class="sample-pill col-sample-badge" title="Click to copy sample value"></span>
           </div>
         </div>
 
-        <div>
-          <label class="block text-[10px] uppercase font-black text-base-content/50 mb-1 tracking-wider">Generator Strategy</label>
-          <select class="col-strategy-select field-select !py-1 text-xs w-full font-bold">
-            ${(col.strategies || []).map((s) => `<option value="${s.id}" ${s.id === plan.strategy ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
-          </select>
-        </div>
-
-        <div class="col-options-box space-y-2.5"></div>
-
-        <div class="pt-2.5 border-t border-base-200/80 flex justify-between items-center text-xs">
-          <span class="text-base-content/40 uppercase font-black tracking-wider text-[9px]">Sample Preview</span>
-          <span class="sample-pill col-sample-badge" title="Click to copy sample value"></span>
-        </div>
+        <div class="col-options-box hidden mt-2.5 pt-2 border-t border-base-200/60"></div>
       `;
 
-      const select = card.querySelector('.col-strategy-select');
-      const optionsBox = card.querySelector('.col-options-box');
-      const sampleBadge = card.querySelector('.col-sample-badge');
+      const select = row.querySelector('.col-strategy-select');
+      const optionsBox = row.querySelector('.col-options-box');
+      const sampleBadge = row.querySelector('.col-sample-badge');
 
       const updateSample = () => {
         const sampleVal = computeSampleValue(col, stateByTable[tableName][col.name], cols);
         sampleBadge.textContent = sampleVal;
-        card.dataset.strategyType = plan.strategy === 'template' ? 'template' : (plan.strategy === 'skip' ? 'skip' : (plan.strategy === 'null' ? 'null' : (plan.strategy === 'fixed' ? 'fixed' : 'generate')));
-        runPlanValidation();
+        row.dataset.strategyType = plan.strategy === 'template' ? 'template' : (plan.strategy === 'skip' ? 'skip' : (plan.strategy === 'null' ? 'null' : (plan.strategy === 'fixed' ? 'fixed' : 'generate')));
+        triggerPreviewUpdate(400);
       };
 
       sampleBadge.addEventListener('click', () => {
@@ -381,23 +366,27 @@
 
       buildColumnOptionsUI(optionsBox, col, plan, cols, updateSample);
       updateSample();
-      container.appendChild(card);
+      container.appendChild(row);
     });
 
-    if (colCountBadge) colCountBadge.textContent = `${cols.length} Columns`;
+    if (colCountBadge) colCountBadge.textContent = `${cols.length} cols`;
   }
 
   function buildColumnOptionsUI(container, col, plan, allCols, updateSampleCb) {
     container.innerHTML = '';
     const st = plan.strategy;
 
+    const needsOptions = ['fixed', 'list', 'template', 'int', 'decimal', 'date', 'datetime', 'pattern', 'sequence'].includes(st);
+    container.classList.toggle('hidden', !needsOptions);
+    if (!needsOptions) return;
+
     const addField = (label, key, type = 'text', placeholder = '') => {
       const wrap = document.createElement('div');
-      wrap.innerHTML = `<label class="block text-[10px] uppercase font-bold text-base-content/50 mb-1">${escapeHtml(label)}</label>`;
+      wrap.innerHTML = `<label class="block text-[9px] uppercase font-bold text-base-content/50 mb-0.5">${escapeHtml(label)}</label>`;
       const inp = document.createElement(type === 'textarea' ? 'textarea' : 'input');
       if (type !== 'textarea') inp.type = type;
       inp.placeholder = placeholder;
-      inp.className = type === 'textarea' ? 'field-input w-full text-xs font-mono !py-1.5 h-16 leading-relaxed' : 'field-input w-full text-xs font-mono !py-1';
+      inp.className = type === 'textarea' ? 'field-input w-full text-xs font-mono !py-1 h-14 leading-relaxed' : 'field-input w-full text-xs font-mono !py-0.5';
       
       const val = plan[key];
       if (type === 'textarea' && Array.isArray(val)) inp.value = val.join('\n');
@@ -417,18 +406,18 @@
     if (st === 'fixed') addField('Constant Value', 'value', 'text', 'Default string');
     if (st === 'list') addField('Choices (One per line)', 'values', 'textarea', 'admin\nmember\nguest');
     if (st === 'template') {
-      const inp = addField('Expression Template', 'template', 'text', '{{first_name}}.{{last_name}}@example.com');
+      const inp = addField('Template Expression', 'template', 'text', '{{first_name}}.{{last_name}}@example.com');
       
-      // Token chips helper studio
+      // Token chips helper
       const chipsWrap = document.createElement('div');
       chipsWrap.className = 'space-y-1 pt-1';
-      chipsWrap.innerHTML = '<span class="text-[9px] uppercase font-black text-base-content/40 tracking-wider">Quick Tokens:</span>';
+      chipsWrap.innerHTML = '<span class="text-[9px] uppercase font-bold text-base-content/40 tracking-wider">Quick Tokens:</span>';
       
       const chips = document.createElement('div');
       chips.className = 'flex flex-wrap gap-1';
 
       // Insert column tokens
-      allCols.slice(0, 5).forEach((c) => {
+      allCols.slice(0, 6).forEach((c) => {
         if (c.name !== col.name) {
           const btn = document.createElement('button');
           btn.type = 'button';
@@ -452,7 +441,7 @@
       builtins.forEach((b) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'token-chip !border-secondary/30 !text-secondary hover:!bg-secondary/15';
+        btn.className = 'token-chip';
         btn.textContent = b.label;
         btn.onclick = () => {
           plan.template = (plan.template || '') + b.val;
@@ -467,7 +456,7 @@
     }
     if (st === 'int' || st === 'decimal') {
       const grid = document.createElement('div');
-      grid.className = 'grid grid-cols-2 gap-2';
+      grid.className = 'grid grid-cols-2 sm:grid-cols-3 gap-2';
       container.appendChild(grid);
       const tmp = container;
       container = grid;
@@ -503,25 +492,25 @@
   if (colSearchInput) {
     colSearchInput.addEventListener('input', () => {
       const q = colSearchInput.value.toLowerCase().trim();
-      const cards = singleColumnsBox.querySelectorAll('.seed-col-card');
+      const rows = singleColumnsBox.querySelectorAll('.seed-col-row');
       let visible = 0;
-      cards.forEach((c) => {
-        const matches = !q || c.dataset.colName.includes(q);
-        c.classList.toggle('hidden', !matches);
+      rows.forEach((r) => {
+        const matches = !q || r.dataset.colName.includes(q);
+        r.classList.toggle('hidden', !matches);
         if (matches) visible++;
       });
-      if (colCountBadge) colCountBadge.textContent = `${visible} of ${rootColumns.length} Columns`;
+      if (colCountBadge) colCountBadge.textContent = `${visible} of ${rootColumns.length} cols`;
     });
   }
 
   // ---- ER Relational Chain Pipeline ----
   async function loadChainPipeline() {
     const scope = chainScopeSelect?.value || 'chain';
-    chainPipelineContainer.innerHTML = '<div class="py-12 text-center text-xs text-base-content/50"><span class="loading loading-spinner loading-md text-primary mb-3"></span><br><strong class="font-bold text-base-content">Analyzing relational foreign keys & constructing dependency DAG…</strong></div>';
+    chainPipelineContainer.innerHTML = '<div class="py-8 text-center text-xs text-base-content/50"><span class="loading loading-spinner loading-sm text-primary mb-2"></span><br><strong class="font-bold text-base-content">Analyzing foreign keys & dependency DAG…</strong></div>';
 
     try {
       chainConfigData = await Api.get(`/api/tables/${encodeURIComponent(rootTableName)}/seed/chain?scope=${scope}`);
-      chainSummaryBadge.textContent = `${chainConfigData.tables.length} Tables`;
+      if (chainSummaryBadge) chainSummaryBadge.textContent = `${chainConfigData.tables.length} Tables`;
       chainPipelineContainer.innerHTML = '';
 
       chainConfigData.tables.forEach((node, idx) => {
@@ -535,88 +524,80 @@
         }
 
         const isTarget = node.name === rootTableName;
-        const card = document.createElement('div');
-        card.className = 'pipeline-node';
-        card.dataset.nodeMode = tableModes[node.name];
-        card.innerHTML = `
-          <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-3.5">
-              <span class="w-8 h-8 rounded-xl ${isTarget ? 'bg-primary text-primary-content shadow-[0_0_12px_rgba(109,93,246,0.4)]' : 'bg-base-200 text-base-content/80'} text-xs flex items-center justify-center font-black font-mono">${idx + 1}</span>
+        const item = document.createElement('div');
+        item.className = 'pipeline-node';
+        item.dataset.nodeMode = tableModes[node.name];
+        item.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 rounded ${isTarget ? 'bg-primary text-primary-content font-bold' : 'bg-base-200 text-base-content/70'} text-[11px] flex items-center justify-center font-mono">${idx + 1}</span>
               <div>
-                <div class="font-black font-mono text-sm flex items-center gap-2">
+                <div class="font-mono font-bold text-xs flex items-center gap-2">
                   <span class="text-base-content">${escapeHtml(node.name)}</span>
-                  ${isTarget ? '<span class="badge badge-xs badge-primary font-black text-[9px] px-2 py-0.5">Root</span>' : ''}
-                  ${node.isJunction ? '<span class="badge badge-xs badge-accent font-black text-[9px] px-2 py-0.5">Junction (M:N)</span>' : ''}
-                  ${node.hasSelfRef ? '<span class="badge badge-xs badge-info font-black text-[9px] px-2 py-0.5">Self-Ref Tree</span>' : ''}
+                  ${isTarget ? '<span class="badge badge-xs badge-primary font-mono text-[9px] px-1.5">Root</span>' : ''}
+                  ${node.isJunction ? '<span class="badge badge-xs badge-accent font-mono text-[9px] px-1.5">Junction (M:N)</span>' : ''}
+                  ${node.hasSelfRef ? '<span class="badge badge-xs badge-info font-mono text-[9px] px-1.5">Self-Ref</span>' : ''}
                 </div>
-                <div class="text-[10px] text-base-content/50 uppercase mt-0.5 flex gap-3 font-bold">
-                  <span>← ${node.parents.length} Parents</span>
-                  <span>→ ${node.children.length} Children</span>
-                  <span>${node.rowCount} DB Rows</span>
+                <div class="text-[10px] text-base-content/50 mt-0.5 flex gap-2 font-mono">
+                  <span>← ${node.parents.length} parents</span>
+                  <span>→ ${node.children.length} children</span>
+                  <span>(${node.rowCount} rows)</span>
                 </div>
               </div>
             </div>
 
-            <div class="flex items-center gap-4">
-              <div>
-                <label class="block text-[9px] uppercase font-black text-base-content/40 mb-1 tracking-wider">Mode</label>
-                <select class="chain-table-mode field-select !py-1 text-xs font-bold w-44" data-table="${escapeHtml(node.name)}">
-                  <option value="generate" ${tableModes[node.name] === 'generate' ? 'selected' : ''}>🌱 Generate Data</option>
-                  <option value="use_existing" ${tableModes[node.name] === 'use_existing' ? 'selected' : ''}>📦 Use Existing Rows</option>
-                  <option value="generate_if_empty" ${tableModes[node.name] === 'generate_if_empty' ? 'selected' : ''}>⚡ Generate If Empty</option>
-                  <option value="skip" ${tableModes[node.name] === 'skip' ? 'selected' : ''}>⛔ Don't Touch / Skip</option>
-                </select>
-              </div>
+            <div class="flex items-center gap-2">
+              <select class="chain-table-mode field-select !py-0.5 text-xs font-semibold w-36" data-table="${escapeHtml(node.name)}">
+                <option value="generate" ${tableModes[node.name] === 'generate' ? 'selected' : ''}>🌱 Generate Data</option>
+                <option value="use_existing" ${tableModes[node.name] === 'use_existing' ? 'selected' : ''}>📦 Use Existing</option>
+                <option value="generate_if_empty" ${tableModes[node.name] === 'generate_if_empty' ? 'selected' : ''}>⚡ If Empty</option>
+                <option value="skip" ${tableModes[node.name] === 'skip' ? 'selected' : ''}>⛔ Skip</option>
+              </select>
 
-              <div>
-                <label class="block text-[9px] uppercase font-black text-base-content/40 mb-1 tracking-wider">Rows</label>
-                <input type="number" min="1" max="5000" value="${tableCounts[node.name]}"
-                  class="chain-table-rows field-input !py-1 w-24 text-right font-mono font-bold text-xs" data-table="${escapeHtml(node.name)}" />
-              </div>
+              <input type="number" min="1" max="5000" value="${tableCounts[node.name]}"
+                class="chain-table-rows field-input !py-0.5 w-16 text-right font-mono font-bold text-xs" data-table="${escapeHtml(node.name)}" />
 
-              <div class="pt-4">
-                <button type="button" class="btn btn-xs btn-outline btn-toggle-cols" data-table="${escapeHtml(node.name)}">
-                  Customize Columns ▼
-                </button>
-              </div>
+              <button type="button" class="btn btn-xs btn-ghost border border-base-300 btn-toggle-cols" data-table="${escapeHtml(node.name)}">
+                Cols ▼
+              </button>
             </div>
           </div>
 
-          <div class="chain-col-drawer hidden pt-4 mt-3 border-t border-base-200">
-            <div class="chain-cols-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5"></div>
+          <div class="chain-col-drawer hidden pt-3 mt-2.5 border-t border-base-200">
+            <div class="chain-cols-container space-y-2"></div>
           </div>
         `;
 
-        const modeSelect = card.querySelector('.chain-table-mode');
-        const rowsInput = card.querySelector('.chain-table-rows');
-        const toggleBtn = card.querySelector('.btn-toggle-cols');
-        const drawer = card.querySelector('.chain-col-drawer');
-        const colsBox = card.querySelector('.chain-cols-container');
+        const modeSelect = item.querySelector('.chain-table-mode');
+        const rowsInput = item.querySelector('.chain-table-rows');
+        const toggleBtn = item.querySelector('.btn-toggle-cols');
+        const drawer = item.querySelector('.chain-col-drawer');
+        const colsBox = item.querySelector('.chain-cols-container');
 
         modeSelect.addEventListener('change', () => {
           tableModes[node.name] = modeSelect.value;
-          card.dataset.nodeMode = modeSelect.value;
+          item.dataset.nodeMode = modeSelect.value;
           rowsInput.disabled = modeSelect.value === 'use_existing' || modeSelect.value === 'skip';
-          runPlanValidation();
+          triggerPreviewUpdate(300);
         });
 
         rowsInput.addEventListener('input', () => {
           tableCounts[node.name] = Math.max(1, parseInt(rowsInput.value, 10) || 10);
-          runPlanValidation();
+          triggerPreviewUpdate(400);
         });
 
         toggleBtn.addEventListener('click', () => {
           const isHidden = drawer.classList.toggle('hidden');
-          toggleBtn.textContent = isHidden ? 'Customize Columns ▼' : 'Hide Columns ▲';
+          toggleBtn.textContent = isHidden ? 'Cols ▼' : 'Hide ▲';
           if (!isHidden && colsBox.children.length === 0) {
             renderSingleTableColumns(node.name, node.columns, colsBox);
           }
         });
 
-        chainPipelineContainer.appendChild(card);
+        chainPipelineContainer.appendChild(item);
       });
 
-      runPlanValidation();
+      triggerPreviewUpdate(100);
     } catch (err) {
       chainPipelineContainer.innerHTML = `<div class="alert alert-error text-xs font-semibold">${escapeHtml(err.message)}</div>`;
     }
@@ -624,16 +605,20 @@
 
   // ---- Preview Generation ----
   async function generateDataPreview() {
-    previewTbody.innerHTML = '<tr><td colspan="100" class="text-center py-16 text-base-content/40"><span class="loading loading-spinner loading-md text-primary mb-2"></span><br><span class="font-bold text-xs">Generating relational mock data…</span></td></tr>';
-    feedbackBox.classList.add('hidden');
-    chainTableTabs.classList.add('hidden');
-    insertBtn.disabled = true;
+    if (!previewTbody) return;
+    if (mode === 'chain' && !chainConfigData) {
+      await loadChainPipeline();
+    }
+    previewTbody.innerHTML = '<tr><td colspan="100" class="text-center py-12 text-base-content/40"><span class="loading loading-spinner loading-sm text-primary mb-2"></span><br><span class="font-bold text-xs">Generating data preview…</span></td></tr>';
+    if (feedbackBox) feedbackBox.classList.add('hidden');
+    if (chainTableTabs) chainTableTabs.classList.add('hidden');
+    if (insertBtn) insertBtn.disabled = true;
 
     const plan = buildCurrentGenerationPlan();
 
     try {
       lastPreviewResult = await Api.post('/api/seed/preview', { plan });
-      insertBtn.disabled = false;
+      if (insertBtn) insertBtn.disabled = false;
 
       // Render Validation Report if present
       if (lastPreviewResult.validation) {
@@ -646,29 +631,30 @@
       }
 
       // Multi-table tabs setup
-      const tableKeys = lastPreviewResult.executionOrder || Object.keys(lastPreviewResult.tableResults || {});
-      if (!tableKeys.includes(activePreviewTable)) {
-        activePreviewTable = tableKeys[0] || rootTableName;
+      const isSingleMode = mode === 'single';
+      const tableKeys = isSingleMode ? [rootTableName] : (lastPreviewResult.executionOrder || Object.keys(lastPreviewResult.tableResults || {}));
+      if (isSingleMode || !tableKeys.includes(activePreviewTable)) {
+        activePreviewTable = rootTableName;
       }
 
-      if (tableKeys.length > 1) {
+      if (!isSingleMode && tableKeys.length > 1 && chainTableTabs) {
         chainTableTabs.classList.remove('hidden');
         chainTableTabs.innerHTML = '';
         tableKeys.forEach((tableName) => {
           const res = lastPreviewResult.tableResults[tableName];
           const btn = document.createElement('button');
           btn.dataset.table = tableName;
-          btn.className = `tab tab-bordered h-10 text-xs font-bold font-mono whitespace-nowrap shrink-0 ${tableName === activePreviewTable ? 'tab-active text-primary border-b-2 border-b-primary font-black' : 'text-base-content/60'}`;
-          btn.innerHTML = `${escapeHtml(tableName)} <span class="badge badge-xs ml-2 ${tableName === activePreviewTable ? 'badge-primary' : 'badge-ghost'}">${res?.rows?.length || 0}</span>`;
+          btn.className = `tab tab-bordered h-8 text-xs font-mono whitespace-nowrap shrink-0 ${tableName === activePreviewTable ? 'tab-active text-primary font-bold border-b-2 border-b-primary' : 'text-base-content/60'}`;
+          btn.innerHTML = `${escapeHtml(tableName)} <span class="badge badge-xs ml-1.5 ${tableName === activePreviewTable ? 'badge-primary' : 'badge-ghost'}">${res?.rows?.length || 0}</span>`;
           btn.onclick = (e) => {
             e.preventDefault();
             activePreviewTable = tableName;
             Array.from(chainTableTabs.children).forEach((b) => {
-              b.classList.remove('tab-active', 'text-primary', 'border-b-2', 'border-b-primary', 'font-black');
+              b.classList.remove('tab-active', 'text-primary', 'border-b-2', 'border-b-primary', 'font-bold');
               b.classList.add('text-base-content/60');
               b.querySelector('.badge')?.classList.replace('badge-primary', 'badge-ghost');
             });
-            btn.classList.add('tab-active', 'text-primary', 'border-b-2', 'border-b-primary', 'font-black');
+            btn.classList.add('tab-active', 'text-primary', 'border-b-2', 'border-b-primary', 'font-bold');
             btn.classList.remove('text-base-content/60');
             btn.querySelector('.badge')?.classList.replace('badge-ghost', 'badge-primary');
             const activeRes = lastPreviewResult.tableResults[activePreviewTable];
@@ -676,40 +662,60 @@
           };
           chainTableTabs.appendChild(btn);
         });
+      } else if (chainTableTabs) {
+        chainTableTabs.classList.add('hidden');
       }
 
-      const activeRes = lastPreviewResult.tableResults[activePreviewTable];
+      const activeRes = lastPreviewResult.tableResults[activePreviewTable] || { previewRows: [] };
       renderPreviewGrid(activePreviewTable, activeRes?.previewRows || []);
       showFeedbackWarnings(lastPreviewResult.warnings || []);
     } catch (err) {
-      previewTbody.innerHTML = `<tr><td colspan="100" class="text-center py-12 text-error font-bold">${escapeHtml(err.message)}</td></tr>`;
-      if (window.UI && UI.showError) UI.showError(err.message);
+      if (previewTbody) {
+        previewTbody.innerHTML = `<tr><td colspan="100" class="text-center py-10 text-error text-xs font-bold">${escapeHtml(err.message)}</td></tr>`;
+      }
     }
   }
 
   function renderPreviewGrid(tableName, rows) {
+    if (!previewThead || !previewTbody) return;
     previewThead.innerHTML = '';
     previewTbody.innerHTML = '';
 
     if (!rows || rows.length === 0) {
-      previewTbody.innerHTML = '<tr><td colspan="100" class="text-center py-12 text-base-content/40 font-semibold">No rows generated for this table (mode is skipped or 0 rows).</td></tr>';
+      previewTbody.innerHTML = '<tr><td colspan="100" class="text-center py-10 text-base-content/40 text-xs font-semibold">No rows generated for this table.</td></tr>';
       return;
     }
 
-    const colKeys = Object.keys(rows[0]);
+    const colKeySet = new Set();
+    rows.forEach((r) => {
+      if (r && typeof r === 'object') {
+        Object.keys(r).forEach((k) => colKeySet.add(k));
+      }
+    });
+    const colKeys = Array.from(colKeySet);
+    if (colKeys.length === 0) {
+      previewTbody.innerHTML = '<tr><td colspan="100" class="text-center py-10 text-base-content/40 text-xs font-semibold">No columns in generated rows.</td></tr>';
+      return;
+    }
+
     const trHead = document.createElement('tr');
-    trHead.innerHTML = '<th class="w-12 text-center">#</th>' + colKeys.map((k) => `<th>${escapeHtml(k)}</th>`).join('');
+    trHead.innerHTML = '<th class="w-10 text-center font-mono">#</th>' + colKeys.map((k) => `<th class="font-mono">${escapeHtml(k)}</th>`).join('');
     previewThead.appendChild(trHead);
 
     rows.forEach((row, i) => {
       const tr = document.createElement('tr');
-      let html = `<td class="text-center text-base-content/40 font-mono">${i + 1}</td>`;
+      let html = `<td class="text-center text-base-content/40 font-mono text-[10px]">${i + 1}</td>`;
       colKeys.forEach((k) => {
         const val = row[k];
-        if (val === null) html += `<td><span class="badge badge-xs badge-ghost opacity-50 font-bold">NULL</span></td>`;
-        else if (val === '(default)' || val === '(auto)') html += `<td><span class="badge badge-xs badge-outline opacity-60">${escapeHtml(val)}</span></td>`;
-        else if (typeof val === 'boolean') html += `<td><span class="badge badge-xs ${val ? 'badge-success' : 'badge-ghost'} font-bold">${val ? 'TRUE' : 'FALSE'}</span></td>`;
-        else html += `<td class="truncate max-w-[240px] text-base-content/90">${escapeHtml(String(val))}</td>`;
+        if (val === null || val === undefined) {
+          html += `<td><span class="badge badge-xs badge-ghost opacity-60 font-mono font-bold text-[9px] text-base-content/50">NULL</span></td>`;
+        } else if (val === '(default)' || val === '(auto)') {
+          html += `<td><span class="badge badge-xs badge-outline opacity-60 font-mono text-[9px]">${escapeHtml(val)}</span></td>`;
+        } else if (typeof val === 'boolean') {
+          html += `<td><span class="badge badge-xs ${val ? 'badge-success' : 'badge-ghost'} font-mono font-bold text-[9px]">${val ? 'TRUE' : 'FALSE'}</span></td>`;
+        } else {
+          html += `<td class="truncate max-w-[200px] font-mono text-[11px] text-base-content/90" title="${escapeHtml(String(val))}">${escapeHtml(String(val))}</td>`;
+        }
       });
       tr.innerHTML = html;
       previewTbody.appendChild(tr);
@@ -723,42 +729,75 @@
       return;
     }
     feedbackBox.innerHTML = `
-      <div class="alert alert-warning text-xs font-semibold rounded-2xl shadow-soft">
-        <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+      <div class="alert alert-warning text-xs font-semibold rounded-lg shadow-sm">
+        <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
         <div class="space-y-1">${warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join('')}</div>
       </div>
     `;
     feedbackBox.classList.remove('hidden');
   }
 
-  // ---- Seed Profiles Management ----
-  async function loadProfilesList() {
-    profilesListContainer.innerHTML = '<div class="py-4 text-center text-xs text-base-content/40"><span class="loading loading-spinner loading-xs mr-2"></span>Loading profiles…</div>';
+  // ---- Seed Profiles Management (Client-Side LocalStorage) ----
+  const LOCAL_STORAGE_PROFILES_KEY = 'admindb_seed_profiles';
+
+  function getLocalProfiles() {
     try {
-      const profiles = await Api.get('/api/seed/profiles');
+      const raw = localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLocalProfile(name, plan, description) {
+    const profiles = getLocalProfiles();
+    const newProfile = {
+      id: `profile_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      description,
+      createdAt: new Date().toISOString(),
+      plan,
+    };
+    profiles.unshift(newProfile);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(profiles));
+    } catch {}
+    return newProfile;
+  }
+
+  function deleteLocalProfile(id) {
+    const profiles = getLocalProfiles().filter((p) => p.id !== id);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(profiles));
+    } catch {}
+  }
+
+  function loadProfilesList() {
+    try {
+      const profiles = getLocalProfiles();
       profilesListContainer.innerHTML = '';
       if (!profiles || profiles.length === 0) {
-        profilesListContainer.innerHTML = '<div class="py-6 text-center text-xs text-base-content/40">No custom profiles saved yet.</div>';
+        profilesListContainer.innerHTML = '<div class="py-4 text-center text-xs text-base-content/40">No custom profiles saved yet.</div>';
         return;
       }
 
       profiles.forEach((p) => {
         const item = document.createElement('div');
-        item.className = 'p-3.5 rounded-xl bg-base-200/50 border border-base-300 flex items-center justify-between gap-3 text-xs hover:border-primary/40 transition-colors';
+        item.className = 'p-2.5 rounded-lg bg-base-200/50 border border-base-300 flex items-center justify-between gap-2 text-xs hover:border-primary/40 transition-colors';
         item.innerHTML = `
           <div class="min-w-0">
-            <div class="font-black text-base-content truncate">${escapeHtml(p.name)}</div>
-            <div class="text-[10px] text-base-content/50 mt-0.5">${escapeHtml(p.description || `Root: ${p.plan?.rootTable || 'N/A'}`)}</div>
+            <div class="font-bold text-base-content truncate">${escapeHtml(p.name)}</div>
+            <div class="text-[10px] text-base-content/50">${escapeHtml(p.description || `Root: ${p.plan?.rootTable || 'N/A'}`)}</div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <button type="button" class="btn btn-xs btn-primary btn-load-profile font-bold" data-id="${escapeHtml(p.id)}">Apply</button>
             <button type="button" class="btn btn-xs btn-ghost text-error btn-del-profile" data-id="${escapeHtml(p.id)}">✕</button>
           </div>
         `;
 
         item.querySelector('.btn-load-profile').onclick = () => applyProfile(p);
-        item.querySelector('.btn-del-profile').onclick = async () => {
-          await Api.delete(`/api/seed/profiles/${encodeURIComponent(p.id)}`);
+        item.querySelector('.btn-del-profile').onclick = () => {
+          deleteLocalProfile(p.id);
           loadProfilesList();
         };
 
@@ -784,20 +823,29 @@
           stateByTable[tableName] = Object.assign({}, spec.columns);
         }
       });
+      if (plan.tables[rootTableName] && singleCountInput) {
+        singleCountInput.value = plan.tables[rootTableName].rows || 10;
+      }
     }
     if (profilesDialog) profilesDialog.close();
     if (window.UI && UI.showToast) UI.showToast(`Applied profile "${p.name}".`, 'success');
-    goToStep(2);
+    if (singleColumnsBox) renderSingleTableColumns(rootTableName, rootColumns, singleColumnsBox);
+    triggerPreviewUpdate(100);
   }
 
   // ---- Execution ----
   async function executeSeedPlan() {
+    if (mode === 'chain' && !chainConfigData) {
+      await loadChainPipeline();
+    }
     const plan = buildCurrentGenerationPlan();
-    insertBtn.disabled = true;
-    insertBtn.classList.add('loading');
+    if (insertBtn) {
+      insertBtn.disabled = true;
+      insertBtn.classList.add('loading');
+    }
 
     try {
-      const res = await Api.post('/api/seed/execute', { plan, truncate: truncateCheckbox.checked });
+      const res = await Api.post('/api/seed/execute', { plan, truncate: truncateCheckbox?.checked ?? false });
       if (window.UI && UI.showToast) {
         UI.showToast(res.message || `Seeded ${res.totalInserted} rows successfully.`, 'success');
       }
@@ -805,31 +853,33 @@
     } catch (err) {
       if (window.UI && UI.showError) UI.showError(err.message);
     } finally {
-      insertBtn.disabled = false;
-      insertBtn.classList.remove('loading');
+      if (insertBtn) {
+        insertBtn.disabled = false;
+        insertBtn.classList.remove('loading');
+      }
       if (truncateDialog) truncateDialog.close();
     }
   }
 
   // ---- Event Handlers ----
-  btnSelectSingle.addEventListener('click', () => selectMode('single'));
-  btnSelectChain.addEventListener('click', () => selectMode('chain'));
+  if (btnSelectSingle) btnSelectSingle.addEventListener('click', () => selectMode('single'));
+  if (btnSelectChain) btnSelectChain.addEventListener('click', () => selectMode('chain'));
 
-  btnNext1.addEventListener('click', () => goToStep(2));
-  btnPrev2.addEventListener('click', () => goToStep(1));
-  btnNext2.addEventListener('click', () => goToStep(3));
-  btnPrev3.addEventListener('click', () => goToStep(2));
+  if (btnNext1) btnNext1.addEventListener('click', () => goToStep(2));
+  if (btnPrev2) btnPrev2.addEventListener('click', () => goToStep(1));
+  if (btnNext2) btnNext2.addEventListener('click', () => goToStep(3));
+  if (btnPrev3) btnPrev3.addEventListener('click', () => goToStep(2));
 
   if (decBtn && incBtn && singleCountInput) {
     decBtn.addEventListener('click', () => {
       singleCountInput.value = Math.max(1, (parseInt(singleCountInput.value, 10) || 10) - 1);
-      runPlanValidation();
+      triggerPreviewUpdate(300);
     });
     incBtn.addEventListener('click', () => {
       singleCountInput.value = Math.min(5000, (parseInt(singleCountInput.value, 10) || 10) + 1);
-      runPlanValidation();
+      triggerPreviewUpdate(300);
     });
-    singleCountInput.addEventListener('input', () => runPlanValidation());
+    singleCountInput.addEventListener('input', () => triggerPreviewUpdate(400));
   }
 
   document.querySelectorAll('.preset-pill').forEach((pill) => {
@@ -838,7 +888,7 @@
       pill.classList.add('btn-primary');
       if (singleCountInput && pill.dataset.count) {
         singleCountInput.value = pill.dataset.count;
-        runPlanValidation();
+        triggerPreviewUpdate(200);
       }
     });
   });
@@ -846,6 +896,7 @@
   if (planSeedInput) {
     planSeedInput.addEventListener('input', () => {
       prngSeed = planSeedInput.value === '' ? null : Number(planSeedInput.value);
+      triggerPreviewUpdate(400);
     });
   }
 
@@ -854,6 +905,7 @@
       prngSeed = Math.floor(Math.random() * 1000000);
       planSeedInput.value = prngSeed;
       if (window.UI && UI.showToast) UI.showToast(`Set Random Seed: ${prngSeed}`, 'info');
+      triggerPreviewUpdate(100);
     });
   }
 
@@ -869,11 +921,11 @@
       if (chainConfigData && chainConfigData.tables) {
         chainConfigData.tables.forEach((node) => {
           tableCounts[node.name] = Math.max(1, Math.round((node.suggestedCount || 10) * scale));
-          const inp = chainPipelineContainer.querySelector(`.chain-table-rows[data-table="${CSS.escape(node.name)}"]`);
+          const inp = chainPipelineContainer?.querySelector(`.chain-table-rows[data-table="${CSS.escape(node.name)}"]`);
           if (inp) inp.value = tableCounts[node.name];
         });
       }
-      runPlanValidation();
+      triggerPreviewUpdate(200);
     });
   });
 
@@ -901,7 +953,9 @@
     });
   }
 
-  refreshPreviewBtn.addEventListener('click', () => generateDataPreview());
+  if (refreshPreviewBtn) {
+    refreshPreviewBtn.addEventListener('click', () => generateDataPreview());
+  }
 
   if (truncateCheckbox && truncateBanner) {
     truncateCheckbox.addEventListener('change', () => {
@@ -909,13 +963,15 @@
     });
   }
 
-  insertBtn.addEventListener('click', () => {
-    if (truncateCheckbox.checked) truncateDialog.showModal();
-    else executeSeedPlan();
-  });
+  if (insertBtn) {
+    insertBtn.addEventListener('click', () => {
+      if (truncateCheckbox?.checked) truncateDialog.showModal();
+      else executeSeedPlan();
+    });
+  }
 
-  truncateConfirm.addEventListener('click', () => executeSeedPlan());
-  truncateCancel.addEventListener('click', () => truncateDialog.close());
+  if (truncateConfirm) truncateConfirm.addEventListener('click', () => executeSeedPlan());
+  if (truncateCancel) truncateCancel.addEventListener('click', () => truncateDialog.close());
 
   // Profiles Dialog & Presets
   if (btnProfilesModal && profilesDialog) {
@@ -923,7 +979,7 @@
       profilesDialog.showModal();
       loadProfilesList();
     });
-    btnCloseProfiles.addEventListener('click', () => profilesDialog.close());
+    if (btnCloseProfiles) btnCloseProfiles.addEventListener('click', () => profilesDialog.close());
   }
 
   document.querySelectorAll('.btn-preset-profile').forEach((btn) => {
@@ -934,16 +990,16 @@
       Object.keys(tableCounts).forEach((k) => (tableCounts[k] = count));
       if (profilesDialog) profilesDialog.close();
       if (window.UI && UI.showToast) UI.showToast(`Applied ${count} rows preset blueprint.`, 'info');
-      runPlanValidation();
+      triggerPreviewUpdate(100);
     });
   });
 
   if (btnSaveProfile) {
-    btnSaveProfile.addEventListener('click', async () => {
+    btnSaveProfile.addEventListener('click', () => {
       const name = profileNameInput.value.trim();
       if (!name) return;
       const plan = buildCurrentGenerationPlan();
-      await Api.post('/api/seed/profiles', { name, plan });
+      saveLocalProfile(name, plan);
       profileNameInput.value = '';
       if (window.UI && UI.showToast) UI.showToast(`Saved profile "${name}".`, 'success');
       loadProfilesList();
@@ -980,7 +1036,32 @@
     });
   }
 
-  // Default mode selection (Single Table initially selected)
-  selectMode('single');
-  goToStep(1);
+  if (colSearchInput) {
+    colSearchInput.addEventListener('input', () => {
+      const q = colSearchInput.value.trim().toLowerCase();
+      const rows = singleColumnsBox?.querySelectorAll('.seed-col-row') || [];
+      let visible = 0;
+      rows.forEach((r) => {
+        const match = !q || (r.dataset.colName || '').includes(q);
+        r.classList.toggle('hidden', !match);
+        if (match) visible++;
+      });
+      if (colCountBadge) colCountBadge.textContent = `${visible} cols`;
+    });
+  }
+
+  // Pre-render root table columns specification box
+  if (singleColumnsBox && singleColumnsBox.children.length === 0) {
+    renderSingleTableColumns(rootTableName, rootColumns, singleColumnsBox);
+  }
+
+  if (btnSelectSingle) {
+    btnSelectSingle.addEventListener('click', () => selectMode('single', true));
+  }
+  if (btnSelectChain) {
+    btnSelectChain.addEventListener('click', () => selectMode('chain', true));
+  }
+
+  // Initialize mode based on configuration / URL query param (?mode=chain)
+  selectMode(initialMode, false);
 })();

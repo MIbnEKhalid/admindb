@@ -91,7 +91,13 @@ function addErrorHandlers(app: express.Express, logger: Logger): void {
 
 function createSingleDbApp(options: AppOptions): express.Express {
   const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
-  const rawTarget = options.connection || options.dbPath || '';
+  const envTarget =
+    process.env.ADMINDB_CONNECTION ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.PG_CONNECTION ||
+    '';
+  const rawTarget = options.connection || options.dbPath || (isPostgresConnectionString(envTarget) ? envTarget : '');
   const isPg =
     Boolean(options.pgOptions) ||
     isPostgresConnectionString(rawTarget) ||
@@ -99,7 +105,7 @@ function createSingleDbApp(options: AppOptions): express.Express {
 
   const readonly = options.readonly !== undefined
     ? Boolean(options.readonly)
-    : (isServerless && !isPg);
+    : (isServerless ? !isPg : false);
 
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
@@ -107,6 +113,11 @@ function createSingleDbApp(options: AppOptions): express.Express {
   let db: IDatabase;
   if (options.db) {
     db = options.db;
+    if (options.readonly !== undefined && db.isReadOnly !== Boolean(options.readonly)) {
+      try {
+        Object.defineProperty(db, 'isReadOnly', { value: Boolean(options.readonly), configurable: true });
+      } catch {}
+    }
   } else if (isPg) {
     db = new PostgresDatabase(options.pgOptions || rawTarget, logger, { readonly });
   } else {
@@ -167,8 +178,9 @@ function createSingleDbApp(options: AppOptions): express.Express {
 
 function createManagerApp(options: AppOptions): express.Express {
   const isServerless = options.serverless !== undefined ? options.serverless : isServerlessEnvironment();
-  const readonly = isServerless || Boolean(options.readonly);
+  const explicitReadonly = options.readonly !== undefined ? Boolean(options.readonly) : undefined;
   const manager = options.manager!;
+  const globalReadonly = explicitReadonly ?? manager.isReadOnly;
   const basePath = (options.basePath ?? '').replace(/\/+$/, '');
   const logger = options.logger ?? createLogger(options.logLevel ?? 'info', 'admindb');
   const authConfig = resolveAuthConfig(options.auth);
@@ -193,7 +205,7 @@ function createManagerApp(options: AppOptions): express.Express {
       res.locals.dbId = null;
       res.locals.databasesUrl = null;
       res.locals.databasesMode = true;
-      res.locals.readonly = readonly;
+      res.locals.readonly = globalReadonly;
       res.locals.serverless = isServerless;
       res.locals.version = APP_VERSION;
       res.locals.authEnabled = authConfig.enabled;
@@ -214,7 +226,7 @@ function createManagerApp(options: AppOptions): express.Express {
     manager,
     logger,
     basePath,
-    readonly,
+    readonly: globalReadonly,
     allowBrowse: isServerless ? false : options.allowBrowse,
     browseRoot: options.browseRoot,
     invalidate: (id) => subApps.delete(id),
@@ -236,7 +248,7 @@ function createManagerApp(options: AppOptions): express.Express {
     const rawRo = req.query.readonly;
     if (rawRo !== undefined) {
       const explicitRo = rawRo === '1' || rawRo === 'true';
-      if (!readonly || explicitRo) {
+      if (!globalReadonly || explicitRo) {
         manager.setReadonly(dbId, explicitRo);
         subApps.delete(dbId);
       }
@@ -245,7 +257,7 @@ function createManagerApp(options: AppOptions): express.Express {
     let sub = subApps.get(dbId);
     if (!sub) {
       const subBase = `${basePath || ''}/${encodeURIComponent(dbId)}`;
-      const effectiveRo = readonly || manager.isDbReadOnly(dbId);
+      const effectiveRo = globalReadonly ? true : manager.isDbReadOnly(dbId);
       sub = createSingleDbApp({
         db: manager.open(dbId, effectiveRo),
         basePath: subBase,

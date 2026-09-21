@@ -254,6 +254,13 @@ function extractJsonColumns(sql: string): { col: string; keys: string[] }[] {
 const TEXT_PATTERNS: [RegExp, (name: string) => ColumnPlan][] = [
   [/avatar|picture|photo|image|img|thumbnail|icon|logo/, () => ({ strategy: 'avatar' })],
   [/company|organization|org|firm|corp|employer|agency/, () => ({ strategy: 'company' })],
+  [/department|division|dept/, () => ({ strategy: 'department' })],
+  [/productcategory|categoryname|^category$/, () => ({ strategy: 'productCategory' })],
+  [/productname|producttitle|^product$|^item$|itemname/, () => ({ strategy: 'product' })],
+  [/paymentmethod|paymenttype|paymentmode|paymentprovider/, () => ({ strategy: 'paymentMethod' })],
+  [/transactiontype|txntype|txtype/, () => ({ strategy: 'transactionType' })],
+  [/techskill|skill|skills|techstack|technology/, () => ({ strategy: 'techSkill' })],
+  [/orderstatus|shipmentstatus|deliverystatus/, () => ({ strategy: 'orderStatus' })],
   [/job|title|role|position|occupation|profession/, () => ({ strategy: 'job' })],
   [/currency|curr|currencycode/, () => ({ strategy: 'currency' })],
   [/countrycode|countryiso|isocountry|cca2/, () => ({ strategy: 'countryCode' })],

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel } from '../utils/logger';
 import { isServerlessEnvironment } from '../serverless';
-import { errorMessage } from '../utils/common';
+import { errorMessage, isPostgresConnectionString } from '../utils/common';
 
 export interface DatabaseConfigFile {
   connections?: Record<string, string>;
@@ -75,6 +75,7 @@ export interface Config {
   basePath: string;
   logLevel: LogLevel;
   readonly: boolean;
+  explicitReadonly?: boolean;
   serverless: boolean;
   auth: boolean;
   authUsername?: string;
@@ -99,8 +100,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const serverless =
     ['1', 'true', 'yes', 'on'].includes(String(serverlessRaw).trim().toLowerCase()) ||
     isServerlessEnvironment(env);
-  const readonlyRaw = env.ADMINDB_READONLY ?? env.READONLY ?? '';
-  const readonly = serverless || ['1', 'true', 'yes', 'on'].includes(String(readonlyRaw).trim().toLowerCase());
+  const readonlyRaw = env.ADMINDB_READONLY ?? env.READONLY;
+  const explicitReadonly =
+    readonlyRaw !== undefined && readonlyRaw !== ''
+      ? ['1', 'true', 'yes', 'on'].includes(String(readonlyRaw).trim().toLowerCase())
+      : undefined;
+
+  const isPg = Boolean(
+    (connectionRaw && isPostgresConnectionString(connectionRaw)) ||
+    (dbPathRaw && isPostgresConnectionString(dbPathRaw))
+  );
+
+  const defaultReadonly = serverless ? !isPg : false;
+  const readonly = explicitReadonly !== undefined ? explicitReadonly : defaultReadonly;
 
   let connections: Record<string, string> | undefined;
   const configJsonRaw = env.ADMINDB_CONFIG_JSON ?? env.ADMINDB_CONNECTIONS;
@@ -130,6 +142,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     basePath: String(basePathRaw).replace(/\/+$/, ''),
     logLevel: logLevelRaw as LogLevel,
     readonly,
+    explicitReadonly,
     serverless,
     auth: !authDisabled,
     authUsername: (env.ADMINDB_USERNAME ?? env.ADMINDB_USER) ? String(env.ADMINDB_USERNAME ?? env.ADMINDB_USER).trim() : undefined,

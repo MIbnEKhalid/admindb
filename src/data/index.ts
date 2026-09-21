@@ -5,7 +5,6 @@ export { GeneratorRegistry, generateColumnValue, type GeneratorDefinition, type 
 export * from './templates';
 export * from './schema-graph';
 export * from './validator';
-export * from './profiles';
 export * from './strategies';
 export * from './detector';
 export * from './engine';

@@ -2,23 +2,25 @@
 <div class="space-y-6">
 
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <p class="text-sm font-semibold uppercase tracking-wider text-primary">Workspace</p>
-      <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Query editor</h1>
-      <p class="mt-1.5 text-sm text-base-content/55">Run arbitrary SQL — SELECT results render as a table, COUNT gives a summary, and write statements execute.</p>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      {{#unless readonly}}
-        <button id="save-query" type="button" class="btn btn-outline btn-sm gap-1.5">
-          {{{icon "save" class="h-4 w-4"}}}
-          Save query
+  <div class="page-header">
+    <div class="page-header-row">
+      <div>
+        <div class="page-pretitle">Workspace</div>
+        <h1 class="page-title">Query editor</h1>
+        <p class="mt-0.5 text-xs text-base-content/60">Run arbitrary SQL — SELECT results render as a table, COUNT gives a summary, and write statements execute.</p>
+      </div>
+      <div class="page-actions">
+        {{#unless readonly}}
+          <button id="save-query" type="button" class="btn btn-outline btn-sm gap-1.5">
+            {{{icon "save" class="h-4 w-4"}}}
+            Save query
+          </button>
+        {{/unless}}
+        <button id="run-query" type="button" class="btn btn-primary btn-sm gap-1.5">
+          {{{icon "run" class="h-4 w-4"}}}
+          Run query
         </button>
-      {{/unless}}
-      <button id="run-query" type="button" class="btn btn-primary btn-sm gap-1.5">
-        {{{icon "run" class="h-4 w-4"}}}
-        Run
-      </button>
+      </div>
     </div>
   </div>
 
@@ -105,7 +107,10 @@
       <div id="query-gutter" class="sql-gutter" aria-hidden="true">
         <div class="sql-gutter-line">1</div>
       </div>
-      <div id="query-sql" class="sql-code-editor" contenteditable="plaintext-only" spellcheck="false" data-placeholder="-- Write SQL here or choose a snippet/saved query&#10;SELECT * FROM table_name WHERE …"></div>
+      <div class="sql-editor-stage">
+        <pre id="query-highlight" class="sql-code-highlight" aria-hidden="true"><code id="query-code"></code></pre>
+        <textarea id="query-sql" class="sql-code-input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="-- Write SQL here or choose a snippet/saved query&#10;SELECT * FROM table_name WHERE …"></textarea>
+      </div>
     </div>
 
     <!-- Status bar -->

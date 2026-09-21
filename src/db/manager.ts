@@ -5,6 +5,7 @@ import { PostgresDatabase } from './postgres';
 import type { IDatabase } from './types';
 import { createLogger, type Logger } from '../utils/logger';
 import { errorMessage, isPostgresConnectionString, sanitizeConnectionString } from '../utils/common';
+import { isServerlessEnvironment } from '../serverless';
 
 const DB_EXTENSIONS = ['.db', '.sqlite', '.sqlite3'];
 
@@ -17,6 +18,8 @@ export interface DbManagerOptions {
   connections?: Record<string, string>;
   /** Open every managed database read-only (no writes, no create/delete of files). */
   readonly?: boolean;
+  /** Whether running in a serverless runtime (e.g. Vercel). */
+  serverless?: boolean;
 }
 
 export interface DatabaseEntry {
@@ -42,6 +45,7 @@ export class DbManager {
   private dir?: string;
   private createDir: string;
   private readonly readonlyMode: boolean;
+  private readonly isServerless: boolean;
   private files: string[] = [];
   private idByPath = new Map<string, string>();
   private pathById = new Map<string, string>();
@@ -55,6 +59,7 @@ export class DbManager {
     this.dir = opts.dir ? path.resolve(opts.dir) : undefined;
     this.createDir = this.dir ?? process.cwd();
     this.readonlyMode = Boolean(opts.readonly);
+    this.isServerless = opts.serverless !== undefined ? opts.serverless : isServerlessEnvironment();
     if (this.dir) mkdirSync(this.dir, { recursive: true });
 
     if (opts.connections) this.registerConnections(opts.connections);
@@ -185,12 +190,26 @@ export class DbManager {
   }
 
   isDbReadOnly(id: string): boolean {
-    return this.readonlyMode || (this.readonlyById.get(id) ?? false);
+    if (this.readonlyMode) return true;
+    if (this.readonlyById.has(id)) return Boolean(this.readonlyById.get(id));
+    if (this.isServerless) {
+      const target = this.pathById.get(id);
+      const isPg = target ? isPostgresConnectionString(target) : false;
+      return !isPg;
+    }
+    return false;
   }
 
   setReadonly(id: string, readonly: boolean): void {
     if (this.readonlyMode && !readonly) {
       throw new Error('Manager is in global read-only mode — databases cannot be made writable.');
+    }
+    if (this.isServerless && !readonly) {
+      const target = this.pathById.get(id);
+      const isPg = target ? isPostgresConnectionString(target) : false;
+      if (!isPg) {
+        throw new Error('SQLite database cannot be made writable in a serverless environment.');
+      }
     }
     if (this.readonlyById.get(id) === readonly) return;
     this.readonlyById.set(id, readonly);
@@ -204,7 +223,7 @@ export class DbManager {
   open(id: string, readonlyOverride?: boolean): IDatabase {
     const target = this.pathById.get(id);
     if (!target) throw new Error(`Database "${id}" is not registered.`);
-    const isRo = this.readonlyMode || (readonlyOverride !== undefined ? readonlyOverride : (this.readonlyById.get(id) ?? false));
+    const isRo = readonlyOverride !== undefined ? readonlyOverride : this.isDbReadOnly(id);
 
     let db = this.openDbs.get(id);
     if (db && db.isReadOnly !== isRo) {

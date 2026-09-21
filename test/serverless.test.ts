@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
-import { createRouter, SqliteDatabase, isServerlessEnvironment, createServerlessHandler, createLambdaHandler } from '../src/index';
+import { createRouter, SqliteDatabase, DbManager, isServerlessEnvironment, createServerlessHandler, createLambdaHandler } from '../src/index';
+import { loadConfig } from '../src/cli/config';
 import { createLogger } from '../src/utils/logger';
 
 test('Serverless: isServerlessEnvironment detects serverless runtimes', () => {
@@ -269,7 +270,7 @@ test('Serverless: createLambdaHandler processes APIGateway events in serverless 
   }
 });
 
-test('Serverless: PostgreSQL connection remains editable in serverless mode by default', () => {
+test('Serverless: PostgreSQL connection remains editable in serverless mode by default, SQLite is readonly', () => {
   // Test createRouter with Postgres connection in serverless mode
   const pgApp = createRouter({
     connection: 'postgresql://postgres:pass@localhost:5432/testdb',
@@ -291,5 +292,97 @@ test('Serverless: PostgreSQL connection remains editable in serverless mode by d
     auth: false,
   });
   assert.equal(typeof lambdaFn, 'function');
+});
+
+test('Serverless: DbManager in serverless mode allows editing for Postgres and enforces readonly for SQLite', () => {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'admindb-mgr-serverless-'));
+  const dbFile = path.join(tmpDir, 'test.db');
+  const setupDb = new SqliteDatabase(dbFile, createLogger('error'));
+  setupDb.execResult('CREATE TABLE t (id INT);');
+  setupDb.close();
+
+  try {
+    // 1. Default serverless mode (without explicit readonly): SQLite is readonly, Postgres is editable
+    const mgr = new DbManager({
+      files: [dbFile],
+      connections: {
+        pgdb: 'postgresql://user:pass@localhost:5432/mydb',
+      },
+      serverless: true,
+    });
+
+    const entries = mgr.list();
+    const sqliteEntry = entries.find((e) => e.dialect === 'sqlite');
+    const pgEntry = entries.find((e) => e.dialect === 'postgres');
+
+    assert.ok(sqliteEntry);
+    assert.ok(pgEntry);
+    assert.equal(sqliteEntry.readonly, true, 'SQLite should be readonly by default in serverless');
+    assert.equal(pgEntry.readonly, false, 'Postgres should remain editable by default in serverless');
+    assert.equal(mgr.isDbReadOnly(sqliteEntry.id), true);
+    assert.equal(mgr.isDbReadOnly(pgEntry.id), false);
+
+    // 2. Explicit readonly mode: both SQLite and Postgres become readonly
+    const mgrReadonly = new DbManager({
+      files: [dbFile],
+      connections: {
+        pgdb: 'postgresql://user:pass@localhost:5432/mydb',
+      },
+      serverless: true,
+      readonly: true,
+    });
+
+    const roEntries = mgrReadonly.list();
+    const roSqlite = roEntries.find((e) => e.dialect === 'sqlite')!;
+    const roPg = roEntries.find((e) => e.dialect === 'postgres')!;
+    assert.equal(roSqlite.readonly, true);
+    assert.equal(roPg.readonly, true, 'Explicit readonly must make Postgres readonly as well');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('Serverless: loadConfig defaults readonly ONLY for SQLite on Vercel, not for Postgres', () => {
+  // 1. Vercel with PostgreSQL connection -> serverless is true, readonly is false (editable)
+  const confPg = loadConfig({
+    VERCEL: '1',
+    DATABASE_URL: 'postgresql://user:pass@ep-cool-db.aws.neon.tech/neondb',
+  });
+  assert.equal(confPg.serverless, true);
+  assert.equal(confPg.readonly, false, 'Postgres on Vercel should be editable by default');
+
+  // 2. Vercel with SQLite dbPath -> serverless is true, readonly is true
+  const confSqlite = loadConfig({
+    VERCEL: '1',
+    DB_PATH: './codebase.db',
+  });
+  assert.equal(confSqlite.serverless, true);
+  assert.equal(confSqlite.readonly, true, 'SQLite on Vercel should be read-only by default');
+
+  // 3. Vercel with PostgreSQL connection and explicit READONLY=true -> readonly is true
+  const confPgExplicitRo = loadConfig({
+    VERCEL: '1',
+    DATABASE_URL: 'postgresql://user:pass@ep-cool-db.aws.neon.tech/neondb',
+    READONLY: 'true',
+  });
+  assert.equal(confPgExplicitRo.serverless, true);
+  assert.equal(confPgExplicitRo.readonly, true, 'Explicit READONLY flag must make Postgres read-only');
+});
+
+test('Serverless: createServerlessHandler automatically detects process.env.DATABASE_URL on Vercel', () => {
+  const origUrl = process.env.DATABASE_URL;
+  const origVercel = process.env.VERCEL;
+  try {
+    process.env.VERCEL = '1';
+    process.env.DATABASE_URL = 'postgresql://postgres:secret@db.internal:5432/prod';
+
+    const handler = createServerlessHandler();
+    assert.equal(typeof handler, 'function');
+  } finally {
+    if (origUrl !== undefined) process.env.DATABASE_URL = origUrl;
+    else delete process.env.DATABASE_URL;
+    if (origVercel !== undefined) process.env.VERCEL = origVercel;
+    else delete process.env.VERCEL;
+  }
 });
 

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { SqliteDatabase } from '../src/db/database';
 import { createLogger } from '../src/utils/logger';
-import { createPrng, evaluateTemplate, extractTemplateDependencies, orderColumnDependencies, buildSchemaGraph, sortTopologically, isJunctionTable, validateGenerationPlan, saveSeedProfile, listSeedProfiles, deleteSeedProfile, SeedEngine, type GenerationPlan } from '../src/data/index';
+import { createPrng, evaluateTemplate, extractTemplateDependencies, orderColumnDependencies, buildSchemaGraph, sortTopologically, isJunctionTable, validateGenerationPlan, SeedEngine, type GenerationPlan } from '../src/data/index';
 
 function openDb(schemaSql?: string): { db: SqliteDatabase; cleanup: () => void } {
   const root = mkdtempSync(path.join(tmpdir(), 'admindb-unified-test-'));
@@ -377,32 +377,78 @@ test('Pre-flight Validation: Detects non-existent tables and circular templates'
   }
 });
 
-test('Seed Profiles: Save, list, load, and delete profiles', async () => {
-  const { db, cleanup } = openDb();
+
+test('Relational Chain: Automatically resolves missing upstream reference tables and self-referencing hierarchy', async () => {
+  const { db, cleanup } = openDb(`
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parent_id INTEGER REFERENCES categories(id),
+      name TEXT NOT NULL
+    );
+    CREATE TABLE products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER REFERENCES categories(id),
+      name TEXT NOT NULL,
+      price REAL
+    );
+    CREATE TABLE orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_number TEXT NOT NULL
+    );
+    CREATE TABLE order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER REFERENCES orders(id),
+      product_id INTEGER REFERENCES products(id),
+      quantity INTEGER NOT NULL
+    );
+  `);
 
   try {
-    const testPlan: GenerationPlan = {
-      name: 'Integration Test Dataset',
-      rootTable: 'users',
+    // Single child table target in chain mode: should auto-discover and generate categories, products, orders first
+    const plan: GenerationPlan = {
+      rootTable: 'order_items',
+      scope: 'chain',
       tables: {
-        users: { mode: 'generate', rows: 25, columns: {} },
+        order_items: {
+          mode: 'generate',
+          rows: 8,
+          columns: {
+            order_id: { strategy: 'fk' },
+            product_id: { strategy: 'fk' },
+            quantity: { strategy: 'int', min: 1, max: 10 },
+          },
+        },
       },
+      options: { seed: 12345 },
     };
 
-    const saved = await saveSeedProfile(db, 'Test Dataset', testPlan, 'Sample description');
-    assert.ok(saved.id);
-    assert.equal(saved.name, 'Test Dataset');
+    const res = await SeedEngine.executePlan(db, plan);
 
-    const list = await listSeedProfiles(db);
-    assert.ok(list.length >= 1);
-    assert.ok(list.some((p) => p.id === saved.id));
+    // Should generate all upstream tables in topological order
+    assert.ok(res.tableResults['categories']);
+    assert.ok(res.tableResults['products']);
+    assert.ok(res.tableResults['orders']);
+    assert.ok(res.tableResults['order_items']);
 
-    const deleted = await deleteSeedProfile(db, saved.id);
-    assert.equal(deleted, true);
+    assert.ok(res.tableResults['categories'].rows.length > 0);
+    assert.ok(res.tableResults['products'].rows.length > 0);
+    assert.ok(res.tableResults['orders'].rows.length > 0);
+    assert.equal(res.tableResults['order_items'].rows.length, 8);
 
-    const listAfter = await listSeedProfiles(db);
-    assert.ok(!listAfter.some((p) => p.id === saved.id));
+    // Verify self-referencing categories has NO false "has no rows; NULL will be used" warning
+    const catWarnings = res.tableResults['categories'].warnings;
+    assert.equal(catWarnings.filter((w) => w.includes('has no rows; NULL will be used')).length, 0);
+
+    // Verify execution order
+    const catIdx = res.executionOrder.indexOf('categories');
+    const prodIdx = res.executionOrder.indexOf('products');
+    const ordIdx = res.executionOrder.indexOf('orders');
+    const itemIdx = res.executionOrder.indexOf('order_items');
+    assert.ok(catIdx < prodIdx);
+    assert.ok(prodIdx < itemIdx);
+    assert.ok(ordIdx < itemIdx);
   } finally {
     cleanup();
   }
 });
+

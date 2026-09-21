@@ -3,21 +3,21 @@
  */
 
 export const FIRST_NAMES = [
-  "Sombat", "Ting", "Rajan", "Minh", "Hiroshi", "William", "Made", "Ravi", "John", "Kiran",
-  "Raj", "Wayan", "Chaiwat", "Aarav", "Sita", "Zara", "Ratna", "Ananya", "Ha-eun", "Siti",
-  "Seo-yeon", "Mary", "Priyanka", "Xu", "Ali", "Priya", "Sakura", "Ken", "Ketut", "Soo-hyun",
-  "Wang", "Guido", "Deepa", "Fang", "James", "Mei", "Binh", "Takeshi", "Leela", "Thuy",
-  "Dewi", "Layla", "Vijay", "Samir", "Meera", "Jessica", "Linda", "Malee", "Qiang", "Yuna",
-  "Richard", "Margaret", "Ming", "Vikram", "Mai", "Rahul", "Van", "Jennifer", "Suresh", "Yui",
-  "Pan", "Barbara", "Tim", "Lu", "Liang", "Robert", "Fatima", "Imran", "Ajay", "Ren",
-  "Liu", "Dennis", "Lin", "Kavya", "Agus", "Katherine", "Anita", "Grace", "Linus", "Jun",
-  "Alan", "Tarun", "Omar", "Michael", "Dung", "Ahmad", "Hoa", "Hui", "Susan", "Shinji",
-  "Zhou", "Linh", "Ngoc", "Xin", "Hassan", "Nisha", "Patricia", "Li", "Lei", "Sunita",
-  "Chen", "Anh", "Jia", "Xiao", "Yang", "Ji-hoon", "Jing", "Hedy", "Elizabeth", "Zhang",
-  "Arjun", "Yuki", "Ada", "Edsger", "Nong", "Lynn", "Anjali", "Nguyen", "Sora", "Mieko",
-  "Nyoman", "Jin", "Aisha", "Bayu", "Tariq", "Daiki", "David", "Rani", "Tran", "Haruki",
-  "Dae-hyun", "Dao", "Rama", "Aiko", "Min-jun", "Zhu", "Radia", "Wei", "Sophia", "Lucas",
-  "Emma", "Liam", "Olivia", "Noah", "Elena", "Mateo", "Chloe", "Alexander", "Aria", "Leo"
+ "Sombat", "Ting", "Rajan", "Minh", "Hiroshi", "William", "Made", "Ravi", "John", "Kiran",
+ "Raj", "Wayan", "Chaiwat", "Aarav", "Sita", "Zara", "Ratna", "Ananya", "Ha-eun", "Siti",
+ "Seo-yeon", "Mary", "Priyanka", "Xu", "Ali", "Priya", "Sakura", "Ken", "Ketut", "Soo-hyun",
+ "Wang", "Guido", "Deepa", "Fang", "James", "Mei", "Binh", "Takeshi", "Leela", "Thuy",
+ "Dewi", "Layla", "Vijay", "Samir", "Meera", "Jessica", "Linda", "Malee", "Qiang", "Yuna",
+ "Richard", "Margaret", "Ming", "Vikram", "Mai", "Rahul", "Van", "Jennifer", "Suresh", "Yui",
+ "Pan", "Barbara", "Tim", "Lu", "Liang", "Robert", "Fatima", "Imran", "Ajay", "Ren",
+ "Liu", "Dennis", "Lin", "Kavya", "Agus", "Katherine", "Anita", "Grace", "Linus", "Jun",
+ "Alan", "Tarun", "Omar", "Michael", "Dung", "Ahmad", "Hoa", "Hui", "Susan", "Shinji",
+ "Zhou", "Linh", "Ngoc", "Xin", "Hassan", "Nisha", "Patricia", "Li", "Lei", "Sunita",
+ "Chen", "Anh", "Jia", "Xiao", "Yang", "Ji-hoon", "Jing", "Hedy", "Elizabeth", "Zhang",
+ "Arjun", "Yuki", "Ada", "Edsger", "Nong", "Lynn", "Anjali", "Nguyen", "Sora", "Mieko",
+ "Nyoman", "Jin", "Aisha", "Bayu", "Tariq", "Daiki", "David", "Rani", "Tran", "Haruki",
+ "Dae-hyun", "Dao", "Rama", "Aiko", "Min-jun", "Zhu", "Radia", "Wei", "Sophia", "Lucas",
+ "Emma", "Liam", "Olivia", "Noah", "Elena", "Mateo", "Chloe", "Alexander", "Aria", "Leo"
 ];
 
 export const LAST_NAMES = [
@@ -140,4 +140,53 @@ export const NAMED_COLORS = [
   "Emerald", "Indigo", "Amber", "Rose", "Cyan", "Violet",
   "Sky", "Slate", "Teal", "Fuchsia", "Crimson", "Navy",
   "Coral", "Bronze", "Charcoal", "Mint", "Lavender", "Ruby", "Cobalt"
+];
+
+export const PRODUCT_CATEGORIES = [
+  "Electronics", "Computers & Accessories", "Apparel & Footwear", "Home & Kitchen",
+  "Health & Wellness", "Books & Media", "Sports & Outdoors", "Beauty & Personal Care",
+  "Toys & Games", "Automotive & Industrial", "Groceries & Gourmet", "Office Products"
+];
+
+export const PRODUCT_NAMES = [
+  "Wireless Noise-Canceling Earbuds", "Ergonomic Mechanical Keyboard", "Ultra HD 4K IPS Monitor",
+  "Organic Fair-Trade Coffee Beans", "Stainless Steel Thermal Tumbler", "Merino Wool Athletic Socks",
+  "Waterproof Smart Fitness Watch", "Non-Stick Ceramic Frying Pan", "Hydrating Hyaluronic Facial Serum",
+  "Portable Bluetooth Outdoor Speaker", "Compact Cordless Handheld Vacuum", "Memory Foam Contoured Pillow",
+  "Natural Soy Aromatherapy Candle", "Adjustable Standing Desk Converter", "High-Speed 65W GaN Fast Charger",
+  "Full-Grain Leather Bi-Fold Wallet", "Polarized Lightweight Sunglasses", "Recycled Aluminum Laptop Stand",
+  "Organic Green Matcha Tea Powder", "Precision Kitchen Digital Scale", "Active Noise Canceling Headphones",
+  "Tempered Glass Screen Protector", "Braided Nylon Heavy-Duty Cable", "Plant-Based Protein Powder",
+  "Ceramic Essential Oil Diffuser", "Stainless Steel Chef Knife 8-Inch", "Resistance Band Exercise Set",
+  "Double-Wall Insulated Mug", "Minimalist Water-Resistant Backpack", "Rechargeable LED Desk Lamp"
+];
+
+export const DEPARTMENTS = [
+  "Engineering", "Product Management", "Design & UX", "Marketing & Growth",
+  "Sales & Business Development", "Customer Support", "Human Resources",
+  "Finance & Accounting", "Legal & Compliance", "Operations & Logistics",
+  "Data & Analytics", "Quality Assurance", "Information Security", "Corporate Strategy"
+];
+
+export const PAYMENT_METHODS = [
+  "Credit Card", "Debit Card", "PayPal", "Apple Pay", "Google Pay",
+  "Bank Transfer", "Stripe Checkout", "Klarna Pay in 4", "Cash on Delivery",
+  "Affirm", "Afterpay", "Wire Transfer", "Venmo"
+];
+
+export const TRANSACTION_TYPES = [
+  "purchase", "refund", "subscription", "authorization", "capture",
+  "chargeback", "payout", "transfer", "adjustment", "deposit", "withdrawal"
+];
+
+export const TECH_SKILLS = [
+  "TypeScript", "JavaScript", "Python", "Rust", "Go", "SQL", "PostgreSQL",
+  "SQLite", "MySQL", "React", "Vue", "Next.js", "Node.js", "GraphQL",
+  "Redis", "Docker", "Kubernetes", "AWS", "Cloudflare", "Linux", "Git",
+  "TailwindCSS", "Terraform", "Kafka", "Elasticsearch", "Prometheus"
+];
+
+export const ORDER_STATUSES = [
+  "pending", "confirmed", "processing", "shipped", "out_for_delivery",
+  "delivered", "cancelled", "refunded", "on_hold", "failed"
 ];

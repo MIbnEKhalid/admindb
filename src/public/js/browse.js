@@ -535,9 +535,41 @@
       else rawValue = v;
     }
 
+    const type = (c.type || '').toUpperCase();
+    const isBool = type === 'BOOLEAN' || type === 'BOOL';
+
+    // Baseline original value (before any staged edits)
+    const origNull = td.dataset.origValue !== undefined ? (td.dataset.origNull === 'true') : (td.dataset.null === 'true');
+    const origVal = td.dataset.origValue !== undefined ? (td.dataset.origValue ?? '') : (td.dataset.value ?? '');
+
+    // Check if new value is identical to the baseline
+    let isUnchanged = false;
+    if (setNull && origNull) {
+      isUnchanged = true;
+    } else if (!setNull && !origNull) {
+      if (isBool) {
+        const origBool = origVal === '1' || origVal === 'true' || origVal === 1 || origVal === true;
+        const newBool = rawValue === '1' || rawValue === 'true';
+        isUnchanged = origBool === newBool;
+      } else {
+        isUnchanged = String(origVal) === String(rawValue);
+      }
+    }
+
+    if (isUnchanged) {
+      // If edit brings cell back to original saved value, clear staged state
+      delete td.dataset.origValue;
+      delete td.dataset.origNull;
+      td.classList.remove('cell-dirty');
+      pendingChanges.delete(pk + '::' + col);
+      renderCellValue(td, setNull ? null : rawValue);
+      updateChangesBar();
+      return;
+    }
+
     if (td.dataset.origValue === undefined) {
-      td.dataset.origValue = td.dataset.value;
-      td.dataset.origNull = td.dataset.null === 'true' ? 'true' : 'false';
+      td.dataset.origValue = origVal;
+      td.dataset.origNull = origNull ? 'true' : 'false';
     }
 
     renderCellValue(td, setNull ? null : rawValue);
@@ -931,7 +963,13 @@
           const nextVal = (currentVal === 1 || currentVal === '1' || currentVal === true || currentVal === 'true') ? '0' : '1';
           const fakeEl = { value: nextVal, type: 'checkbox', checked: nextVal === '1' };
           stageCell(tr, focusedCell, fakeEl);
+        } else {
+          e.preventDefault();
+          openInspectorForCell(focusedCell);
         }
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        openInspectorForCell(focusedCell);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
         const val = currentCellValue(focusedCell);
         if (val !== null && val !== undefined) {
@@ -1243,46 +1281,127 @@
     });
   }
 
-  // ---- Cell Inspector Trigger --------------------------------------------
+  // ---- Cell Inspector & Quick Peek ---------------------------------------
+
+  function openInspectorForCell(td) {
+    if (!td) return;
+    const tr = td.closest('tr');
+    if (!tr) return;
+
+    const col = td.dataset.col;
+    const isNull = td.dataset.null === 'true';
+    const val = td.dataset.value;
+    const pk = tr.dataset.pk;
+    const table = tr.dataset.table || cfg.table;
+    const isBlob = td.dataset.blob === 'true';
+    const isJson = td.dataset.json === 'true';
+    const isImage = td.dataset.image === 'true';
+    const isAudio = td.dataset.audio === 'true';
+    const isVideo = td.dataset.video === 'true';
+    const isPdf = td.dataset.pdf === 'true';
+    const blobUrl = (td.querySelector('img') && td.querySelector('img').src) || '';
+    const colType = td.dataset.type || (colInfo(col)?.type ?? '');
+
+    if (window.Inspector && window.Inspector.open) {
+      window.Inspector.open({
+        table,
+        pk,
+        col,
+        colType,
+        value: val,
+        isNull,
+        isBlob,
+        isJson,
+        isImage,
+        isAudio,
+        isVideo,
+        isPdf,
+        blobUrl,
+        readonly,
+        onSave: (newVal) => {
+          if (!readonly) {
+            const fakeEl = { value: newVal, type: 'text' };
+            stageCell(tr, td, fakeEl);
+          }
+        },
+      });
+    }
+  }
 
   function initCellInspector() {
+    let peekTimer = null;
+
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('.js-inspect-btn');
-      if (!btn) return;
-      e.stopPropagation();
-      e.preventDefault();
-      const td = btn.closest('td');
-      const tr = btn.closest('tr');
-      if (!td || !tr) return;
-
-      const col = td.dataset.col;
-      const isNull = td.dataset.null === 'true';
-      const val = td.dataset.value;
-      const pk = tr.dataset.pk;
-      const table = tr.dataset.table || cfg.table;
-      const isBlob = td.dataset.blob === 'true';
-      const isJson = td.dataset.json === 'true';
-      const colType = td.dataset.type || (colInfo(col)?.type ?? '');
-
-      if (window.Inspector && window.Inspector.open) {
-        window.Inspector.open({
-          table,
-          pk,
-          col,
-          colType,
-          value: val,
-          isNull,
-          isBlob,
-          isJson,
-          readonly,
-          onSave: (newVal) => {
-            if (!readonly) {
-              const fakeEl = { value: newVal, type: 'text' };
-              stageCell(tr, td, fakeEl);
-            }
-          },
-        });
+      const td = e.target.closest('td.cell-editable');
+      if (btn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const parentTd = btn.closest('td');
+        if (parentTd) openInspectorForCell(parentTd);
+        return;
       }
+      if (td && e.altKey) {
+        e.stopPropagation();
+        e.preventDefault();
+        openInspectorForCell(td);
+      }
+    });
+
+    // Hover quick peek on truncated cells, JSON pills, and BLOB chips
+    document.addEventListener('mouseover', (e) => {
+      const td = e.target.closest('td.cell-editable');
+      if (!td || td.classList.contains('js-editing')) return;
+      clearTimeout(peekTimer);
+      peekTimer = setTimeout(() => {
+        const val = td.dataset.value;
+        const isBlob = td.dataset.blob === 'true';
+        const isJson = td.dataset.json === 'true';
+        const isImage = td.dataset.image === 'true';
+        const isAudio = td.dataset.audio === 'true';
+        const isVideo = td.dataset.video === 'true';
+        const isPdf = td.dataset.pdf === 'true';
+        const isLongText = val && val.length > 40;
+
+        if (!isBlob && !isJson && !isImage && !isAudio && !isVideo && !isPdf && !isLongText) return;
+
+        const col = td.dataset.col;
+        const pk = td.closest('tr')?.dataset.pk;
+        const table = td.closest('tr')?.dataset.table || cfg.table;
+        const blobUrl = (td.querySelector('img') && td.querySelector('img').src) || '';
+        const colType = td.dataset.type || (colInfo(col)?.type ?? '');
+
+        if (window.Inspector && window.Inspector.peek) {
+          window.Inspector.peek(td, {
+            table,
+            pk,
+            col,
+            colType,
+            value: val,
+            isNull: td.dataset.null === 'true',
+            isBlob,
+            isJson,
+            isImage,
+            isAudio,
+            isVideo,
+            isPdf,
+            blobUrl,
+            readonly,
+            onSave: (newVal) => {
+              if (!readonly) {
+                const tr = td.closest('tr');
+                const fakeEl = { value: newVal, type: 'text' };
+                if (tr) stageCell(tr, td, fakeEl);
+              }
+            },
+          });
+        }
+      }, 500);
+    });
+
+    document.addEventListener('mouseout', (e) => {
+      const td = e.target.closest('td.cell-editable');
+      if (td) clearTimeout(peekTimer);
     });
   }
 

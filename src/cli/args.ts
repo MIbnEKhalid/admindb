@@ -23,6 +23,7 @@ export interface CliArgs {
   basePath?: string;
   logLevel?: LogLevel;
   readonly: boolean;
+  explicitReadonly?: boolean;
   serverless?: boolean;
   auth?: boolean;
   authUsername?: string;
@@ -57,7 +58,7 @@ export function helpText(): string {
     '      --files, --db-files <list> Comma-separated database file paths [DB_FILES / ADMINDB_DB_FILES]',
     '  -b, --base-path, --base <p>    URL prefix to serve under (default: /) [BASE_PATH / ADMINDB_BASE_PATH]',
     '  -r, --readonly, --read-only    Open databases read-only (writes disabled) [READONLY / ADMINDB_READONLY]',
-    '      --serverless               Enable serverless mode (enforces read-only, disables writes) [SERVERLESS / ADMINDB_SERVERLESS]',
+    '      --serverless               Enable serverless mode (SQLite defaults to read-only; PostgreSQL is editable unless --readonly is specified) [SERVERLESS / ADMINDB_SERVERLESS]',
     '      --auth                     Enable authentication (default: on) [ADMINDB_AUTH=true]',
     '      --no-auth, --disable-auth  Disable authentication completely [ADMINDB_NO_AUTH=1 / ADMINDB_AUTH=false]',
     '  -u, --username, --user <user>  Admin username (default: admin) [ADMINDB_USERNAME / ADMINDB_USER]',
@@ -136,7 +137,10 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
           if (fileConf.port !== undefined) args.port = fileConf.port;
           if (fileConf.host !== undefined) args.host = fileConf.host;
           if (fileConf.basePath !== undefined) args.basePath = fileConf.basePath;
-          if (fileConf.readonly !== undefined) args.readonly = fileConf.readonly;
+          if (fileConf.readonly !== undefined) {
+            args.readonly = fileConf.readonly;
+            args.explicitReadonly = fileConf.readonly;
+          }
           if (fileConf.serverless !== undefined) args.serverless = fileConf.serverless;
           if (fileConf.logLevel !== undefined) args.logLevel = fileConf.logLevel;
           if (typeof fileConf.auth === 'boolean') args.auth = fileConf.auth;
@@ -191,9 +195,9 @@ export function parseArgs(argv: string[]): { args: CliArgs; error?: string } {
       args.logLevel = v as LogLevel;
     } else if (tok === '-r' || tok === '--readonly' || tok === '--read-only') {
       args.readonly = true;
+      args.explicitReadonly = true;
     } else if (tok === '--serverless') {
       args.serverless = true;
-      args.readonly = true;
     } else if (tok === '--no-auth' || tok === '--disable-auth') {
       args.auth = false;
     } else if (tok === '--auth') {

@@ -503,12 +503,40 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
     assert.ok(!html.includes('/tables//rows/1/edit'));
   });
 
-  await t.test('GET /tables/:table/rows/:id/edit renders row edit form page with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/tables/users/rows/1/edit`);
+  await t.test('GET /seed/:table renders seed page with 200 OK and sidebar seed link', async () => {
+    const res = await fetch(`${baseUrl}/seed/users`);
     assert.equal(res.status, 200);
     const html = await res.text();
-    assert.ok(html.includes('Edit row'));
+    assert.ok(html.includes('Seed data'));
     assert.ok(html.includes('users'));
+    assert.ok(html.includes('Seed generator'));
+    assert.ok(html.includes('href="/seed"'));
+  });
+
+  await t.test('GET /seed/:table?mode=chain sets ER chain mode as active', async () => {
+    const res = await fetch(`${baseUrl}/seed/users?mode=chain`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes('id="btn-select-chain" class="seed-mode-btn active"'));
+    assert.ok(html.includes('"mode":"chain"'));
+  });
+
+  await t.test('GET /seed renders table and mode selection page with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/seed`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes('Choose Target Table'));
+    assert.ok(html.includes('Choose Generation Mode'));
+    assert.ok(html.includes('Single Table Seeder'));
+    assert.ok(html.includes('Relational ER Chain Seeder'));
+    assert.ok(html.includes('users'));
+    assert.ok(html.includes('posts'));
+  });
+
+  await t.test('GET /tables/:table/seed redirects to /seed/:table with 301', async () => {
+    const res = await fetch(`${baseUrl}/tables/users/seed`, { redirect: 'manual' });
+    assert.equal(res.status, 301);
+    assert.equal(res.headers.get('location'), '/seed/users');
   });
 
   await close();

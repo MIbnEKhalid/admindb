@@ -40,6 +40,13 @@ export type GeneratorStrategyId =
   | 'company'
   | 'currency'
   | 'status'
+  | 'orderStatus'
+  | 'product'
+  | 'productCategory'
+  | 'department'
+  | 'paymentMethod'
+  | 'transactionType'
+  | 'techSkill'
   | 'creditCard'
   // Location
   | 'city'

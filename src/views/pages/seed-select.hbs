@@ -1,0 +1,287 @@
+{{!-- Page: Seed Data Generator · Table & Mode Selector · URL: /seed --}}
+<div class="space-y-6 max-w-5xl mx-auto pb-16">
+
+  {{!-- Header --}}
+  <div class="page-header">
+    <div class="page-header-row">
+      <div>
+        <div class="page-pretitle">Developer Tools</div>
+        <h1 class="page-title">Seed Data Generator</h1>
+        <p class="mt-0.5 text-xs text-base-content/60">
+          Generate realistic mock datasets with column heuristics or populate complete relational entity graphs.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {{#if hasTables}}
+  <div class="grid gap-6 lg:grid-cols-[1fr_380px]">
+
+    {{!-- Left Column: Table Selection --}}
+    <div class="space-y-4">
+      <div class="app-card overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-base-200 bg-base-200/30 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-bold text-base-content flex items-center gap-2">
+              <span class="grid h-5 w-5 place-items-center rounded-md bg-primary/15 text-primary text-xs font-bold font-mono">1</span>
+              Choose Target Table
+            </h2>
+            <p class="text-[11px] text-base-content/50 mt-0.5">Select the root table to generate rows for.</p>
+          </div>
+          <div class="w-full sm:w-56">
+            <div class="relative">
+              <span class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40">
+                {{{icon "search" class="h-3.5 w-3.5"}}}
+              </span>
+              <input id="table-search-input" type="text" placeholder="Filter tables…" autocomplete="off"
+                class="field-input text-xs !py-1 !pl-8 w-full" />
+            </div>
+          </div>
+        </div>
+
+        <div id="table-cards-list" class="p-3 sm:p-4 space-y-2 max-h-[480px] overflow-y-auto">
+          {{#each tables}}
+          <label class="table-option-card block cursor-pointer select-none rounded-xl border p-3 transition-all {{#if (eq this.name ../defaultTable)}}border-primary bg-primary/[0.04] shadow-sm{{else}}border-base-200 bg-base-100 hover:border-base-300 hover:bg-base-200/40{{/if}}"
+            data-table="{{this.name}}">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <input type="radio" name="selected_table" value="{{this.name}}" class="radio radio-primary radio-xs"
+                  {{#if (eq this.name ../defaultTable)}}checked{{/if}} />
+                <div class="min-w-0">
+                  <div class="font-mono font-bold text-sm text-base-content truncate flex items-center gap-2">
+                    {{{icon "table" class="h-3.5 w-3.5 text-base-content/50 shrink-0"}}}
+                    <span>{{this.name}}</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-0.5 text-[11px] text-base-content/50">
+                    <span>{{this.cols}} cols</span>
+                    <span>·</span>
+                    <span>{{this.rowCount}} existing rows</span>
+                    {{#if this.fks}}
+                      <span>·</span>
+                      <span class="text-amber-500 font-medium">{{this.fks}} FK refs</span>
+                    {{/if}}
+                  </div>
+                </div>
+              </div>
+
+              {{!-- Quick Launch Buttons --}}
+              <div class="flex items-center gap-1 shrink-0">
+                <button type="button" class="btn btn-ghost btn-xs text-[11px] text-base-content/70 hover:text-primary quick-seed-btn"
+                  data-table="{{this.name}}" data-mode="single" title="Seed this table directly">
+                  Single
+                </button>
+                <button type="button" class="btn btn-ghost btn-xs text-[11px] text-emerald-600 hover:text-emerald-500 quick-seed-btn"
+                  data-table="{{this.name}}" data-mode="chain" title="Seed relational ER chain directly">
+                  ER Chain
+                </button>
+              </div>
+            </div>
+          </label>
+          {{/each}}
+        </div>
+      </div>
+    </div>
+
+    {{!-- Right Column: Mode Selection & Launch --}}
+    <div class="space-y-4 lg:sticky lg:top-20 self-start">
+
+      {{!-- Mode Selector Card --}}
+      <div class="app-card overflow-hidden">
+        <div class="p-4 border-b border-base-200 bg-base-200/30">
+          <h2 class="text-sm font-bold text-base-content flex items-center gap-2">
+            <span class="grid h-5 w-5 place-items-center rounded-md bg-primary/15 text-primary text-xs font-bold font-mono">2</span>
+            Choose Generation Mode
+          </h2>
+          <p class="text-[11px] text-base-content/50 mt-0.5">Select how rows should be populated.</p>
+        </div>
+
+        <div class="p-3.5 space-y-2.5">
+          {{!-- Option 1: Single Table --}}
+          <label class="mode-option-card block cursor-pointer select-none rounded-xl border p-3.5 transition-all {{#if (eq defaultMode 'single')}}border-primary bg-primary/[0.04] shadow-sm{{else}}border-base-200 bg-base-100 hover:border-base-300 hover:bg-base-200/40{{/if}}"
+            data-mode="single">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="selected_mode" value="single" class="radio radio-primary radio-xs mt-0.5"
+                {{#if (eq defaultMode 'single')}}checked{{/if}} />
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-xs text-base-content">Single Table Seeder</span>
+                  <span class="badge badge-xs badge-ghost text-[10px] font-mono">Standalone</span>
+                </div>
+                <p class="text-[11px] text-base-content/60 leading-relaxed">
+                  Generates realistic rows for the selected table with automated column heuristics (names, emails, dates, addresses, UUIDs) and live formula templates.
+                </p>
+              </div>
+            </div>
+          </label>
+
+          {{!-- Option 2: Relational ER Chain --}}
+          <label class="mode-option-card block cursor-pointer select-none rounded-xl border p-3.5 transition-all {{#if (eq defaultMode 'chain')}}border-primary bg-primary/[0.04] shadow-sm{{else}}border-base-200 bg-base-100 hover:border-base-300 hover:bg-base-200/40{{/if}}"
+            data-mode="chain">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="selected_mode" value="chain" class="radio radio-primary radio-xs mt-0.5"
+                {{#if (eq defaultMode 'chain')}}checked{{/if}} />
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-xs text-base-content">Relational ER Chain Seeder</span>
+                  <span class="badge badge-xs badge-outline badge-success text-[10px] font-mono">Full Graph</span>
+                </div>
+                <p class="text-[11px] text-base-content/60 leading-relaxed">
+                  Analyzes schema graph foreign keys and seeds related parent & child entities in topological order to guarantee full relational integrity.
+                </p>
+              </div>
+            </div>
+          </label>
+        </div>
+
+        {{!-- Launch Bar --}}
+        <div class="p-3.5 border-t border-base-200 bg-base-200/20">
+          <button id="btn-launch-seed" type="button" class="btn btn-primary btn-sm w-full gap-2 font-bold shadow-sm">
+            {{{icon "seed" class="h-4 w-4"}}}
+            <span id="launch-btn-label">Open Seed Generator</span>
+            {{{icon "arrowRight" class="h-3.5 w-3.5"}}}
+          </button>
+        </div>
+      </div>
+
+      {{!-- Pro Tip Card --}}
+      <div class="p-3.5 rounded-xl bg-base-200/50 border border-base-300 text-xs space-y-1 text-base-content/70">
+        <div class="font-semibold text-base-content flex items-center gap-1.5 text-[11px]">
+          {{{icon "info" class="h-3.5 w-3.5 text-primary"}}}
+          Deterministic Generation
+        </div>
+        <p class="text-[11px] leading-relaxed text-base-content/60">
+          You can specify an exact numeric seed for deterministic reproducible data, or import/export seed profiles.
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+  {{else}}
+  {{!-- Empty State: No Tables --}}
+  <div class="empty-state">
+    <span class="empty-icon">{{{icon "table" class="h-7 w-7"}}}</span>
+    <p class="text-sm font-medium text-base-content/70">No tables available in the database</p>
+    <p class="text-xs text-base-content/50 mt-1 max-w-sm">Create a table using the visual designer or run SQL migrations before generating seed data.</p>
+    <div class="mt-4 flex gap-2">
+      <a href="{{basePath}}/designer" class="btn btn-primary btn-sm gap-1.5">
+        {{{icon "plus" class="h-4 w-4"}}}
+        Create table
+      </a>
+      <a href="{{basePath}}/query" class="btn btn-outline btn-sm gap-1.5">
+        {{{icon "query" class="h-4 w-4"}}}
+        Query editor
+      </a>
+    </div>
+  </div>
+  {{/if}}
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const BASE = '{{basePath}}';
+  let selectedTable = '{{defaultTable}}';
+  let selectedMode = '{{defaultMode}}' || 'single';
+
+  const tableCards = document.querySelectorAll('.table-option-card');
+  const modeCards = document.querySelectorAll('.mode-option-card');
+  const launchBtn = document.getElementById('btn-launch-seed');
+  const launchLabel = document.getElementById('launch-btn-label');
+  const searchInput = document.getElementById('table-search-input');
+
+  function updateLaunchLabel() {
+    if (launchLabel) {
+      launchLabel.textContent = selectedTable
+        ? `Seed "${selectedTable}" (${selectedMode === 'chain' ? 'ER Chain' : 'Single Table'})`
+        : 'Open Seed Generator';
+    }
+  }
+
+  function setSelectedTable(tableName) {
+    selectedTable = tableName;
+    tableCards.forEach(card => {
+      const isMatch = card.dataset.table === tableName;
+      const radio = card.querySelector('input[type="radio"]');
+      if (radio) radio.checked = isMatch;
+      if (isMatch) {
+        card.classList.add('border-primary', 'bg-primary/[0.04]', 'shadow-sm');
+        card.classList.remove('border-base-200', 'bg-base-100');
+      } else {
+        card.classList.remove('border-primary', 'bg-primary/[0.04]', 'shadow-sm');
+        card.classList.add('border-base-200', 'bg-base-100');
+      }
+    });
+    updateLaunchLabel();
+  }
+
+  function setSelectedMode(mode) {
+    selectedMode = mode;
+    modeCards.forEach(card => {
+      const isMatch = card.dataset.mode === mode;
+      const radio = card.querySelector('input[type="radio"]');
+      if (radio) radio.checked = isMatch;
+      if (isMatch) {
+        card.classList.add('border-primary', 'bg-primary/[0.04]', 'shadow-sm');
+        card.classList.remove('border-base-200', 'bg-base-100');
+      } else {
+        card.classList.remove('border-primary', 'bg-primary/[0.04]', 'shadow-sm');
+        card.classList.add('border-base-200', 'bg-base-100');
+      }
+    });
+    updateLaunchLabel();
+  }
+
+  tableCards.forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.quick-seed-btn')) return;
+      const table = card.dataset.table;
+      if (table) setSelectedTable(table);
+    });
+  });
+
+  modeCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const mode = card.dataset.mode;
+      if (mode) setSelectedMode(mode);
+    });
+  });
+
+  // Direct quick-seed buttons
+  document.querySelectorAll('.quick-seed-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const table = btn.dataset.table;
+      const mode = btn.dataset.mode || 'single';
+      if (table) {
+        window.location.href = `${BASE}/seed/${encodeURIComponent(table)}?mode=${encodeURIComponent(mode)}`;
+      }
+    });
+  });
+
+  // Launch button
+  if (launchBtn) {
+    launchBtn.addEventListener('click', () => {
+      if (!selectedTable) return;
+      window.location.href = `${BASE}/seed/${encodeURIComponent(selectedTable)}?mode=${encodeURIComponent(selectedMode)}`;
+    });
+  }
+
+  // Real-time table search filter
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      tableCards.forEach(card => {
+        const name = (card.dataset.table || '').toLowerCase();
+        if (!q || name.includes(q)) {
+          card.classList.remove('hidden');
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+    });
+  }
+
+  updateLaunchLabel();
+});
+</script>

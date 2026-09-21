@@ -2,25 +2,27 @@
 <div class="space-y-6">
 
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div class="flex items-center gap-3.5">
-      <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
-        {{{icon "arrowLeft" class="h-5 w-5"}}}
-      </a>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wider text-primary">Schema editor</p>
-        <h1 class="font-mono text-2xl font-bold tracking-tight">{{table}}</h1>
+  <div class="page-header">
+    <div class="page-header-row">
+      <div class="flex items-center gap-3">
+        <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
+          {{{icon "arrowLeft" class="h-4 w-4"}}}
+        </a>
+        <div>
+          <div class="page-pretitle">Schema Editor</div>
+          <h1 class="page-title font-mono text-xl sm:text-2xl">{{table}}</h1>
+        </div>
       </div>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <a href="{{basePath}}/tables/{{table}}" class="btn btn-ghost btn-sm gap-1.5">
-        {{{icon "table" class="h-4 w-4"}}}
-        View data
-      </a>
-      <a href="{{basePath}}/query" class="btn btn-outline btn-sm gap-1.5">
-        {{{icon "query" class="h-4 w-4"}}}
-        Query
-      </a>
+      <div class="page-actions">
+        <a href="{{basePath}}/tables/{{table}}" class="btn btn-ghost btn-sm gap-1.5">
+          {{{icon "table" class="h-4 w-4"}}}
+          View data
+        </a>
+        <a href="{{basePath}}/query" class="btn btn-outline btn-sm gap-1.5">
+          {{{icon "query" class="h-4 w-4"}}}
+          Query
+        </a>
+      </div>
     </div>
   </div>
 

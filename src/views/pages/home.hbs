@@ -2,23 +2,25 @@
 <div class="space-y-8">
 
   <!-- Header -->
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <p class="text-sm font-semibold uppercase tracking-wider text-primary">Overview</p>
-      <h1 class="mt-1 text-3xl font-extrabold tracking-tight">Database</h1>
-      <p class="mt-1.5 text-sm text-base-content/55">Browse, edit, and query the connected database from your browser.</p>
-    </div>
-    <div class="flex gap-2">
-      <a href="{{basePath}}/query" class="btn btn-ghost btn-sm gap-1.5">
-        {{{icon "query" class="h-4 w-4"}}}
-        Query
-      </a>
-      {{#unless readonly}}
-        <a href="{{basePath}}/designer" class="btn btn-primary btn-sm gap-1.5">
-          {{{icon "plus" class="h-4 w-4"}}}
-          New table
+  <div class="page-header">
+    <div class="page-header-row">
+      <div>
+        <div class="page-pretitle">Overview</div>
+        <h1 class="page-title">Database</h1>
+        <p class="mt-0.5 text-xs text-base-content/60">Browse, edit, and query the connected database from your browser.</p>
+      </div>
+      <div class="page-actions">
+        <a href="{{basePath}}/query" class="btn btn-ghost btn-sm gap-1.5">
+          {{{icon "query" class="h-4 w-4"}}}
+          Query
         </a>
-      {{/unless}}
+        {{#unless readonly}}
+          <a href="{{basePath}}/designer" class="btn btn-primary btn-sm gap-1.5">
+            {{{icon "plus" class="h-4 w-4"}}}
+            New table
+          </a>
+        {{/unless}}
+      </div>
     </div>
   </div>
 
