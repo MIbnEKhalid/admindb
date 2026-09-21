@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Downloads](https://img.shields.io/npm/dm/admindb.svg)](https://www.npmjs.com/package/admindb)
-[![Publish](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/MIbnEKhalid/admindb/actions/workflows/publish.yml)
+[![Check npm version](https://github.com/MIbnEKhalid/mbkauthe/actions/workflows/checkLatestVersion.yml/badge.svg)](https://github.com/MIbnEKhalid/mbkauthe/actions/workflows/checkLatestVersion.yml)
 
 **A modern, browser-based SQLite and PostgreSQL database administration tool.** Manage SQLite and PostgreSQL databases entirely from your browser — browse and edit rows, run arbitrary SQL queries, design schemas visually, seed realistic test data, inspect complex data types, and import/export CSV/JSON — with zero frontend build step.
 
