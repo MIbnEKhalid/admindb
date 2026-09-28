@@ -5,6 +5,7 @@
   const isPostgres = window.Utils ? window.Utils.isPostgres() : (window.APP && window.APP.dialect === 'postgres');
   const DESIGNER_TYPES = window.Utils ? window.Utils.getDesignerTypes() : ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN'];
   const NAME_RE = window.Utils ? window.Utils.NAME_REGEX : /^[A-Za-z_][A-Za-z0-9_$]*$/;
+  const dbId = encodeURIComponent((window.APP && window.APP.dbId) || '');
 
   const columnsEl = document.getElementById('columns');
   const errorBox = document.getElementById('designer-error');
@@ -25,7 +26,7 @@
 
   async function loadColumns(table) {
     if (columnCache[table]) return columnCache[table];
-    const info = await Api.get('/api/tables/' + encodeURIComponent(table) + '/info');
+    const info = await Api.get('/api/tables/' + dbId + '/' + encodeURIComponent(table) + '/info');
     columnCache[table] = info.columns.map((c) => c.name);
     return columnCache[table];
   }
@@ -149,7 +150,7 @@
     }
     errorBox.classList.add('hidden');
     try {
-      const data = await Api.post('/api/tables/generate', {
+      const data = await Api.post('/api/tables/' + dbId + '/generate', {
         name: tableNameEl.value.trim(),
         columns: collectColumns(),
       });
@@ -176,10 +177,10 @@
     }
     const body = { name: tableNameEl.value.trim(), columns: collectColumns() };
     try {
-      const data = await Api.post('/api/tables', body);
+      const data = await Api.post('/api/tables/' + dbId, body);
       UI.showToast(data.message || 'Table created.', 'success');
       setTimeout(() => {
-        window.location.href = Api.basePath + '/tables/' + encodeURIComponent(body.name);
+        window.location.href = Api.basePath + '/tables/' + dbId + '/' + encodeURIComponent(body.name);
       }, 500);
     } catch (e) {
       showError(e.message);
@@ -188,7 +189,7 @@
 
   async function init() {
     try {
-      const tables = await Api.get('/api/tables');
+      const tables = await Api.get('/api/tables/' + dbId);
       fkTables = tables.map((t) => t.name).filter((n) => n.charAt(0) !== '_');
     } catch (e) {
       fkTables = [];

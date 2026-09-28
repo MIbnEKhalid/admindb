@@ -1,72 +1,77 @@
 # AdminDB REST API
 
 Every route is under `basePath` and returns the consistent shape
-`{ success, data?, error? }`. In multi-db mode, every route is scoped under the
-database identifier, e.g. `/api/app.db/tables` or `/api/prod_pg/tables`.
+`{ success, data?, error? }`. All database-specific routes follow the uniform pattern
+`/<page>/<db>` and `/api/<resource>/<db>/...` (e.g. `/api/tables/app.db` or `/api/tables/prod_pg/users`).
 
 AdminDB supports both **SQLite** and **PostgreSQL** database backends seamlessly.
 
 ## Tables & rows
 
-| Method | Path                                     | Purpose                          |
-| ------ | ---------------------------------------- | -------------------------------- |
-| GET    | `/api/tables`                            | List tables                      |
-| GET    | `/api/tables/:table/info`                | Column + FK metadata, PK columns |
-| GET    | `/api/tables/:table/fk-options`          | Values for FK dropdowns          |
-| GET    | `/api/tables/:table/rows?page&limit&f`   | Paginated rows (`f` = URL-encoded JSON filters — legacy strings like `{"age":">35"}` or structured conditions like `{"balance":{"op":"gte","value":"100"}}`) |
-| GET    | `/api/tables/:table/rows/count?f=`       | Filtered row count               |
-| GET    | `/api/tables/:table/row/:id`             | Single row by (encoded) PK       |
-| GET    | `/api/tables/:table/rows/:id/references` | Rows in other tables whose foreign keys reference this row |
-| GET    | `/api/tables/:table/row/:id/blob/:column` | Stream binary BLOB / BYTEA with MIME detection (add `?download=1` to force download) |
-| GET    | `/api/tables/:table/row/:id/blob/:column/meta` | Inspect BLOB / BYTEA metadata, MIME sniffing & 3-column hex dump |
-| PUT    | `/api/tables/:table/row/:id/blob/:column` | Update binary value (`{ data: base64/hex, format?: 'base64'|'hex'|'text' }`) |
-| POST   | `/api/tables/:table/rows`                | Insert row (or batch of rows with `{ rows: [...] }`) |
-| POST   | `/api/tables/:table/rows/generate`       | Generate INSERT SQL (no execute) |
-| POST   | `/api/tables/:table/rows/import`         | Import CSV (`{ csv }`, header row must match columns) |
-| GET    | `/api/tables/:table/export?format=`      | Download all rows as `csv` or `json` |
-| PUT    | `/api/tables/:table/row/:id`             | Update row (`{ values, nulls? }` — `nulls` explicitly sets columns to NULL) |
-| PUT    | `/api/tables/:table/row/:id/generate`    | Generate UPDATE SQL (no execute) |
-| DELETE | `/api/tables/:table/row/:id`             | Delete row                       |
-| POST   | `/api/tables/:table/rows/bulk-impact`    | FK-impact preview: how many rows in other tables reference the selected rows |
-| POST   | `/api/tables/:table/rows/bulk-delete`    | Delete selected rows (`{ ids, confirmImpact }`; transactional) |
-| POST   | `/api/tables/:table/rows/bulk-export`    | Export only the selected rows as `csv`/`json` (`{ ids, format }`) |
-| POST   | `/api/tables/:table/rows/bulk-update`    | Apply staged inline edits (`{ updates: [{ id, values?, nulls? }] }`; transactional) |
-| GET    | `/api/tables/:table/seed/config`         | Per-column generator strategies + detected defaults |
-| GET    | `/api/tables/:table/seed/plan`           | Detect intelligent seed plan heuristics |
-| POST   | `/api/tables/:table/seed/preview`        | Generate preview sample rows for grid without executing |
-| POST   | `/api/tables/:table/seed/generate`       | Generate seed INSERT SQL without executing (`{ count, plan }`) |
-| POST   | `/api/tables/:table/seed`                | Generate and insert seed rows transactionally (`{ count, plan, truncate? }`) |
+| Method | Path                                          | Purpose                          |
+| ------ | --------------------------------------------- | -------------------------------- |
+| GET    | `/api/tables/:db`                             | List tables                      |
+| GET    | `/api/tables/:db/:table/info`                 | Column + FK metadata, PK columns |
+| GET    | `/api/tables/:db/:table/fk-options`           | Values for FK dropdowns          |
+| GET    | `/api/tables/:db/:table/rows?page&limit&f`    | Paginated rows (`f` = URL-encoded JSON filters — legacy strings like `{"age":">35"}` or structured conditions like `{"balance":{"op":"gte","value":"100"}}`) |
+| GET    | `/api/tables/:db/:table/rows/count?f=`        | Filtered row count               |
+| GET    | `/api/tables/:db/:table/row/:id`              | Single row by (encoded) PK       |
+| GET    | `/api/tables/:db/:table/rows/:id/references`  | Rows in other tables whose foreign keys reference this row |
+| GET    | `/api/tables/:db/:table/row/:id/blob/:column` | Stream binary BLOB / BYTEA with MIME detection (add `?download=1` to force download) |
+| GET    | `/api/tables/:db/:table/row/:id/blob/:column/meta` | Inspect BLOB / BYTEA metadata, MIME sniffing & 3-column hex dump |
+| PUT    | `/api/tables/:db/:table/row/:id/blob/:column` | Update binary value (`{ data: base64/hex, format?: 'base64'|'hex'|'text' }`) |
+| POST   | `/api/tables/:db/:table/rows`                 | Insert row (or batch of rows with `{ rows: [...] }`) |
+| POST   | `/api/tables/:db/:table/rows/generate`        | Generate INSERT SQL (no execute) |
+| POST   | `/api/tables/:db/:table/rows/import`          | Import CSV (`{ csv }`, header row must match columns) |
+| GET    | `/api/tables/:db/:table/export?format=`       | Download all rows as `csv` or `json` |
+| PUT    | `/api/tables/:db/:table/row/:id`              | Update row (`{ values, nulls? }` — `nulls` explicitly sets columns to NULL) |
+| PUT    | `/api/tables/:db/:table/row/:id/generate`     | Generate UPDATE SQL (no execute) |
+| DELETE | `/api/tables/:db/:table/row/:id`              | Delete row                       |
+| POST   | `/api/tables/:db/:table/rows/bulk-impact`     | FK-impact preview: how many rows in other tables reference the selected rows |
+| POST   | `/api/tables/:db/:table/rows/bulk-delete`     | Delete selected rows (`{ ids, confirmImpact }`; transactional) |
+| POST   | `/api/tables/:db/:table/rows/bulk-export`     | Export only the selected rows as `csv`/`json` (`{ ids, format }`) |
+| POST   | `/api/tables/:db/:table/rows/bulk-update`     | Apply staged inline edits (`{ updates: [{ id, values?, nulls? }] }`; transactional) |
+| GET    | `/api/tables/:db/:table/seed/config`          | Per-column generator strategies + detected defaults |
+| GET    | `/api/tables/:db/:table/seed/plan`            | Detect intelligent seed plan heuristics |
+| POST   | `/api/tables/:db/:table/seed/preview`         | Generate preview sample rows for grid without executing |
+| POST   | `/api/tables/:db/:table/seed/generate`        | Generate seed INSERT SQL without executing (`{ count, plan }`) |
+| POST   | `/api/tables/:db/:table/seed`                 | Generate and insert seed rows transactionally (`{ count, plan, truncate? }`) |
+| GET    | `/api/tables/:db/:table/seed/chain`           | Relational ER chain resolution and topological sort |
+| POST   | `/api/tables/:db/:table/seed/chain/generate`  | Generate ER chain seed SQL & preview rows |
+| POST   | `/api/tables/:db/:table/seed/chain`           | Execute atomic relational chain seeding |
+| POST   | `/api/seed/:db/validate`                      | Validate unified seed plan |
+| POST   | `/api/seed/:db/preview`                       | Preview unified multi-table seed rows |
+| POST   | `/api/seed/:db/execute`                       | Execute unified multi-table seed plan |
 
 ## Schema & indexes
 
-| Method | Path                                 | Purpose                          |
-| ------ | ------------------------------------ | -------------------------------- |
-| POST   | `/api/tables`                        | Create table                     |
-| POST   | `/api/tables/generate`               | Generate CREATE SQL (no execute) |
-| GET    | `/api/tables/:table/schema`          | Full schema (constraints, indexes, FK refs) |
-| GET    | `/api/tables/:table/ddl`             | Get formatted `CREATE TABLE` and `INDEX` DDL for a single table |
-| GET    | `/api/info/ddl`                      | Get formatted DDL for the entire database schema |
-
-| POST   | `/api/tables/:table/rename`          | Rename the table                 |
-| POST   | `/api/tables/:table/columns`         | Add a column                     |
-| PUT    | `/api/tables/:table/columns/:column` | Modify/rename a column           |
-| DELETE | `/api/tables/:table/columns/:column` | Drop a column (safety-checked)   |
-| DELETE | `/api/tables/:table`                 | Drop the table (safety-checked)  |
-| POST   | `/api/tables/bulk-drop`              | Drop multiple tables at once (`{ tables, force }`) |
-| POST   | `/api/tables/bulk-truncate`          | Truncate/empty multiple tables at once (`{ tables, force }`) |
-| POST   | `/api/tables/:table/indexes`         | Create an index (`{ name?, columns[], unique? }`) |
-| DELETE | `/api/tables/:table/indexes/:index`  | Drop an index (auto indexes refused) |
-| GET    | `/api/erd`                           | Full schema graph with columns & FK edges for ER Diagram |
+| Method | Path                                      | Purpose                          |
+| ------ | ----------------------------------------- | -------------------------------- |
+| POST   | `/api/tables/:db`                         | Create table                     |
+| POST   | `/api/tables/:db/generate`                | Generate CREATE SQL (no execute) |
+| GET    | `/api/tables/:db/:table/schema`           | Full schema (constraints, indexes, FK refs) |
+| GET    | `/api/tables/:db/:table/ddl`              | Get formatted `CREATE TABLE` and `INDEX` DDL for a single table |
+| GET    | `/api/info/:db/ddl`                       | Get formatted DDL for the entire database schema |
+| POST   | `/api/tables/:db/:table/rename`           | Rename the table                 |
+| POST   | `/api/tables/:db/:table/columns`          | Add a column                     |
+| PUT    | `/api/tables/:db/:table/columns/:column`  | Modify/rename a column           |
+| DELETE | `/api/tables/:db/:table/columns/:column`  | Drop a column (safety-checked)   |
+| DELETE | `/api/tables/:db/:table`                  | Drop the table (safety-checked)  |
+| POST   | `/api/tables/:db/bulk-drop`               | Drop multiple tables at once (`{ tables, force }`) |
+| POST   | `/api/tables/:db/bulk-truncate`           | Truncate/empty multiple tables at once (`{ tables, force }`) |
+| POST   | `/api/tables/:db/:table/indexes`          | Create an index (`{ name?, columns[], unique? }`) |
+| DELETE | `/api/tables/:db/:table/indexes/:index`   | Drop an index (auto indexes refused) |
+| GET    | `/api/erd/:db`                            | Full schema graph with columns & FK edges for ER Diagram |
 
 ## Queries
 
-| Method | Path              | Purpose                    |
-| ------ | ----------------- | -------------------------- |
-| POST   | `/api/query`      | Run arbitrary SQL          |
-| POST   | `/api/query/export` | Run a SELECT and download as `csv`/`json` |
-| GET    | `/api/queries`    | List saved queries         |
-| POST   | `/api/queries`    | Save a named query         |
-| DELETE | `/api/queries/:id`| Delete a saved query       |
+| Method | Path                 | Purpose                    |
+| ------ | -------------------- | -------------------------- |
+| POST   | `/api/query/:db`     | Run arbitrary SQL          |
+| POST   | `/api/query/:db/export` | Run a SELECT and download as `csv`/`json` |
+| GET    | `/api/queries/:db`   | List saved queries         |
+| POST   | `/api/queries/:db`   | Save a named query         |
+| DELETE | `/api/queries/:db/:id` | Delete a saved query     |
 
 ## Manager mode (databases landing page)
 

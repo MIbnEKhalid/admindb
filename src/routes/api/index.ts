@@ -11,28 +11,33 @@ import { generateSchemaDump } from '../../db/export';
 export { type ApiContext } from './helpers';
 
 export function registerApi(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
   // In read-only mode every mutating request is rejected (GET, the generate-only
   // preview endpoints and the query runner stay available; the query runner
   // rejects write statements itself).
   router.use((req: Request, res: Response, next: NextFunction) => {
-    if (!db.isReadOnly || req.method === 'GET') return next();
+    if (req.method === 'GET') return next();
     const p = req.path;
     if (
       p.endsWith('/generate') ||
       p.endsWith('/preview') ||
-      p.endsWith('/api/query/export') ||
-      p.endsWith('/api/query') ||
+      p.includes('/api/query/') ||
       p.endsWith('/rows/bulk-impact') ||
       p.endsWith('/rows/bulk-export')
     ) {
       return next();
     }
-    return res.status(403).json({
-      success: false,
-      error: 'Database is open in read-only mode — write operations are disabled.',
-    });
+    try {
+      const db = ctx.getDb(req);
+      if (db && db.isReadOnly) {
+        return res.status(403).json({
+          success: false,
+          error: 'Database is open in read-only mode — write operations are disabled.',
+        });
+      }
+    } catch {
+      // If db cannot be resolved, let specific route handler return 404
+    }
+    return next();
   });
 
   registerTableRoutes(router, ctx);
@@ -42,8 +47,9 @@ export function registerApi(router: Router, ctx: ApiContext): void {
   registerQueryRoutes(router, ctx);
   registerErdRoutes(router, ctx);
 
-  router.get('/api/info/ddl', async (_req: Request, res: Response) => {
+  router.get('/api/info/:db/ddl', async (req: Request, res: Response) => {
     try {
+      const db = ctx.getDb(req);
       const dump = await generateSchemaDump(db);
       if (!dump.success) {
         return res.status(500).json({ success: false, error: dump.error });

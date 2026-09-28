@@ -23,6 +23,7 @@
   const cfg = cfgEl
     ? JSON.parse(cfgEl.textContent)
     : { table: '', filters: {}, pkCols: [], hasPk: false, readonly: readonly };
+  const dbId = encodeURIComponent((window.APP && window.APP.dbId) || (cfg && cfg.dbId) || '');
   const t = encodeURIComponent(cfg.table);
 
   const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
@@ -57,7 +58,7 @@
           danger: true,
         });
         if (!confirmed) return;
-        Api.del('/api/tables/' + encodeURIComponent(table) + '/row/' + encodeURIComponent(pk))
+        Api.del('/api/tables/' + dbId + '/' + encodeURIComponent(table) + '/row/' + encodeURIComponent(pk))
           .then(() => {
             UI.showToast('Row deleted.', 'success');
             window.location.reload();
@@ -281,15 +282,17 @@
   }
 
   function navigate(filters) {
-    let table = '';
-    const m = window.location.pathname.match(/\/tables\/([^/]+)(?:\/|$)/);
-    if (m) table = decodeURIComponent(m[1]);
+    let table = cfg.table;
+    if (!table) {
+      const m = window.location.pathname.match(/\/tables\/[^/]+\/([^/]+)(?:\/|$)/);
+      if (m) table = decodeURIComponent(m[1]);
+    }
     if (!table) return;
     const sizeSel = document.getElementById('page-size');
     const qs = new URLSearchParams({ page: '1', size: sizeSel ? sizeSel.value : '50' });
     const keys = Object.keys(filters);
     if (keys.length) qs.set('f', JSON.stringify(filters));
-    window.location.href = base + '/tables/' + encodeURIComponent(table) + '?' + qs.toString();
+    window.location.href = base + '/tables/' + dbId + '/' + encodeURIComponent(table) + '?' + qs.toString();
   }
 
   function initFilters() {
@@ -611,7 +614,7 @@
     }
     const updates = [...byRow.values()];
     if (applyBtn) applyBtn.disabled = true;
-    Api.post('/api/tables/' + t + '/rows/bulk-update', { updates })
+    Api.post('/api/tables/' + dbId + '/' + t + '/rows/bulk-update', { updates })
       .then((data) => {
         UI.showToast(data.message || 'Changes applied.', 'success');
         window.location.reload();
@@ -1030,7 +1033,7 @@
     const ids = selectedRows();
     if (!ids.length) return;
     try {
-      const data = await Api.post('/api/tables/' + t + '/rows/bulk-export', { ids, format });
+      const data = await Api.post('/api/tables/' + dbId + '/' + t + '/rows/bulk-export', { ids, format });
       const blob = new Blob([data.content], {
         type: format === 'json' ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8',
       });
@@ -1052,7 +1055,7 @@
     if (!ids.length || readonly) return;
     let impact;
     try {
-      impact = await Api.post('/api/tables/' + t + '/rows/bulk-impact', { ids });
+      impact = await Api.post('/api/tables/' + dbId + '/' + t + '/rows/bulk-impact', { ids });
     } catch (e) {
       UI.showError(e.message);
       return;
@@ -1080,7 +1083,7 @@
     if (!confirmed) return;
 
     try {
-      const data = await Api.post('/api/tables/' + t + '/rows/bulk-delete', { ids, confirmImpact: true });
+      const data = await Api.post('/api/tables/' + dbId + '/' + t + '/rows/bulk-delete', { ids, confirmImpact: true });
       UI.showToast(data.message || 'Rows deleted.', 'success');
       window.location.reload();
     } catch (e) {
@@ -1120,12 +1123,12 @@
       importSubmit.addEventListener('click', async () => {
         const csv = importText.value.trim();
         if (!csv) return UI.showError('Paste or choose a CSV file first.');
-        const m = window.location.pathname.match(/\/tables\/([^/]+)(?:\/|$)/);
-        const table = m ? decodeURIComponent(m[1]) : '';
+        const m = window.location.pathname.match(/\/tables\/([^/]+)\/([^/]+)/);
+        const table = m ? decodeURIComponent(m[2]) : '';
         if (!table) return UI.showError('Could not determine the table.');
         importSubmit.disabled = true;
         try {
-          const data = await Api.post('/api/tables/' + encodeURIComponent(table) + '/rows/import', { csv });
+          const data = await Api.post('/api/tables/' + dbId + '/' + encodeURIComponent(table) + '/rows/import', { csv });
           UI.showToast(data.message || 'Import complete.', 'success');
           window.location.reload();
         } catch (e) {
@@ -1264,7 +1267,7 @@
         const pk = btn.dataset.pk;
         if (!table || !pk) return;
         btn.classList.add('opacity-50');
-        Api.get('/api/tables/' + encodeURIComponent(table) + '/rows/' + encodeURIComponent(pk) + '/references')
+        Api.get('/api/tables/' + dbId + '/' + encodeURIComponent(table) + '/rows/' + encodeURIComponent(pk) + '/references')
           .then((data) => {
             btn.classList.remove('opacity-50');
             const refTable = btn.dataset.refTable;
@@ -1304,6 +1307,7 @@
 
     if (window.Inspector && window.Inspector.open) {
       window.Inspector.open({
+        dbId,
         table,
         pk,
         col,
@@ -1462,7 +1466,7 @@
         e.stopPropagation();
         const pk = btn.dataset.pk;
         if (!pk) return;
-        window.location.href = base + '/tables/' + t + '/rows/new?duplicate=' + encodeURIComponent(pk);
+        window.location.href = base + '/tables/' + dbId + '/' + t + '/rows/new?duplicate=' + encodeURIComponent(pk);
       });
     });
 
@@ -1844,12 +1848,12 @@
 
   async function init() {
     try {
-      info = await Api.get('/api/tables/' + t + '/info');
+      info = await Api.get('/api/tables/' + dbId + '/' + t + '/info');
     } catch (e) {
       info = null;
     }
     try {
-      fkOptions = await Api.get('/api/tables/' + t + '/fk-options');
+      fkOptions = await Api.get('/api/tables/' + dbId + '/' + t + '/fk-options');
     } catch (e) {
       fkOptions = {};
     }

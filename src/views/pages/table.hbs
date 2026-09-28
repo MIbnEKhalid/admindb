@@ -25,11 +25,11 @@
         </div>
       </div>
       <div class="page-actions flex-wrap">
-        <a href="{{basePath}}/tables/{{table}}/schema" class="btn btn-ghost btn-sm gap-1.5">
+        <a href="{{basePath}}/schema/{{encodeUri dbId}}/{{encodeUri table}}" class="btn btn-ghost btn-sm gap-1.5">
           {{{icon "schema" class="h-4 w-4"}}}
           Edit schema
         </a>
-        <a href="{{basePath}}/export" class="btn btn-ghost btn-sm gap-1.5">
+        <a href="{{basePath}}/export/{{encodeUri dbId}}" class="btn btn-ghost btn-sm gap-1.5">
           {{{icon "export" class="h-4 w-4"}}}
           SQL dump
         </a>
@@ -40,8 +40,8 @@
             {{{icon "chevronDown" class="h-3.5 w-3.5"}}}
           </div>
           <ul tabindex="0" class="dropdown-content menu z-50 w-40 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-lift">
-            <li><a href="{{basePath}}/api/tables/{{table}}/export?format=csv">CSV</a></li>
-            <li><a href="{{basePath}}/api/tables/{{table}}/export?format=json">JSON</a></li>
+            <li><a href="{{basePath}}/api/tables/{{encodeUri dbId}}/{{encodeUri table}}/export?format=csv">CSV</a></li>
+            <li><a href="{{basePath}}/api/tables/{{encodeUri dbId}}/{{encodeUri table}}/export?format=json">JSON</a></li>
           </ul>
         </div>
         {{#unless readonly}}
@@ -50,12 +50,12 @@
             Import CSV
           </button>
         {{/unless}}
-        <a href="{{basePath}}/seed/{{table}}" class="btn btn-outline btn-sm gap-1.5">
+        <a href="{{basePath}}/seed/{{encodeUri dbId}}/{{encodeUri table}}" class="btn btn-outline btn-sm gap-1.5">
           {{{icon "seed" class="h-4 w-4"}}}
           Seed data
         </a>
         {{#unless readonly}}
-          <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm gap-1.5">
+          <a href="{{basePath}}/tables/{{encodeUri dbId}}/{{encodeUri table}}/rows/new" class="btn btn-primary btn-sm gap-1.5">
             {{{icon "plus" class="h-4 w-4"}}}
             New row
           </a>
@@ -286,7 +286,7 @@
                   {{#if this.pkEncoded}}
                     <div class="row-actions">
                       {{#unless @root.readonly}}
-                        <a href="{{@root.basePath}}/tables/{{@root.table}}/rows/{{this.pkEncoded}}/edit" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary" title="Edit row">
+                        <a href="{{@root.basePath}}/tables/{{encodeUri @root.dbId}}/{{encodeUri @root.table}}/rows/{{this.pkEncoded}}/edit" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary" title="Edit row">
                           {{{icon "edit" class="h-3.5 w-3.5"}}}
                           Edit
                         </a>
@@ -341,12 +341,12 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-t border-base-200 px-4 py-3">
           <span class="text-sm text-base-content/50">Page {{page}} of {{pages}}</span>
           <div class="flex gap-1.5">
-            <a href="{{basePath}}/tables/{{table}}?page={{sub page 1}}&size={{pageSize}}&orderBy={{orderBy}}&orderDir={{orderDir}}{{#if filterQS}}&{{filterQS}}{{/if}}"
+            <a href="{{basePath}}/tables/{{encodeUri dbId}}/{{encodeUri table}}?page={{sub page 1}}&size={{pageSize}}&orderBy={{orderBy}}&orderDir={{orderDir}}{{#if filterQS}}&{{filterQS}}{{/if}}"
               class="btn btn-outline btn-sm {{#unless (gt page 1)}}btn-disabled{{/unless}}" aria-disabled="{{#if (gt page 1)}}false{{else}}true{{/if}}">
               {{{icon "chevronLeft" class="h-4 w-4"}}}
               Prev
             </a>
-            <a href="{{basePath}}/tables/{{table}}?page={{add page 1}}&size={{pageSize}}&orderBy={{orderBy}}&orderDir={{orderDir}}{{#if filterQS}}&{{filterQS}}{{/if}}"
+            <a href="{{basePath}}/tables/{{encodeUri dbId}}/{{encodeUri table}}?page={{add page 1}}&size={{pageSize}}&orderBy={{orderBy}}&orderDir={{orderDir}}{{#if filterQS}}&{{filterQS}}{{/if}}"
               class="btn btn-outline btn-sm {{#unless (lt page pages)}}btn-disabled{{/unless}}" aria-disabled="{{#if (lt page pages)}}false{{else}}true{{/if}}">
               Next
               {{{icon "chevronRight" class="h-4 w-4"}}}
@@ -361,10 +361,10 @@
       <p class="text-sm font-medium text-base-content/70">No rows in <span class="font-mono">{{table}}</span></p>
       <div class="mt-2 flex gap-2">
         {{#unless readonly}}
-          <a href="{{basePath}}/tables/{{table}}/rows/new" class="btn btn-primary btn-sm">Insert a row</a>
-          <a href="{{basePath}}/seed/{{table}}" class="btn btn-outline btn-sm">Generate sample data</a>
+          <a href="{{basePath}}/tables/{{encodeUri dbId}}/{{encodeUri table}}/rows/new" class="btn btn-primary btn-sm">Insert a row</a>
+          <a href="{{basePath}}/seed/{{encodeUri dbId}}/{{encodeUri table}}" class="btn btn-outline btn-sm">Generate sample data</a>
         {{/unless}}
-        <a href="{{basePath}}/query" class="btn btn-outline btn-sm">Run a query</a>
+        <a href="{{basePath}}/query/{{encodeUri dbId}}" class="btn btn-outline btn-sm">Run a query</a>
       </div>
     </div>
   {{/if}}

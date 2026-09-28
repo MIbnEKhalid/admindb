@@ -78,15 +78,15 @@ test('Serverless: createRouter enforces read-only mode and rejects write operati
 
     const baseUrl = `http://127.0.0.1:${port}`;
 
-    // 3. GET /api/tables (read route) -> 200 OK
-    const getRes = await fetch(`${baseUrl}/api/tables`);
+    // 3. GET /api/tables/:db (read route) -> 200 OK
+    const getRes = await fetch(`${baseUrl}/api/tables/serverless.db`);
     assert.equal(getRes.status, 200);
     const getBody = (await getRes.json()) as { success: boolean; data: { name: string }[] };
     assert.equal(getBody.success, true);
     assert.equal(getBody.data.some((t) => t.name === 'users'), true);
 
-    // 4. POST /api/tables/:table/rows (write attempt) -> 403 Forbidden
-    const insertRes = await fetch(`${baseUrl}/api/tables/users/rows`, {
+    // 4. POST /api/tables/:db/:table/rows (write attempt) -> 403 Forbidden
+    const insertRes = await fetch(`${baseUrl}/api/tables/serverless.db/users/rows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Charlie', email: 'charlie@example.com' }),
@@ -96,14 +96,14 @@ test('Serverless: createRouter enforces read-only mode and rejects write operati
     assert.equal(insertBody.success, false);
     assert.match(insertBody.error, /read-only mode/i);
 
-    // 5. DELETE /api/tables/users/row/1 (write attempt) -> 403 Forbidden
-    const deleteRes = await fetch(`${baseUrl}/api/tables/users/row/1`, {
+    // 5. DELETE /api/tables/:db/users/row/1 (write attempt) -> 403 Forbidden
+    const deleteRes = await fetch(`${baseUrl}/api/tables/serverless.db/users/row/1`, {
       method: 'DELETE',
     });
     assert.equal(deleteRes.status, 403);
 
-    // 6. POST /api/tables (create table attempt) -> 403 Forbidden
-    const createTableRes = await fetch(`${baseUrl}/api/tables`, {
+    // 6. POST /api/tables/:db (create table attempt) -> 403 Forbidden
+    const createTableRes = await fetch(`${baseUrl}/api/tables/serverless.db`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -113,8 +113,8 @@ test('Serverless: createRouter enforces read-only mode and rejects write operati
     });
     assert.equal(createTableRes.status, 403);
 
-    // 7. POST /api/query with SELECT (read query) -> 200 OK
-    const selectQueryRes = await fetch(`${baseUrl}/api/query`, {
+    // 7. POST /api/query/:db with SELECT (read query) -> 200 OK
+    const selectQueryRes = await fetch(`${baseUrl}/api/query/serverless.db`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: 'SELECT id, name FROM users ORDER BY id ASC' }),
@@ -124,8 +124,8 @@ test('Serverless: createRouter enforces read-only mode and rejects write operati
     assert.equal(selectQueryBody.success, true);
     assert.equal(selectQueryBody.data.rows.length, 2);
 
-    // 8. POST /api/query with INSERT / UPDATE / DELETE (write query) -> 403 Forbidden
-    const writeQueryRes = await fetch(`${baseUrl}/api/query`, {
+    // 8. POST /api/query/:db with INSERT / UPDATE / DELETE (write query) -> 403 Forbidden
+    const writeQueryRes = await fetch(`${baseUrl}/api/query/serverless.db`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: "INSERT INTO users (name) VALUES ('Hacker')" }),
@@ -173,11 +173,11 @@ test('Serverless: createServerlessHandler handles HTTP requests in serverless re
     const baseUrl = `http://127.0.0.1:${port}`;
 
     // Read route works
-    const getRes = await fetch(`${baseUrl}/api/tables`);
+    const getRes = await fetch(`${baseUrl}/api/tables/serverless-http.db`);
     assert.equal(getRes.status, 200);
 
     // Write route is blocked with 403
-    const postRes = await fetch(`${baseUrl}/api/tables/notes/rows`, {
+    const postRes = await fetch(`${baseUrl}/api/tables/serverless-http.db/notes/rows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: 'Disallowed Write' }),
@@ -214,7 +214,7 @@ test('Serverless: createLambdaHandler processes APIGateway events in serverless 
     // 1. Test APIGateway v1 GET request
     const getEventV1 = {
       httpMethod: 'GET',
-      path: '/api/tables',
+      path: '/api/tables/lambda.db',
       headers: { accept: 'application/json' },
       queryStringParameters: null,
       body: null,
@@ -230,12 +230,12 @@ test('Serverless: createLambdaHandler processes APIGateway events in serverless 
     // 2. Test APIGateway v2 GET request
     const getEventV2 = {
       version: '2.0',
-      rawPath: '/api/tables/articles/rows',
+      rawPath: '/api/tables/lambda.db/articles/rows',
       rawQueryString: 'limit=10',
       requestContext: {
         http: {
           method: 'GET',
-          path: '/api/tables/articles/rows',
+          path: '/api/tables/lambda.db/articles/rows',
         },
       },
       headers: { accept: 'application/json' },
@@ -250,7 +250,7 @@ test('Serverless: createLambdaHandler processes APIGateway events in serverless 
     // 3. Test APIGateway POST write attempt -> 403 Forbidden
     const postWriteEvent = {
       httpMethod: 'POST',
-      path: '/api/tables/articles/rows',
+      path: '/api/tables/lambda.db/articles/rows',
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',

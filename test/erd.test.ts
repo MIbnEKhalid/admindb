@@ -72,7 +72,7 @@ test('ERD API: GET /api/erd', async (t) => {
       CREATE TABLE alpha (id INTEGER PRIMARY KEY);
     `);
     try {
-      const res = await fetch(`${baseUrl}/api/erd`);
+      const res = await fetch(`${baseUrl}/api/erd/test.db`);
       assert.equal(res.status, 200);
       const json = await res.json() as ErdResponse;
       assert.equal(json.success, true);
@@ -84,7 +84,7 @@ test('ERD API: GET /api/erd', async (t) => {
   await t.test('returns empty user tables list for a database with no user tables', async () => {
     const { baseUrl, close } = await startApp();
     try {
-      const res  = await fetch(`${baseUrl}/api/erd`);
+      const res  = await fetch(`${baseUrl}/api/erd/test.db`);
       const json = await res.json() as ErdResponse;
       assert.equal(json.success, true);
       const userTables = json.data.tables.filter((t) => t.name !== '_saved_queries');
@@ -100,7 +100,7 @@ test('ERD API: GET /api/erd', async (t) => {
       CREATE TABLE orders   (id INTEGER PRIMARY KEY);
     `);
     try {
-      const res  = await fetch(`${baseUrl}/api/erd`);
+      const res  = await fetch(`${baseUrl}/api/erd/test.db`);
       const json = await res.json() as ErdResponse;
       const names = json.data.tables.map((t) => t.name);
       assert.ok(names.includes('users'),    'missing users');
@@ -119,7 +119,7 @@ test('ERD API: GET /api/erd', async (t) => {
       );
     `);
     try {
-      const res   = await fetch(`${baseUrl}/api/erd`);
+      const res   = await fetch(`${baseUrl}/api/erd/test.db`);
       const json  = await res.json() as ErdResponse;
       const table = json.data.tables.find((t) => t.name === 'items');
       assert.ok(table, 'items table not found');
@@ -143,7 +143,7 @@ test('ERD API: GET /api/erd', async (t) => {
       CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT);
     `);
     try {
-      const res   = await fetch(`${baseUrl}/api/erd`);
+      const res   = await fetch(`${baseUrl}/api/erd/test.db`);
       const json  = await res.json() as ErdResponse;
       const table = json.data.tables.find((t) => t.name === 'accounts')!;
       assert.ok(Array.isArray(table.primaryKey), 'primaryKey should be an array');
@@ -161,7 +161,7 @@ test('ERD API: GET /api/erd', async (t) => {
       );
     `);
     try {
-      const res   = await fetch(`${baseUrl}/api/erd`);
+      const res   = await fetch(`${baseUrl}/api/erd/test.db`);
       const json  = await res.json() as ErdResponse;
       const posts = json.data.tables.find((t) => t.name === 'posts')!;
       assert.ok(posts.foreignKeys.length > 0, 'posts should have FK edges');
@@ -185,7 +185,7 @@ test('ERD API: GET /api/erd', async (t) => {
       );
     `);
     try {
-      const res   = await fetch(`${baseUrl}/api/erd`);
+      const res   = await fetch(`${baseUrl}/api/erd/test.db`);
       const json  = await res.json() as ErdResponse;
       const oi    = json.data.tables.find((t) => t.name === 'order_items')!;
       assert.equal(oi.foreignKeys.length, 2, 'order_items should have 2 FK edges');
@@ -205,7 +205,7 @@ test('ERD API: GET /api/erd', async (t) => {
       );
     `);
     try {
-      const res  = await fetch(`${baseUrl}/api/erd`);
+      const res  = await fetch(`${baseUrl}/api/erd/test.db`);
       const json = await res.json() as ErdResponse;
       const cat  = json.data.tables.find((t) => t.name === 'categories')!;
       const selfFk = cat.foreignKeys.find((f) => f.table === 'categories');
@@ -224,7 +224,7 @@ test('ERD API: GET /api/erd', async (t) => {
       );
     `);
     try {
-      const res      = await fetch(`${baseUrl}/api/erd`);
+      const res      = await fetch(`${baseUrl}/api/erd/test.db`);
       const json     = await res.json() as ErdResponse;
       const sessions = json.data.tables.find((t) => t.name === 'sessions')!;
       const fk       = sessions.foreignKeys.find((f) => f.from === 'user_id')!;
@@ -239,7 +239,7 @@ test('ERD API: GET /api/erd', async (t) => {
       CREATE TABLE standalone (id INTEGER PRIMARY KEY, value TEXT);
     `);
     try {
-      const res  = await fetch(`${baseUrl}/api/erd`);
+      const res  = await fetch(`${baseUrl}/api/erd/test.db`);
       const json = await res.json() as ErdResponse;
       const t_   = json.data.tables.find((t) => t.name === 'standalone')!;
       assert.equal(t_.foreignKeys.length, 0);
@@ -254,7 +254,7 @@ test('ERD API: GET /api/erd', async (t) => {
       CREATE TABLE reviews (id INTEGER PRIMARY KEY, book_id   INTEGER REFERENCES books(id));
     `);
     try {
-      const res    = await fetch(`${baseUrl}/api/erd`);
+      const res    = await fetch(`${baseUrl}/api/erd/test.db`);
       const json   = await res.json() as ErdResponse;
       const names  = new Set(json.data.tables.map((t) => t.name));
       json.data.tables.forEach((table) => {
@@ -271,7 +271,7 @@ test('ERD API: GET /api/erd', async (t) => {
       CREATE TABLE demo (id INTEGER PRIMARY KEY);
     `);
     try {
-      const res = await fetch(`${baseUrl}/erd`);
+      const res = await fetch(`${baseUrl}/erd/test.db`);
       assert.equal(res.status, 200);
       const ct = res.headers.get('content-type') ?? '';
       assert.ok(ct.includes('text/html'), `Expected text/html, got: ${ct}`);

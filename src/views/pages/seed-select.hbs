@@ -40,7 +40,7 @@
         </div>
 
         <div id="table-cards-list" class="p-3 sm:p-4 space-y-2 max-h-[480px] overflow-y-auto">
-          {{#each tables}}
+          {{#each (or seedTables tables)}}
           <label class="table-option-card block cursor-pointer select-none rounded-xl border p-3 transition-all {{#if (eq this.name ../defaultTable)}}border-primary bg-primary/[0.04] shadow-sm{{else}}border-base-200 bg-base-100 hover:border-base-300 hover:bg-base-200/40{{/if}}"
             data-table="{{this.name}}">
             <div class="flex items-center justify-between gap-3">
@@ -164,11 +164,11 @@
     <p class="text-sm font-medium text-base-content/70">No tables available in the database</p>
     <p class="text-xs text-base-content/50 mt-1 max-w-sm">Create a table using the visual designer or run SQL migrations before generating seed data.</p>
     <div class="mt-4 flex gap-2">
-      <a href="{{basePath}}/designer" class="btn btn-primary btn-sm gap-1.5">
+      <a href="{{basePath}}/designer/{{encodeUri dbId}}" class="btn btn-primary btn-sm gap-1.5">
         {{{icon "plus" class="h-4 w-4"}}}
         Create table
       </a>
-      <a href="{{basePath}}/query" class="btn btn-outline btn-sm gap-1.5">
+      <a href="{{basePath}}/query/{{encodeUri dbId}}" class="btn btn-outline btn-sm gap-1.5">
         {{{icon "query" class="h-4 w-4"}}}
         Query editor
       </a>
@@ -181,6 +181,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const BASE = '{{basePath}}';
+  const DB_ID = '{{dbId}}';
   let selectedTable = '{{defaultTable}}';
   let selectedMode = '{{defaultMode}}' || 'single';
 
@@ -254,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const table = btn.dataset.table;
       const mode = btn.dataset.mode || 'single';
       if (table) {
-        window.location.href = `${BASE}/seed/${encodeURIComponent(table)}?mode=${encodeURIComponent(mode)}`;
+        window.location.href = `${BASE}/seed/${encodeURIComponent(DB_ID)}/${encodeURIComponent(table)}?mode=${encodeURIComponent(mode)}`;
       }
     });
   });
@@ -263,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (launchBtn) {
     launchBtn.addEventListener('click', () => {
       if (!selectedTable) return;
-      window.location.href = `${BASE}/seed/${encodeURIComponent(selectedTable)}?mode=${encodeURIComponent(selectedMode)}`;
+      window.location.href = `${BASE}/seed/${encodeURIComponent(DB_ID)}/${encodeURIComponent(selectedTable)}?mode=${encodeURIComponent(selectedMode)}`;
     });
   }
 

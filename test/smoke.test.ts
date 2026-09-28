@@ -105,7 +105,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   const { baseUrl, close } = await startSingleDbApp();
 
   await t.test('GET /api/tables lists tables with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { name: string }[] };
     assert.equal(json.success, true);
@@ -114,7 +114,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/generate previews CREATE TABLE SQL with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/generate`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -133,7 +133,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables creates a new table with 201 Created', async () => {
-    const res = await fetch(`${baseUrl}/api/tables`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -152,7 +152,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/info returns table metadata with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/info`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/info`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { table: string; columns: unknown[] } };
     assert.equal(json.success, true);
@@ -161,7 +161,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/fk-options returns foreign key lookups with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/posts/fk-options`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/posts/fk-options`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: Record<string, { value: unknown; label: string }[]> };
     assert.equal(json.success, true);
@@ -170,7 +170,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/ddl returns table DDL with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/ddl`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/ddl`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { sql: string } };
     assert.equal(json.success, true);
@@ -178,7 +178,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/columns adds a new column with 201 Created', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/columns`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/columns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'bio', type: 'TEXT' }),
@@ -189,7 +189,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('PUT /api/tables/:table/columns/:column modifies a column with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/columns/bio`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/columns/bio`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'biography', type: 'TEXT' }),
@@ -200,7 +200,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/indexes creates index with 201 Created', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/indexes`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/indexes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'idx_users_email', columns: ['email'], unique: true }),
@@ -211,7 +211,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('DELETE /api/tables/:table/indexes/:index drops index with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/indexes/idx_users_email`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/indexes/idx_users_email`, {
       method: 'DELETE',
     });
     assert.equal(res.status, 200);
@@ -220,7 +220,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows/generate previews INSERT SQL with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/generate`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: { name: 'Bob', email: 'bob@example.com' } }),
@@ -232,7 +232,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows inserts a new row with 201 Created', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: { name: 'Bob', email: 'bob@example.com' } }),
@@ -244,7 +244,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/rows returns paginated rows with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows?page=1&limit=10`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows?page=1&limit=10`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { rows: Record<string, unknown>[]; total: number } };
     assert.equal(json.success, true);
@@ -253,7 +253,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/rows/count returns count with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/count`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/count`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { count: number } };
     assert.equal(json.success, true);
@@ -261,7 +261,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/row/:id returns a single row with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/1`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/1`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { id: number; name: string } };
     assert.equal(json.success, true);
@@ -269,7 +269,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('PUT /api/tables/:table/row/:id/generate previews UPDATE SQL with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/1/generate`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/1/generate`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: { role: 'superadmin' } }),
@@ -281,7 +281,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('PUT /api/tables/:table/row/:id updates a single row with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/1`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/1`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: { role: 'superadmin' } }),
@@ -292,7 +292,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('PUT /api/tables/:table/row/:id/blob/:column updates BLOB data with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/1/blob/avatar`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/1/blob/avatar`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: '0x89504e470d0a1a0a0000000d49484452', format: 'hex' }),
@@ -304,7 +304,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/row/:id/blob/:column/meta returns BLOB metadata with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/1/blob/avatar/meta`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/1/blob/avatar/meta`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { mime: string; isImage: boolean; size: number; hexDump: { lines: unknown[] } } };
     assert.equal(json.success, true);
@@ -315,7 +315,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/row/:id/blob/:column streams binary data with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/1/blob/avatar`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/1/blob/avatar`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'image/png');
     const buf = Buffer.from(await res.arrayBuffer());
@@ -325,7 +325,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows/bulk-update applies batch updates with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/bulk-update`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/bulk-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -339,7 +339,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows/bulk-impact computes foreign key references with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/bulk-impact`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/bulk-impact`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: ['1'] }),
@@ -351,7 +351,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows/bulk-export exports selected rows with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/bulk-export`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/bulk-export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: ['1', '2'], format: 'csv' }),
@@ -363,7 +363,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/rows/:id/references returns referencing foreign rows with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/1/references`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/1/references`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { references: { table: string; total: number }[] } };
     assert.equal(json.success, true);
@@ -371,14 +371,14 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/export exports full CSV with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/export?format=csv`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/export?format=csv`);
     assert.equal(res.status, 200);
     const text = await res.text();
     assert.match(text, /Alice/);
   });
 
   await t.test('GET /api/tables/:table/export exports full JSON with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/export?format=json`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/export?format=json`);
     assert.equal(res.status, 200);
     const data = (await res.json()) as { name: string }[];
     assert.ok(Array.isArray(data));
@@ -387,7 +387,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
 
   await t.test('POST /api/tables/:table/import imports CSV rows with 200 OK', async () => {
     const csv = 'name,email,role\nCharlie,charlie@example.com,member\nDana,dana@example.com,member';
-    const res = await fetch(`${baseUrl}/api/tables/users/import`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ csv }),
@@ -399,7 +399,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/query executes SQL queries with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/query`, {
+    const res = await fetch(`${baseUrl}/api/query/test.db`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: 'SELECT COUNT(*) AS total FROM users' }),
@@ -411,7 +411,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/queries saves a named query with 201 Created', async () => {
-    const res = await fetch(`${baseUrl}/api/queries`, {
+    const res = await fetch(`${baseUrl}/api/queries/test.db`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Active Admins', sql: "SELECT * FROM users WHERE role = 'superadmin'" }),
@@ -422,7 +422,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/queries lists saved queries with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/queries`);
+    const res = await fetch(`${baseUrl}/api/queries/test.db`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { name: string }[] };
     assert.equal(json.success, true);
@@ -430,7 +430,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/seed/plan detects intelligent seed plan with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/seed/plan`);
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/seed/plan`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { columns: unknown[] } };
     assert.equal(json.success, true);
@@ -438,7 +438,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/seed/generate previews seed SQL generation with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/seed/generate`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/seed/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count: 3, plan: { name: { strategy: 'fullname' } } }),
@@ -451,7 +451,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/seed/preview previews seed grid rows with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/seed/preview`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/seed/preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count: 3, plan: { name: { strategy: 'fullname' } } }),
@@ -463,7 +463,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/seed executes seeding with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/seed`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/seed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count: 5, plan: { name: { strategy: 'fullname' } } }),
@@ -475,7 +475,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('DELETE /api/tables/:table/row/:id deletes a single row with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/row/2`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/row/2`, {
       method: 'DELETE',
     });
     assert.equal(res.status, 200);
@@ -484,7 +484,7 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows/bulk-delete bulk deletes rows with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/users/rows/bulk-delete`, {
+    const res = await fetch(`${baseUrl}/api/tables/test.db/users/rows/bulk-delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: ['3', '4'] }),
@@ -495,34 +495,34 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
     assert.equal(json.data.deleted, 2);
   });
 
-  await t.test('GET /tables/:table renders HTML with correct row edit links', async () => {
-    const res = await fetch(`${baseUrl}/tables/users`);
+  await t.test('GET /tables/:db/:table renders HTML with correct row edit links', async () => {
+    const res = await fetch(`${baseUrl}/tables/test.db/users`);
     assert.equal(res.status, 200);
     const html = await res.text();
-    assert.ok(html.includes('/tables/users/rows/1/edit'));
-    assert.ok(!html.includes('/tables//rows/1/edit'));
+    assert.ok(html.includes('/tables/test.db/users/rows/1/edit'));
+    assert.ok(!html.includes('/tables/test.db//rows/1/edit'));
   });
 
-  await t.test('GET /seed/:table renders seed page with 200 OK and sidebar seed link', async () => {
-    const res = await fetch(`${baseUrl}/seed/users`);
+  await t.test('GET /seed/:db/:table renders seed page with 200 OK and sidebar seed link', async () => {
+    const res = await fetch(`${baseUrl}/seed/test.db/users`);
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.ok(html.includes('Seed data'));
     assert.ok(html.includes('users'));
     assert.ok(html.includes('Seed generator'));
-    assert.ok(html.includes('href="/seed"'));
+    assert.ok(html.includes('href="/seed/test.db"'));
   });
 
-  await t.test('GET /seed/:table?mode=chain sets ER chain mode as active', async () => {
-    const res = await fetch(`${baseUrl}/seed/users?mode=chain`);
+  await t.test('GET /seed/:db/:table?mode=chain sets ER chain mode as active', async () => {
+    const res = await fetch(`${baseUrl}/seed/test.db/users?mode=chain`);
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.ok(html.includes('id="btn-select-chain" class="seed-mode-btn active"'));
     assert.ok(html.includes('"mode":"chain"'));
   });
 
-  await t.test('GET /seed renders table and mode selection page with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/seed`);
+  await t.test('GET /seed/:db renders table and mode selection page with 200 OK', async () => {
+    const res = await fetch(`${baseUrl}/seed/test.db`);
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.ok(html.includes('Choose Target Table'));
@@ -531,12 +531,6 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
     assert.ok(html.includes('Relational ER Chain Seeder'));
     assert.ok(html.includes('users'));
     assert.ok(html.includes('posts'));
-  });
-
-  await t.test('GET /tables/:table/seed redirects to /seed/:table with 301', async () => {
-    const res = await fetch(`${baseUrl}/tables/users/seed`, { redirect: 'manual' });
-    assert.equal(res.status, 301);
-    assert.equal(res.headers.get('location'), '/seed/users');
   });
 
   await close();
@@ -648,7 +642,7 @@ test('Smoke Tests: PostgreSQL API Endpoints', async (t) => {
   const { baseUrl, close } = ctx;
 
   await t.test('GET /api/tables lists PostgreSQL tables with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/tables`);
+    const res = await fetch(`${baseUrl}/api/tables/PostgreSQL`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { name: string }[] };
     assert.equal(json.success, true);
@@ -656,7 +650,7 @@ test('Smoke Tests: PostgreSQL API Endpoints', async (t) => {
   });
 
   await t.test('GET /api/tables/:table/rows returns PostgreSQL paginated rows', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/_admindb_smoke_users/rows`);
+    const res = await fetch(`${baseUrl}/api/tables/PostgreSQL/_admindb_smoke_users/rows`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as { success: boolean; data: { rows: { name: string }[]; total: number } };
     assert.equal(json.success, true);
@@ -665,7 +659,7 @@ test('Smoke Tests: PostgreSQL API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/tables/:table/rows inserts into PostgreSQL table', async () => {
-    const res = await fetch(`${baseUrl}/api/tables/_admindb_smoke_users/rows`, {
+    const res = await fetch(`${baseUrl}/api/tables/PostgreSQL/_admindb_smoke_users/rows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: { name: 'Bob', email: 'bob@example.com' } }),
@@ -676,7 +670,7 @@ test('Smoke Tests: PostgreSQL API Endpoints', async (t) => {
   });
 
   await t.test('POST /api/query executes custom PostgreSQL query', async () => {
-    const res = await fetch(`${baseUrl}/api/query`, {
+    const res = await fetch(`${baseUrl}/api/query/PostgreSQL`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: 'SELECT count(*)::int as count FROM _admindb_smoke_users' }),

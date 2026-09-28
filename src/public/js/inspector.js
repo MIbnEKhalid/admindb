@@ -606,7 +606,8 @@
       breadcrumbPath.classList.add('hidden');
       if (headerIcon) headerIcon.innerHTML = SVG.blob;
 
-      var blobEndpoint = (window.APP && window.APP.basePath || '') + '/api/tables/' + encodeURIComponent(table) + '/row/' + encodeURIComponent(pk) + '/blob/' + encodeURIComponent(col);
+      var dbId = encodeURIComponent(opts.dbId || (window.APP && window.APP.dbId) || '');
+      var blobEndpoint = (window.APP && window.APP.basePath || '') + (dbId ? '/api/tables/' + dbId + '/' : '/api/tables/') + encodeURIComponent(table) + '/row/' + encodeURIComponent(pk) + '/blob/' + encodeURIComponent(col);
 
       var fetchPromise = table && pk && window.Api
         ? Api.get(blobEndpoint + '/meta')

@@ -68,8 +68,10 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
 
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
+      res.locals.databasesMode = true;
       res.render('pages/databases', {
         title: 'Databases',
+        databasesMode: true,
         databases: await getDatabaseRows(manager),
         dbDir: manager.directory,
         readonly: Boolean(ctx.readonly),

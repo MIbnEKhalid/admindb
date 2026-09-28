@@ -4,23 +4,25 @@ import { buildColumnConfigs, buildSeedInsertSql, generateRows, getErChainConfig,
 import { type ApiContext, ok, fail, wrap, requireTable, parseSeedRequest, parseChainSeedRequest, parseUnifiedGenerationPlan } from './helpers';
 
 export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
   // ---- Unified Generation Specification Endpoints -------------------------
 
-  router.post('/api/seed/validate', wrap(async (req, res) => {
+  router.post('/api/seed/:db/validate', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     ok(res, await validateGenerationPlan(db, parseUnifiedGenerationPlan(req.body)));
   }));
 
-  router.post('/api/seed/preview', wrap(async (req, res) => {
+  router.post('/api/seed/:db/preview', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     ok(res, await SeedEngine.executePlan(db, parseUnifiedGenerationPlan(req.body), { previewLimit: 50 }));
   }));
 
-  router.post('/api/seed/generate', wrap(async (req, res) => {
+  router.post('/api/seed/:db/generate', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     ok(res, await SeedEngine.executePlan(db, parseUnifiedGenerationPlan(req.body)));
   }));
 
-  router.post('/api/seed/execute', wrap(async (req, res) => {
+  router.post('/api/seed/:db/execute', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const plan = parseUnifiedGenerationPlan(req.body);
     const truncate = Boolean(req.body?.truncate || plan.options?.truncateAll);
     const gen = await SeedEngine.executePlan(db, plan, { truncateAll: truncate });
@@ -38,18 +40,20 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     );
   }));
 
-  // ---- Single Table Data generator / seeder (Backward Compatible) ----------
+  // ---- Single Table Data generator / seeder ---------------------------------
 
   const getSeedConfigHandler = wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     ok(res, { table: req.params.table, columns: buildColumnConfigs(info), maxRows: MAX_SEED_ROWS });
   });
 
-  router.get('/api/tables/:table/seed/config', getSeedConfigHandler);
-  router.get('/api/tables/:table/seed/plan', getSeedConfigHandler);
+  router.get('/api/tables/:db/:table/seed/config', getSeedConfigHandler);
+  router.get('/api/tables/:db/:table/seed/plan', getSeedConfigHandler);
 
-  router.post('/api/tables/:table/seed/generate', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/seed/generate', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const { count, plan } = parseSeedRequest(req.body);
@@ -64,7 +68,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  router.post('/api/tables/:table/seed/preview', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/seed/preview', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const { count, plan } = parseSeedRequest(req.body);
@@ -77,7 +82,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  router.post('/api/tables/:table/seed', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/seed', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const { count, plan, truncate } = parseSeedRequest(req.body);
@@ -108,9 +114,10 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     );
   }));
 
-  // ---- Advanced ER Chain Relational Seeder (Backward Compatible) -----------
+  // ---- Advanced ER Chain Relational Seeder ----------------------------------
 
-  router.get('/api/tables/:table/seed/chain', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/seed/chain', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const rawScope = String(req.query.scope ?? 'chain');
@@ -121,7 +128,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     ok(res, await getErChainConfig(db, req.params.table, scope));
   }));
 
-  router.post('/api/tables/:table/seed/chain/preview', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/seed/chain/preview', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const { scope, counts, plans, modes, seed } = parseChainSeedRequest(req.body);
@@ -135,7 +143,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     ok(res, await generateChainRows(db, config, plans, previewCounts, false, modes, seed));
   }));
 
-  router.post('/api/tables/:table/seed/chain/generate', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/seed/chain/generate', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const { scope, counts, plans, modes, seed } = parseChainSeedRequest(req.body);
@@ -143,7 +152,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     ok(res, await generateChainRows(db, config, plans, counts, false, modes, seed));
   }));
 
-  router.post('/api/tables/:table/seed/chain', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/seed/chain', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const { scope, counts, plans, truncate, modes, seed } = parseChainSeedRequest(req.body);
@@ -163,7 +173,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     );
   }));
 
-  router.get('/api/seed/chain', wrap(async (req, res) => {
+  router.get('/api/seed/:db/chain', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const rawRoot = String(req.query.table ?? '');
     const rawScope = String(req.query.scope ?? (rawRoot ? 'chain' : 'all'));
     const scope: ErChainScope =
@@ -175,7 +186,8 @@ export function registerSeedRoutes(router: Router, ctx: ApiContext): void {
     ok(res, await getErChainConfig(db, rootTable, scope));
   }));
 
-  router.post('/api/seed/chain', wrap(async (req, res) => {
+  router.post('/api/seed/:db/chain', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const { scope, counts, plans, truncate, modes, seed } = parseChainSeedRequest(req.body);
     const rawRoot = String(req.body?.rootTable ?? '');
     const rootTable = rawRoot || (await db.listTables()).data?.[0]?.name || '';

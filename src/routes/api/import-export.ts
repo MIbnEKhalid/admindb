@@ -4,9 +4,8 @@ import { toCsv, toJson, parseCsv } from '../../utils/csv';
 import { type ApiContext, ok, fail, wrap, requireTable } from './helpers';
 
 export function registerImportExportRoutes(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
-  router.get('/api/tables/:table/export', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/export', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const format = String(req.query.format ?? 'csv').toLowerCase();
@@ -28,6 +27,7 @@ export function registerImportExportRoutes(router: Router, ctx: ApiContext): voi
   }));
 
   const importCsvHandler = wrap(async (req: Request, res: Response) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
 
@@ -59,11 +59,12 @@ export function registerImportExportRoutes(router: Router, ctx: ApiContext): voi
     ok(res, { message: `${r.data?.inserted ?? 0} row(s) imported.`, inserted: r.data?.inserted });
   });
 
-  router.post('/api/tables/:table/import', importCsvHandler);
-  router.post('/api/tables/:table/rows/import', importCsvHandler);
-  router.post('/api/tables/:table/import/csv', importCsvHandler);
+  router.post('/api/tables/:db/:table/import', importCsvHandler);
+  router.post('/api/tables/:db/:table/rows/import', importCsvHandler);
+  router.post('/api/tables/:db/:table/import/csv', importCsvHandler);
 
-  router.post('/api/query/export', wrap(async (req, res) => {
+  router.post('/api/query/:db/export', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const sql = String(req.body?.sql ?? '').trim();
     const format = String(req.body?.format ?? 'csv').toLowerCase();
     if (!sql) return fail(res, 'SQL query is required.');

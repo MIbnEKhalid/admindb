@@ -7,8 +7,8 @@ import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS, formatByt
 import { sniffMimeType, isJsonString } from '../utils/datatype';
 import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/index';
 
-interface PageContext {
-  db: IDatabase;
+export interface PageContext {
+  getDb: (req: Request) => IDatabase;
   logger: Logger;
 }
 
@@ -34,7 +34,7 @@ interface DisplayRow {
   pkEncoded: string | null;
 }
 
-function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoData, table?: string, basePath = ''): DisplayRow[] {
+function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoData, dbId?: string, table?: string, basePath = ''): DisplayRow[] {
   const pkCols = info.primaryKey.length ? info.primaryKey : ['_rowid_'];
   return rawRows.map((row) => {
     const pkEncoded = encodePk(pkCols.map((c) => row[c]));
@@ -76,8 +76,8 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
             isAudio = mimeInfo.isAudio;
             isVideo = mimeInfo.isVideo;
             isPdf = mimeInfo.isPdf;
-            if (table && pkEncoded) {
-              blobUrl = `${basePath}/api/tables/${encodeURIComponent(table)}/row/${encodeURIComponent(pkEncoded)}/blob/${encodeURIComponent(c.name)}`;
+            if (table && pkEncoded && dbId) {
+              blobUrl = `${basePath}/api/tables/${encodeURIComponent(dbId)}/${encodeURIComponent(table)}/row/${encodeURIComponent(pkEncoded)}/blob/${encodeURIComponent(c.name)}`;
             }
           } else if (isJsonString(v) || typeUpper.includes('JSON')) {
             isJson = isJsonString(v);
@@ -112,17 +112,34 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
   });
 }
 
-export function registerPages(router: Router, ctx: PageContext): void {
-  const { db } = ctx;
+function initPageLocals(res: Response, db: IDatabase, dbId: string, allNames: string[]): { tables: string[]; internalTables: string[] } {
+  const tables = allNames.filter((n) => !n.startsWith('_'));
+  const internalTables = allNames.filter((n) => n.startsWith('_'));
+  res.locals.dbId = dbId;
+  res.locals.dbPath = db.path;
+  res.locals.tables = tables;
+  res.locals.internalTables = internalTables;
+  res.locals.dialect = db.dialect;
+  res.locals.isPostgres = db.dialect === 'postgres';
+  res.locals.isSqlite = db.dialect === 'sqlite';
+  res.locals.dialectName = db.dialect === 'postgres' ? 'PostgreSQL' : 'SQLite';
+  res.locals.readonly = db.isReadOnly;
+  res.locals.databasesMode = false;
+  return { tables, internalTables };
+}
 
+export function registerPages(router: Router, ctx: PageContext): void {
   const notFound = (res: Response, message: string): void => {
     res.status(404).render('pages/error', { title: 'Not found', status: 404, error: message });
   };
 
-  router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
+  router.get('/home/:db', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const names: string[] = (res.locals.tables as string[]) ?? [];
-      const internalNames: string[] = (res.locals.internalTables as string[]) ?? [];
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      const { tables: names, internalTables: internalNames } = initPageLocals(res, db, dbId, allNames);
 
       const colCountsMap: Record<string, number> = {};
       if (db.dialect === 'postgres') {
@@ -164,6 +181,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
 
       res.render('pages/home', {
         title: 'Home',
+        dbId,
         tables: names,
         counts,
         cols,
@@ -177,9 +195,16 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  router.get('/tables/:table', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/tables/:db/:table', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
       const table = req.params.table;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
       const info = await db.getTableInfo(table);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
@@ -214,7 +239,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
           type: c.type,
           active,
           dir: active ? orderDir : null,
-          href: `${basePath}/tables/${encodeURIComponent(table)}?${qs}${filterQS ? `&${filterQS}` : ''}`,
+          href: `${basePath}/tables/${encodeURIComponent(dbId)}/${encodeURIComponent(table)}?${qs}${filterQS ? `&${filterQS}` : ''}`,
         };
       });
 
@@ -240,7 +265,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
       );
       const countMap = new Map(countEntries);
 
-      const rows = buildDisplayRows(rawRows, info.data, table, basePath).map((dr, i) => {
+      const rows = buildDisplayRows(rawRows, info.data, dbId, table, basePath).map((dr, i) => {
         const raw = rawRows[i];
         const refs = refColumns.map((col) => {
           const v = raw[col.to];
@@ -258,6 +283,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
       res.locals.currentTable = table;
       res.render('pages/table', {
         title: table,
+        dbId,
         table,
         info: info.data,
         rows,
@@ -278,6 +304,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
         firstRow: count === 0 ? 0 : (page - 1) * pageSize + 1,
         lastRow: Math.min(page * pageSize, count),
         browseConfig: {
+          dbId,
           table,
           filters,
           pkCols: info.data.primaryKey.length ? info.data.primaryKey : ['_rowid_'],
@@ -290,9 +317,16 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  router.get('/tables/:table/schema', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/schema/:db/:table', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
       const table = req.params.table;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
       const [info, schema] = await Promise.all([db.getTableInfo(table), db.getSchema(table)]);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
@@ -303,26 +337,35 @@ export function registerPages(router: Router, ctx: PageContext): void {
       res.locals.currentTable = table;
       res.render('pages/schema', {
         title: `Schema · ${table}`,
+        dbId,
         table,
         schema: schema.data,
         isInternal: table.startsWith('_'),
         dialect: db.dialect,
         isSqlite: db.dialect === 'sqlite',
         isPostgres: db.dialect === 'postgres',
-        config: { table, isInternal: table.startsWith('_'), dialect: db.dialect },
+        config: { dbId, table, isInternal: table.startsWith('_'), dialect: db.dialect },
       });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/seed', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/seed/:db', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const tableNames: string[] = (res.locals.tables as string[]) ?? [];
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      const { tables: tableNames } = initPageLocals(res, db, dbId, allNames);
+
       if (tableNames.length === 0) {
         return res.render('pages/seed-select', {
           title: 'Seed Data Generator',
-          tables: [],
+          dbId,
+          tables: tableNames,
+          seedTables: [],
           hasTables: false,
           dialect: db.dialect,
         });
@@ -348,7 +391,9 @@ export function registerPages(router: Router, ctx: PageContext): void {
 
       res.render('pages/seed-select', {
         title: 'Seed Data Generator · Choose Table & Mode',
-        tables: tableStats,
+        dbId,
+        tables: tableNames,
+        seedTables: tableStats,
         hasTables: true,
         defaultTable,
         defaultMode,
@@ -359,17 +404,16 @@ export function registerPages(router: Router, ctx: PageContext): void {
     }
   });
 
-  router.get('/tables/:table/seed', (req: Request, res: Response) => {
-    const table = req.params.table;
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    const bp = (res.locals.basePath as string) || '';
-    return res.redirect(301, `${bp}/seed/${encodeURIComponent(table)}${qs}`);
-  });
-
-  router.get('/seed/:table', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/seed/:db/:table', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
       const table = req.params.table;
-      const allTables: string[] = (res.locals.tables as string[]) ?? [];
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      const { tables: allTables } = initPageLocals(res, db, dbId, allNames);
+
       const initialMode = req.query.mode === 'chain' ? 'chain' : 'single';
       const [info, countRes] = await Promise.all([db.getTableInfo(table), db.getRowCount(table)]);
       if (!info.success || !info.data || info.data.columns.length === 0) {
@@ -380,6 +424,7 @@ export function registerPages(router: Router, ctx: PageContext): void {
       res.locals.currentTable = table;
       res.render('pages/seed', {
         title: `Seed data · ${table}`,
+        dbId,
         table,
         allTables,
         mode: initialMode,
@@ -388,16 +433,23 @@ export function registerPages(router: Router, ctx: PageContext): void {
         colCount: info.data.columns.length,
         maxRows: MAX_SEED_ROWS,
         quickCounts: [10, 50, 100, 500, 1000, MAX_SEED_ROWS],
-        seedConfig: { table, columns, rowCount, maxRows: MAX_SEED_ROWS, mode: initialMode },
+        seedConfig: { dbId, table, columns, rowCount, maxRows: MAX_SEED_ROWS, mode: initialMode },
       });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/tables/:table/rows/new', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/tables/:db/:table/rows/new', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
       const table = req.params.table;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
       const info = await db.getTableInfo(table);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
@@ -406,21 +458,29 @@ export function registerPages(router: Router, ctx: PageContext): void {
       res.locals.currentTable = table;
       res.render('pages/form', {
         title: `New row · ${table}`,
+        dbId,
         table,
         mode: 'insert',
         pk: null,
         pkColumns,
         infoSummary: `${info.data.columns.length} column(s)` + (pkColumns.length ? ` · PK: ${pkColumns.join(', ')}` : ''),
-        config: { table, mode: 'insert', pk: null, pkColumns },
+        config: { dbId, table, mode: 'insert', pk: null, pkColumns },
       });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/tables/:table/rows/:id/edit', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/tables/:db/:table/rows/:id/edit', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
       const table = req.params.table;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
       const info = await db.getTableInfo(table);
       if (!info.success || !info.data || info.data.columns.length === 0) {
         return notFound(res, `Table "${table}" does not exist.`);
@@ -433,58 +493,99 @@ export function registerPages(router: Router, ctx: PageContext): void {
       res.locals.currentTable = table;
       res.render('pages/form', {
         title: `Edit row · ${table}`,
+        dbId,
         table,
         mode: 'edit',
         pk: req.params.id,
         pkColumns,
         infoSummary: `${info.data.columns.length} column(s)` + (info.data.primaryKey.length ? ` · PK: ${info.data.primaryKey.join(', ')}` : ''),
-        config: { table, mode: 'edit', pk: req.params.id, pkColumns },
+        config: { dbId, table, mode: 'edit', pk: req.params.id, pkColumns },
       });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/erd', (_req: Request, res: Response) => {
-    res.render('pages/erd', { title: 'ER Diagram' });
-  });
-
-  router.get('/designer', (_req: Request, res: Response) => {
-    res.render('pages/designer', {
-      title: 'New table',
-      dialect: db.dialect,
-      isSqlite: db.dialect === 'sqlite',
-      isPostgres: db.dialect === 'postgres',
-    });
-  });
-
-  router.get('/query', async (_req: Request, res: Response, next: NextFunction) => {
+  router.get('/erd/:db', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const queries = await db.listSavedQueries();
-      res.render('pages/query', { title: 'Query editor', savedQueries: queries.success ? queries.data : [] });
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
+      res.render('pages/erd', { title: 'ER Diagram', dbId });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/export', async (_req: Request, res: Response, next: NextFunction) => {
+  router.get('/designer/:db', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
+      res.render('pages/designer', {
+        title: 'New table',
+        dbId,
+        dialect: db.dialect,
+        isSqlite: db.dialect === 'sqlite',
+        isPostgres: db.dialect === 'postgres',
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/query/:db', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
+      const queries = await db.listSavedQueries();
+      res.render('pages/query', { title: 'Query editor', dbId, savedQueries: queries.success ? queries.data : [] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/export/:db', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
       const dump = await generateSqlDump(db);
       if (!dump.success || !dump.data) throw new Error(dump.error ?? 'Failed to generate dump.');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       res.setHeader('Content-Type', 'application/sql; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="admindb-${stamp}.sql"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(dbId)}-${stamp}.sql"`);
       res.send(dump.data);
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/info', async (_req: Request, res: Response, next: NextFunction) => {
+  router.get('/info/:db', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const db = ctx.getDb(req);
+      const dbId = req.params.db;
+      res.locals.dbId = dbId;
+      const all = await db.listTables();
+      const allNames = (all.data ?? []).map((t) => t.name);
+      initPageLocals(res, db, dbId, allNames);
+
       const settingsRes = await db.getSettings();
       res.render('pages/info', {
         title: 'Database Info',
+        dbId,
         settings: settingsRes.success ? settingsRes.data : {},
         dialect: db.dialect,
         dbPath: db.path,

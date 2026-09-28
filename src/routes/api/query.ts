@@ -5,11 +5,10 @@ import { normalizeRow } from '../../utils/common';
 import { type ApiContext, ok, fail, wrap } from './helpers';
 
 export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
   // ---- Query runner ------------------------------------------------------
 
-  router.post('/api/query', wrap(async (req, res) => {
+  router.post('/api/query/:db', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const rawSql = String(req.body?.sql ?? '').trim();
     if (!rawSql) return fail(res, 'SQL query is required.');
 
@@ -55,13 +54,15 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
 
   // ---- Saved queries -----------------------------------------------------
 
-  router.get('/api/queries', wrap(async (_req, res) => {
+  router.get('/api/queries/:db', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.listSavedQueries();
     if (!r.success) return fail(res, r.error ?? 'Failed to load queries.', 500);
     ok(res, r.data);
   }));
 
-  router.post('/api/queries', wrap(async (req, res) => {
+  router.post('/api/queries/:db', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const name = String(req.body?.name ?? '').trim();
     const sql = String(req.body?.sql ?? '').trim();
     if (!name) return fail(res, 'Query name is required.');
@@ -71,7 +72,8 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: 'Query saved.' }, 201);
   }));
 
-  router.delete('/api/queries/:id', wrap(async (req, res) => {
+  router.delete('/api/queries/:db/:id', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.deleteSavedQuery(req.params.id);
     if (!r.success) return fail(res, r.error ?? 'Failed to delete query.', 400);
     ok(res, { message: 'Query deleted.' });

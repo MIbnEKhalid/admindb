@@ -5,7 +5,7 @@
   <div class="page-header">
     <div class="page-header-row">
       <div class="flex items-center gap-3">
-        <a href="{{basePath}}/tables/{{table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
+        <a href="{{basePath}}/tables/{{encodeUri dbId}}/{{encodeUri table}}" class="btn btn-circle btn-ghost btn-sm" aria-label="Back to table">
           {{{icon "arrowLeft" class="h-4 w-4"}}}
         </a>
         <div>
@@ -39,7 +39,7 @@
         {{else}}
           <span class="text-sm font-medium text-warning">This database is read-only — rows cannot be {{#if (eq mode 'edit')}}updated{{else}}inserted{{/if}}.</span>
         {{/unless}}
-        <a href="{{basePath}}/tables/{{table}}" class="btn btn-ghost">Cancel</a>
+        <a href="{{basePath}}/tables/{{encodeUri dbId}}/{{encodeUri table}}" class="btn btn-ghost">Cancel</a>
       </div>
       <p class="mt-3 text-xs text-base-content/40">
         Columns with defaults are pre-filled from the schema. Empty fields are treated as "not set" (DB defaults

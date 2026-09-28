@@ -3,23 +3,24 @@ import { generateCreateTable, quoteIdentifier, type ColumnDef, type IndexDef } f
 import { type ApiContext, ok, fail, wrap, requireTable } from './helpers';
 
 export function registerTableRoutes(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
   // ---- Tables ------------------------------------------------------------
 
-  router.get('/api/tables', wrap(async (_req, res) => {
+  router.get('/api/tables/:db', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.listTables();
     if (!r.success) return fail(res, r.error ?? 'Failed to list tables.', 500);
     ok(res, r.data);
   }));
 
-  router.get('/api/tables/:table/info', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/info', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     ok(res, info);
   }));
 
-  router.get('/api/tables/:table/fk-options', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/fk-options', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const options: Record<string, { value: unknown; label: string }[]> = {};
@@ -42,14 +43,16 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, options);
   }));
 
-  router.get('/api/tables/:table/ddl', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/ddl', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.getCreateStatement(req.params.table);
     if (!r.success) return fail(res, r.error ?? 'Failed to fetch DDL.', 500);
     if (!r.data) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     ok(res, { sql: r.data });
   }));
 
-  router.post('/api/tables/:table/rename', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/rename', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const newName = String(req.body?.name ?? '').trim();
     if (!newName) return fail(res, 'New table name is required.');
     const r = await db.renameTable(req.params.table, newName);
@@ -57,7 +60,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Table renamed to "${newName}".`, name: newName });
   }));
 
-  router.delete('/api/tables/:table', wrap(async (req, res) => {
+  router.delete('/api/tables/:db/:table', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.dropTable(req.params.table);
     if (!r.success) return fail(res, r.error ?? 'Failed to drop table.');
     ok(res, { message: `Table "${req.params.table}" dropped.` });
@@ -65,7 +69,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
 
   // ---- Bulk Table Operations -----------------------------------------------
 
-  router.post('/api/tables/bulk-drop', wrap(async (req, res) => {
+  router.post('/api/tables/:db/bulk-drop', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const tables: string[] = Array.isArray(req.body?.tables)
       ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
       : [];
@@ -98,7 +103,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  router.post('/api/tables/bulk-truncate', wrap(async (req, res) => {
+  router.post('/api/tables/:db/bulk-truncate', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const tables: string[] = Array.isArray(req.body?.tables)
       ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
       : [];
@@ -131,7 +137,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  router.post('/api/tables/generate', wrap(async (req, res) => {
+  router.post('/api/tables/:db/generate', wrap(async (req, res) => {
     const name = String(req.body?.name ?? '').trim();
     const columns = (req.body?.columns ?? []) as ColumnDef[];
     if (!name) return fail(res, 'Table name is required.');
@@ -144,6 +150,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   const createTableHandler = wrap(async (req: Request, res: Response) => {
+    const db = ctx.getDb(req);
     const name = String(req.body?.name ?? '').trim();
     const columns = (req.body?.columns ?? []) as ColumnDef[];
     if (!name) return fail(res, 'Table name is required.');
@@ -159,12 +166,13 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Table "${name}" created.`, name }, 201);
   });
 
-  router.post('/api/tables', createTableHandler);
-  router.post('/api/tables/create', createTableHandler);
+  router.post('/api/tables/:db', createTableHandler);
+  router.post('/api/tables/:db/create', createTableHandler);
 
   // ---- Columns -----------------------------------------------------------
 
-  router.post('/api/tables/:table/columns', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/columns', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const col = req.body as ColumnDef;
     if (!col?.name) return fail(res, 'Column name is required.');
     const r = await db.addColumn(req.params.table, col);
@@ -172,7 +180,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Column "${col.name}" added.` }, 201);
   }));
 
-  router.put('/api/tables/:table/columns/:column', wrap(async (req, res) => {
+  router.put('/api/tables/:db/:table/columns/:column', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const col = req.body as ColumnDef;
     if (!col) return fail(res, 'Column definition is required.');
     const r = await db.modifyColumn(req.params.table, req.params.column, col);
@@ -180,7 +189,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Column "${req.params.column}" updated.` });
   }));
 
-  router.post('/api/tables/:table/columns/:column/rename', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/columns/:column/rename', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const newName = String(req.body?.name ?? '').trim();
     if (!newName) return fail(res, 'New column name is required.');
     const r = await db.renameColumn(req.params.table, req.params.column, newName);
@@ -188,7 +198,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Column renamed to "${newName}".`, name: newName });
   }));
 
-  router.delete('/api/tables/:table/columns/:column', wrap(async (req, res) => {
+  router.delete('/api/tables/:db/:table/columns/:column', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.dropColumn(req.params.table, req.params.column);
     if (!r.success) return fail(res, r.error ?? 'Failed to drop column.');
     ok(res, { message: `Column "${req.params.column}" dropped.` });
@@ -196,7 +207,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
 
   // ---- Indexes -----------------------------------------------------------
 
-  router.post('/api/tables/:table/indexes', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/indexes', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const def = req.body as IndexDef;
     if (!def || !Array.isArray(def.columns) || def.columns.length === 0) {
       return fail(res, 'At least one column is required for an index.');
@@ -206,7 +218,8 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: 'Index created.' }, 201);
   }));
 
-  router.delete('/api/tables/:table/indexes/:index', wrap(async (req, res) => {
+  router.delete('/api/tables/:db/:table/indexes/:index', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const r = await db.dropIndex(req.params.index);
     if (!r.success) return fail(res, r.error ?? 'Failed to drop index.');
     ok(res, { message: `Index "${req.params.index}" dropped.` });

@@ -50,38 +50,38 @@
       </li>
       {{/if}}
       <li>
-        <a href="{{basePath}}/" class="side-link {{#if (eq currentPath '/')}}active{{/if}}">
+        <a href="{{basePath}}/home/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/home')}}active{{/if}}">
           {{{icon "home" class="h-4 w-4"}}}
           Home
         </a>
       </li>
       <li>
-        <a href="{{basePath}}/query" class="side-link {{#if (startsWith currentPath '/query')}}active{{/if}}">
+        <a href="{{basePath}}/query/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/query')}}active{{/if}}">
           {{{icon "query" class="h-4 w-4"}}}
           Query editor
         </a>
       </li>
       <li>
-        <a href="{{basePath}}/erd" class="side-link {{#if (startsWith currentPath '/erd')}}active{{/if}}">
+        <a href="{{basePath}}/erd/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/erd')}}active{{/if}}">
           {{{icon "diagram" class="h-4 w-4"}}}
           ER Diagram
         </a>
       </li>
       <li>
-        <a href="{{basePath}}/seed" class="side-link {{#if (startsWith currentPath '/seed')}}active{{/if}}">
+        <a href="{{basePath}}/seed/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/seed')}}active{{/if}}">
           {{{icon "seed" class="h-4 w-4"}}}
           Seed generator
         </a>
       </li>
       <li>
-        <a href="{{basePath}}/info" class="side-link {{#if (startsWith currentPath '/info')}}active{{/if}}">
+        <a href="{{basePath}}/info/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/info')}}active{{/if}}">
           {{{icon "settings" class="h-4 w-4"}}}
           Info & Settings
         </a>
       </li>
       {{#unless readonly}}
       <li>
-        <a href="{{basePath}}/designer" class="side-link {{#if (startsWith currentPath '/designer')}}active{{/if}}">
+        <a href="{{basePath}}/designer/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/designer')}}active{{/if}}">
           {{{icon "plus" class="h-4 w-4"}}}
           New table
         </a>
@@ -96,12 +96,12 @@
 
     <ul id="table-list" class="space-y-0.5">
       {{#each tables}}
-      <li class="table-item" data-name="{{this}}">
-        <a href="{{../basePath}}/tables/{{this}}" class="side-link {{#if (eq ../currentTable this)}}active{{/if}}">
+      <li class="table-item" data-name="{{tableName this}}">
+        <a href="{{../basePath}}/tables/{{encodeUri ../dbId}}/{{encodeUri (tableName this)}}" class="side-link {{#if (eq ../currentTable (tableName this))}}active{{/if}}">
           <span class="table-icon">
             {{{icon "table" class="h-4 w-4"}}}
           </span>
-          <span class="truncate">{{this}}</span>
+          <span class="truncate">{{tableName this}}</span>
         </a>
       </li>
       {{else}}
@@ -114,7 +114,7 @@
     <ul class="space-y-0.5">
       {{#each internalTables}}
       <li>
-        <a href="{{../basePath}}/tables/{{this}}" class="side-link {{#if (eq ../currentTable this)}}active{{/if}}">
+        <a href="{{../basePath}}/tables/{{encodeUri ../dbId}}/{{encodeUri this}}" class="side-link {{#if (eq ../currentTable this)}}active{{/if}}">
           <span class="table-icon">
             {{{icon "book" class="h-4 w-4"}}}
           </span>

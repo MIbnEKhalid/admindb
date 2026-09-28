@@ -149,7 +149,7 @@ test('Auth: HTTP session cookies remain valid across simulated server restart', 
     assert.ok(sessionToken);
 
     // Verify authorized access on Server 1
-    const apiRes1 = await fetch(`http://127.0.0.1:${server1Port}/api/tables`, {
+    const apiRes1 = await fetch(`http://127.0.0.1:${server1Port}/api/tables/test.db`, {
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionToken)}` },
     });
     assert.equal(apiRes1.status, 200);
@@ -179,7 +179,7 @@ test('Auth: HTTP session cookies remain valid across simulated server restart', 
     });
 
     // 5. Use the cookie received from Server 1 on Server 2
-    const apiRes2 = await fetch(`http://127.0.0.1:${server2Port}/api/tables`, {
+    const apiRes2 = await fetch(`http://127.0.0.1:${server2Port}/api/tables/test.db`, {
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionToken)}` },
     });
 

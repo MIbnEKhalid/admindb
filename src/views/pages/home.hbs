@@ -10,12 +10,12 @@
         <p class="mt-0.5 text-xs text-base-content/60">Browse, edit, and query the connected database from your browser.</p>
       </div>
       <div class="page-actions">
-        <a href="{{basePath}}/query" class="btn btn-ghost btn-sm gap-1.5">
+        <a href="{{basePath}}/query/{{encodeUri dbId}}" class="btn btn-ghost btn-sm gap-1.5">
           {{{icon "query" class="h-4 w-4"}}}
           Query
         </a>
         {{#unless readonly}}
-          <a href="{{basePath}}/designer" class="btn btn-primary btn-sm gap-1.5">
+          <a href="{{basePath}}/designer/{{encodeUri dbId}}" class="btn btn-primary btn-sm gap-1.5">
             {{{icon "plus" class="h-4 w-4"}}}
             New table
           </a>
@@ -73,9 +73,25 @@
 
   <!-- Tables section -->
   <div>
-    <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-lg font-bold">Tables</h2>
-      <span class="text-sm text-base-content/45">{{tables.length}} total</span>
+    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-2">
+        <h2 class="text-lg font-bold">Tables</h2>
+        <span id="home-table-count" class="text-sm text-base-content/45">
+          <span id="home-table-count-text">{{tables.length}} total</span>
+        </span>
+      </div>
+      {{#if tables.length}}
+      <div class="relative w-full sm:w-64">
+        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40">
+          {{{icon "search" class="h-4 w-4"}}}
+        </span>
+        <input id="home-table-search" type="text" placeholder="Search tables…" autocomplete="off" spellcheck="false"
+          class="field-input text-xs sm:text-sm !py-1.5 !pl-9 !pr-8 w-full" />
+        <button id="home-table-search-clear" type="button" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content focus:outline-none" title="Clear search">
+          {{{icon "x" class="h-3.5 w-3.5"}}}
+        </button>
+      </div>
+      {{/if}}
     </div>
 
     {{#if tables.length}}
@@ -187,7 +203,7 @@
                 <th class="text-right font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="home-tables-tbody">
               {{#each tables}}
                 <tr class="group hover:bg-base-200/50 home-table-row" data-table="{{this}}">
                   {{#unless ../readonly}}
@@ -199,7 +215,7 @@
                   </td>
                   {{/unless}}
                   <td>
-                    <a href="{{../basePath}}/tables/{{this}}" class="inline-flex items-center gap-2.5 font-medium">
+                    <a href="{{../basePath}}/tables/{{encodeUri ../dbId}}/{{encodeUri this}}" class="inline-flex items-center gap-2.5 font-medium">
                       <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
                         {{{icon "table" class="h-4 w-4"}}}
                       </span>
@@ -209,13 +225,21 @@
                   <td class="text-right tabular-nums text-base-content/60">{{lookup ../cols this}}</td>
                   <td class="text-right tabular-nums text-base-content/60">{{lookup ../counts this}}</td>
                   <td class="text-right">
-                    <a href="{{../basePath}}/tables/{{this}}" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
+                    <a href="{{../basePath}}/tables/{{encodeUri ../dbId}}/{{encodeUri this}}" class="btn btn-ghost btn-xs gap-1 text-base-content/70 hover:text-primary">
                       Browse
                       {{{icon "arrowRight" class="h-3.5 w-3.5"}}}
                     </a>
                   </td>
                 </tr>
               {{/each}}
+              <tr id="home-no-tables-match" class="hidden">
+                <td colspan="{{#if readonly}}4{{else}}5{{/if}}" class="py-12 text-center text-sm text-base-content/50">
+                  <div class="flex flex-col items-center justify-center gap-2">
+                    {{{icon "search" class="h-6 w-6 text-base-content/30"}}}
+                    <p>No tables matching "<span id="home-search-query-text" class="font-semibold font-mono text-base-content/80"></span>"</p>
+                  </div>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -229,15 +253,15 @@
         <p class="max-w-sm text-sm text-base-content/45">Create one with the table designer, or run a SQL statement in the query editor to get started.</p>
         <div class="mt-2 flex gap-2">
           {{#unless readonly}}
-            <a href="{{basePath}}/designer" class="btn btn-primary btn-sm">New table</a>
+            <a href="{{basePath}}/designer/{{encodeUri dbId}}" class="btn btn-primary btn-sm">New table</a>
           {{/unless}}
-          <a href="{{basePath}}/query" class="btn btn-outline btn-sm">Query editor</a>
+          <a href="{{basePath}}/query/{{encodeUri dbId}}" class="btn btn-outline btn-sm">Query editor</a>
         </div>
       </div>
     {{/if}}
   </div>
 </div>
 
-{{#unless readonly}}
+{{#if tables.length}}
 <script src="{{basePath}}/js/home.js" defer></script>
-{{/unless}}
+{{/if}}

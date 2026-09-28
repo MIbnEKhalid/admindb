@@ -22,7 +22,7 @@
       const data = await Api.post('/api/databases', { name });
       UI.showToast(data.message || 'Database created.', 'success');
       setTimeout(() => {
-        window.location.href = Api.basePath + '/' + encodeURIComponent(data.id);
+        window.location.href = Api.basePath + '/home/' + encodeURIComponent(data.id);
       }, 400);
     } catch (e) {
       UI.showError(e.message);
@@ -53,7 +53,7 @@
       const data = await Api.post('/api/databases/connect-postgres', { name, connectionString, readonly });
       UI.showToast(data.message || 'PostgreSQL connected.', 'success');
       setTimeout(() => {
-        window.location.href = Api.basePath + '/' + encodeURIComponent(data.id);
+        window.location.href = Api.basePath + '/home/' + encodeURIComponent(data.id);
       }, 400);
     } catch (e) {
       UI.showError(e.message);
@@ -201,7 +201,7 @@
     try {
       const data = await Api.post('/api/databases/open', { path: p, readonly });
       UI.showToast(data.message || 'Database opened.', 'success');
-      window.location.href = Api.basePath + '/' + encodeURIComponent(data.id);
+      window.location.href = Api.basePath + '/home/' + encodeURIComponent(data.id);
     } catch (e) {
       UI.showError(e.message);
     }

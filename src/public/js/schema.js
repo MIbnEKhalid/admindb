@@ -7,6 +7,7 @@
   const isPostgres = window.Utils ? window.Utils.isPostgres(cfg && cfg.dialect) : ((window.APP && window.APP.dialect === 'postgres') || (cfg && cfg.dialect === 'postgres'));
   const DESIGNER_TYPES = window.Utils ? window.Utils.getDesignerTypes(cfg && cfg.dialect) : ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN'];
   const NAME_RE = window.Utils ? window.Utils.NAME_REGEX : /^[A-Za-z_][A-Za-z0-9_$]*$/;
+  const dbId = encodeURIComponent((window.APP && window.APP.dbId) || (cfg && cfg.dbId) || '');
   const t = encodeURIComponent(cfg.table);
 
   const escapeHtml = window.Utils ? window.Utils.escapeHtml : function(s) { return String(s == null ? '' : s); };
@@ -26,10 +27,10 @@
     if (!name) return UI.showError('Table name is required.');
     if (name === cfg.table) return UI.showToast('Name unchanged.', 'info');
     try {
-      const data = await Api.post('/api/tables/' + t + '/rename', { name });
+      const data = await Api.post('/api/tables/' + dbId + '/' + t + '/rename', { name });
       UI.showToast(data.message || 'Table renamed.', 'success');
       setTimeout(() => {
-        window.location.href = Api.basePath + '/tables/' + encodeURIComponent(name) + '/schema';
+        window.location.href = Api.basePath + '/schema/' + dbId + '/' + encodeURIComponent(name);
       }, 400);
     } catch (e) {
       UI.showError(e.message);
@@ -50,7 +51,7 @@
 
   async function loadFkTables() {
     try {
-      const tables = await Api.get('/api/tables');
+      const tables = await Api.get('/api/tables/' + dbId);
       fkTables = tables.map((x) => x.name).filter((n) => n.charAt(0) !== '_');
     } catch (e) {
       fkTables = [];
@@ -89,7 +90,7 @@
       const target = fkTableSel.value;
       if (!target) return;
       try {
-        const info = await Api.get('/api/tables/' + encodeURIComponent(target) + '/info');
+        const info = await Api.get('/api/tables/' + dbId + '/' + encodeURIComponent(target) + '/info');
         fkColSel.innerHTML = '<option value="">—</option>' + info.columns.map((c) => '<option>' + escapeHtml(c.name) + '</option>').join('');
       } catch (e) { /* ignore */ }
     });
@@ -112,7 +113,7 @@
       foreignKey: fkTable && fkCol ? { table: fkTable, column: fkCol } : null,
     };
     try {
-      const data = await Api.post('/api/tables/' + t + '/columns', { column });
+      const data = await Api.post('/api/tables/' + dbId + '/' + t + '/columns', { column });
       UI.showToast(data.message || 'Column added.', 'success');
       window.location.reload();
     } catch (e) {
@@ -171,7 +172,7 @@
       fkColSel.innerHTML = '<option value="">—</option>';
       if (!table) return;
       try {
-        const targetInfo = await Api.get('/api/tables/' + encodeURIComponent(table) + '/info');
+        const targetInfo = await Api.get('/api/tables/' + dbId + '/' + encodeURIComponent(table) + '/info');
         fkColSel.innerHTML = '<option value="">—</option>' + targetInfo.columns.map((c) => '<option value="' + escapeHtml(c.name) + '"' + (c.name === selectedCol ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>').join('');
       } catch (e) { /* ignore */ }
     }
@@ -206,7 +207,7 @@
 
     if (editSubmitBtn) editSubmitBtn.disabled = true;
     try {
-      const data = await Api.put('/api/tables/' + t + '/columns/' + encodeURIComponent(currentEditingCol), { column });
+      const data = await Api.put('/api/tables/' + dbId + '/' + t + '/columns/' + encodeURIComponent(currentEditingCol), { column });
       UI.showToast(data.message || 'Column updated.', 'success');
       window.location.reload();
     } catch (e) {
@@ -252,7 +253,7 @@
         danger: true,
       });
       if (!confirmed) return;
-      Api.del('/api/tables/' + t + '/columns/' + encodeURIComponent(name))
+      Api.del('/api/tables/' + dbId + '/' + t + '/columns/' + encodeURIComponent(name))
         .then((data) => {
           UI.showToast(data.message || 'Column dropped.', 'success');
           window.location.reload();
@@ -276,10 +277,10 @@
         danger: true,
       });
       if (!confirmed) return;
-      Api.del('/api/tables/' + t)
+      Api.del('/api/tables/' + dbId + '/' + t)
         .then(() => {
           UI.showToast('Table dropped.', 'success');
-          setTimeout(() => { window.location.href = Api.basePath + '/'; }, 400);
+          setTimeout(() => { window.location.href = Api.basePath + '/home/' + dbId; }, 400);
         })
         .catch((e) => UI.showError(e.message));
     });
@@ -369,7 +370,7 @@
       if (name) body.name = name;
       addIndexSubmit.disabled = true;
       try {
-        const data = await Api.post('/api/tables/' + t + '/indexes', body);
+        const data = await Api.post('/api/tables/' + dbId + '/' + t + '/indexes', body);
         UI.showToast(data.message || 'Index created.', 'success');
         window.location.reload();
       } catch (e) {
@@ -393,7 +394,7 @@
         danger: true,
       });
       if (!confirmed) return;
-      Api.del('/api/tables/' + t + '/indexes/' + encodeURIComponent(name))
+      Api.del('/api/tables/' + dbId + '/' + t + '/indexes/' + encodeURIComponent(name))
         .then((data) => {
           UI.showToast(data.message || 'Index dropped.', 'success');
           window.location.reload();

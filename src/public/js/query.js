@@ -3,6 +3,7 @@
  * error analysis & visual pointers, save/load, smooth results sliding, and export. */
 (function () {
   'use strict';
+  const dbId = encodeURIComponent((window.APP && window.APP.dbId) || '');
 
   const textarea = document.getElementById('query-sql');
   const highlightCode = document.getElementById('query-code');
@@ -537,7 +538,7 @@
     const sql = getEditorText().trim();
     if (!sql) return;
     try {
-      const res = await fetch(Api.url('/api/query/export'), {
+      const res = await fetch(Api.url('/api/query/' + dbId + '/export'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql, format }),
@@ -713,7 +714,7 @@
 
     const started = performance.now();
     try {
-      const data = await Api.post('/api/query', { sql });
+      const data = await Api.post('/api/query/' + dbId, { sql });
       const elapsed = Math.max(1, Math.round(performance.now() - started));
       
       resultEl.classList.remove('hidden');
@@ -758,7 +759,7 @@
 
   async function refreshQueries(selectName) {
     try {
-      queriesCache = await Api.get('/api/queries');
+      queriesCache = await Api.get('/api/queries/' + dbId);
     } catch (e) {
       queriesCache = [];
     }
@@ -780,7 +781,7 @@
       return;
     }
     try {
-      await Api.post('/api/queries', { name, sql });
+      await Api.post('/api/queries/' + dbId, { name, sql });
       if (window.UI && UI.showToast) UI.showToast('Query saved.', 'success');
       await refreshQueries(name);
     } catch (e) {
@@ -803,7 +804,7 @@
     });
     if (!confirmed) return;
     try {
-      await Api.del('/api/queries/' + id);
+      await Api.del('/api/queries/' + dbId + '/' + id);
       if (window.UI && UI.showToast) UI.showToast('Query deleted.', 'success');
       await refreshQueries();
     } catch (e) {

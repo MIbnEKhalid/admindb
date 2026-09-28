@@ -2,10 +2,9 @@ import { type ApiContext, ok, fail } from './helpers';
 import type { Router } from 'express';
 
 export function registerErdRoutes(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
-  router.get('/api/erd', async (_req, res) => {
+  router.get('/api/erd/:db', async (req, res) => {
     try {
+      const db = ctx.getDb(req);
       const tablesResult = await db.listTables();
       if (!tablesResult.success || !tablesResult.data) {
         return fail(res, tablesResult.error ?? 'Failed to list tables.', 500);

@@ -7,11 +7,10 @@ import { type ApiContext, ok, fail, wrap, requireTable, buildFields, buildUpdate
 import type { WhereClause } from '../../db/database';
 
 export function registerRowRoutes(router: Router, ctx: ApiContext): void {
-  const { db } = ctx;
-
   // ---- Rows --------------------------------------------------------------
 
-  router.get('/api/tables/:table/rows', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/rows', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const page = Number.parseInt(String(req.query.page ?? '1'), 10);
     const limit = Number.parseInt(String(req.query.limit ?? '50'), 10);
     const orderBy = req.query.orderBy ? String(req.query.orderBy) : undefined;
@@ -32,14 +31,16 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     });
   }));
 
-  router.get('/api/tables/:table/rows/count', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/rows/count', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const filters = parseFilters(req.query.f);
     const r = await db.getRowCount(req.params.table, filters);
     if (!r.success) return fail(res, r.error ?? 'Failed to count rows.');
     ok(res, { count: r.data });
   }));
 
-  router.get('/api/tables/:table/row/:id', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/row/:id', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const where = pkWhere(info, req.params.id);
@@ -50,7 +51,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, normalizeRow(r.data));
   }));
 
-  router.get('/api/tables/:table/row/:id/blob/:column', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/row/:id/blob/:column', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const where = pkWhere(info, req.params.id);
@@ -89,7 +91,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     res.end(buf);
   }));
 
-  router.get('/api/tables/:table/row/:id/blob/:column/meta', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/row/:id/blob/:column/meta', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const where = pkWhere(info, req.params.id);
@@ -109,7 +112,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { isNull: false, ...meta });
   }));
 
-  router.put('/api/tables/:table/row/:id/blob/:column', wrap(async (req, res) => {
+  router.put('/api/tables/:db/:table/row/:id/blob/:column', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const where = pkWhere(info, req.params.id);
@@ -138,7 +142,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `Updated BLOB in column "${colName}".`, size: buf.length });
   }));
 
-  router.post('/api/tables/:table/rows/generate', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/rows/generate', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const fields = buildFields(info, req.body?.values ?? req.body ?? {});
@@ -147,6 +152,7 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   const generateUpdateHandler = wrap(async (req: Request, res: Response) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const id = req.params.id || (req.query.id ? String(req.query.id) : null);
@@ -159,11 +165,12 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { sql: generateUpdate(req.params.table, fields, where) });
   });
 
-  router.put('/api/tables/:table/row/:id/generate', generateUpdateHandler);
-  router.post('/api/tables/:table/row/:id/generate', generateUpdateHandler);
-  router.put('/api/tables/:table/rows/generate', generateUpdateHandler);
+  router.put('/api/tables/:db/:table/row/:id/generate', generateUpdateHandler);
+  router.post('/api/tables/:db/:table/row/:id/generate', generateUpdateHandler);
+  router.put('/api/tables/:db/:table/rows/generate', generateUpdateHandler);
 
-  router.post('/api/tables/:table/rows', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/rows', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
 
@@ -189,6 +196,7 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   const updateSingleRowHandler = wrap(async (req: Request, res: Response) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const id = req.params.id || (req.query.id ? String(req.query.id) : null);
@@ -204,6 +212,7 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
   });
 
   const bulkUpdateHandler = wrap(async (req: Request, res: Response) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
 
@@ -231,11 +240,12 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     return updateSingleRowHandler(req, res);
   });
 
-  router.put('/api/tables/:table/row/:id', updateSingleRowHandler);
-  router.put('/api/tables/:table/rows', bulkUpdateHandler);
-  router.post('/api/tables/:table/rows/bulk-update', bulkUpdateHandler);
+  router.put('/api/tables/:db/:table/row/:id', updateSingleRowHandler);
+  router.put('/api/tables/:db/:table/rows', bulkUpdateHandler);
+  router.post('/api/tables/:db/:table/rows/bulk-update', bulkUpdateHandler);
 
   const deleteSingleRowHandler = wrap(async (req: Request, res: Response) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const id = req.params.id || (req.query.id ? String(req.query.id) : null);
@@ -247,12 +257,13 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: 'Row deleted.' });
   });
 
-  router.delete('/api/tables/:table/row/:id', deleteSingleRowHandler);
-  router.delete('/api/tables/:table/rows', deleteSingleRowHandler);
+  router.delete('/api/tables/:db/:table/row/:id', deleteSingleRowHandler);
+  router.delete('/api/tables/:db/:table/rows', deleteSingleRowHandler);
 
   // ---- Row references ----------------------------------------------------
 
-  router.get('/api/tables/:table/rows/:id/references', wrap(async (req, res) => {
+  router.get('/api/tables/:db/:table/rows/:id/references', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const where = pkWhere(info, req.params.id);
@@ -292,7 +303,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
 
   // ---- Bulk row operations -----------------------------------------------
 
-  router.post('/api/tables/:table/rows/bulk-delete', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/rows/bulk-delete', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
 
@@ -308,7 +320,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, { message: `${r.data?.deleted ?? 0} row(s) deleted.`, deleted: r.data?.deleted });
   }));
 
-  router.post('/api/tables/:table/rows/bulk-impact', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/rows/bulk-impact', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
 
@@ -321,7 +334,8 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     ok(res, await computeBulkImpact(db, info, wheres));
   }));
 
-  router.post('/api/tables/:table/rows/bulk-export', wrap(async (req, res) => {
+  router.post('/api/tables/:db/:table/rows/bulk-export', wrap(async (req, res) => {
+    const db = ctx.getDb(req);
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
 

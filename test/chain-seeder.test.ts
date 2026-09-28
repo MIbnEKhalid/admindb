@@ -279,9 +279,9 @@ test('ER Chain API: End-to-end endpoints /api/tables/:table/seed/chain', async (
   `);
 
   try {
-    // 1. GET /api/tables/reviews/seed/chain
+    // 1. GET /api/tables/test.db/reviews/seed/chain
     await t.test('GET /api/tables/:table/seed/chain returns topological chain structure', async () => {
-      const res = await fetch(`${baseUrl}/api/tables/reviews/seed/chain?scope=chain`);
+      const res = await fetch(`${baseUrl}/api/tables/test.db/reviews/seed/chain?scope=chain`);
       assert.equal(res.status, 200);
       const json = (await res.json()) as { success: boolean; data: { tables: { name: string; order: number }[] } };
       assert.equal(json.success, true);
@@ -291,9 +291,9 @@ test('ER Chain API: End-to-end endpoints /api/tables/:table/seed/chain', async (
       assert.equal(json.data.tables[2].name, 'reviews');
     });
 
-    // 2. POST /api/tables/reviews/seed/chain/generate
+    // 2. POST /api/tables/test.db/reviews/seed/chain/generate
     await t.test('POST /api/tables/:table/seed/chain/generate produces multi-table preview and SQL', async () => {
-      const res = await fetch(`${baseUrl}/api/tables/reviews/seed/chain/generate`, {
+      const res = await fetch(`${baseUrl}/api/tables/test.db/reviews/seed/chain/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -319,9 +319,9 @@ test('ER Chain API: End-to-end endpoints /api/tables/:table/seed/chain', async (
       assert.equal(json.data.tableResults['reviews'].previewRows.length, 8);
     });
 
-    // 3. POST /api/tables/reviews/seed/chain (Insert)
+    // 3. POST /api/tables/test.db/reviews/seed/chain (Insert)
     await t.test('POST /api/tables/:table/seed/chain executes atomic relational multi-table seeding', async () => {
-      const res = await fetch(`${baseUrl}/api/tables/reviews/seed/chain`, {
+      const res = await fetch(`${baseUrl}/api/tables/test.db/reviews/seed/chain`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

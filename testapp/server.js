@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // ── Import admindb ────────────────────────────────────────────────────────────
-import { createRouter, createLogger } from '../dist/index.js';
+import { createRouter, createLogger } from 'admindb';
 
 // ESM replacement for __dirname
 const __filename = fileURLToPath(import.meta.url);

@@ -14,6 +14,7 @@
   const submitBtn = document.getElementById('row-submit');
   const generateBtn = document.getElementById('row-generate');
   const copyBtn = document.getElementById('copy-sql');
+  const dbId = encodeURIComponent((window.APP && window.APP.dbId) || (cfg && cfg.dbId) || '');
   const t = encodeURIComponent(cfg.table);
 
   let info = null;
@@ -739,9 +740,9 @@
     const edit = cfg.mode === 'edit';
     let path;
     if (edit) {
-      path = '/api/tables/' + t + '/row/' + encodeURIComponent(cfg.pk) + (runMode ? '' : '/generate');
+      path = '/api/tables/' + dbId + '/' + t + '/row/' + encodeURIComponent(cfg.pk) + (runMode ? '' : '/generate');
     } else {
-      path = '/api/tables/' + t + '/rows' + (runMode ? '' : '/generate');
+      path = '/api/tables/' + dbId + '/' + t + '/rows' + (runMode ? '' : '/generate');
     }
     const method = edit ? 'PUT' : 'POST';
     try {
@@ -749,7 +750,7 @@
       if (runMode) {
         UI.showToast(data.message || 'Saved.', 'success');
         setTimeout(() => {
-          window.location.href = Api.basePath + '/tables/' + encodeURIComponent(cfg.table);
+          window.location.href = Api.basePath + '/tables/' + dbId + '/' + encodeURIComponent(cfg.table);
         }, 500);
       } else {
         showSql(data.sql);
@@ -762,12 +763,12 @@
 
   async function init() {
     try {
-      info = await Api.get('/api/tables/' + t + '/info');
+      info = await Api.get('/api/tables/' + dbId + '/' + t + '/info');
       if (cfg.mode === 'edit') {
-        record = await Api.get('/api/tables/' + t + '/row/' + encodeURIComponent(cfg.pk));
+        record = await Api.get('/api/tables/' + dbId + '/' + t + '/row/' + encodeURIComponent(cfg.pk));
       }
       try {
-        fkOptions = await Api.get('/api/tables/' + t + '/fk-options');
+        fkOptions = await Api.get('/api/tables/' + dbId + '/' + t + '/fk-options');
       } catch (e) {
         fkOptions = {};
       }

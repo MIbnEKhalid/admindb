@@ -6,7 +6,7 @@ import { sanitizeColumnPlan, MAX_SEED_ROWS, type ColumnPlan, type ErChainScope, 
 import { quoteIdentifier } from '../../sql/generator';
 
 export interface ApiContext {
-  db: IDatabase;
+  getDb: (req: Request) => IDatabase;
   logger: Logger;
 }
 

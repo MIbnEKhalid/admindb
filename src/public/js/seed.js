@@ -8,6 +8,7 @@
   if (!cfgEl) return;
 
   const cfg = JSON.parse(cfgEl.textContent);
+  const dbId = encodeURIComponent((window.APP && window.APP.dbId) || (cfg && cfg.dbId) || '');
   const rootTableName = cfg.table;
   const rootColumns = cfg.columns || [];
   const urlParams = new URLSearchParams(window.location.search);
@@ -213,7 +214,7 @@
     }
     const plan = buildCurrentGenerationPlan();
     try {
-      const report = await Api.post('/api/seed/validate', { plan });
+      const report = await Api.post('/api/seed/' + dbId + '/validate', { plan });
       renderValidationReport(report);
     } catch {
       /* ignore */
@@ -509,7 +510,7 @@
     chainPipelineContainer.innerHTML = '<div class="py-8 text-center text-xs text-base-content/50"><span class="loading loading-spinner loading-sm text-primary mb-2"></span><br><strong class="font-bold text-base-content">Analyzing foreign keys & dependency DAG…</strong></div>';
 
     try {
-      chainConfigData = await Api.get(`/api/tables/${encodeURIComponent(rootTableName)}/seed/chain?scope=${scope}`);
+      chainConfigData = await Api.get(`/api/tables/${dbId}/${encodeURIComponent(rootTableName)}/seed/chain?scope=${scope}`);
       if (chainSummaryBadge) chainSummaryBadge.textContent = `${chainConfigData.tables.length} Tables`;
       chainPipelineContainer.innerHTML = '';
 
@@ -617,7 +618,7 @@
     const plan = buildCurrentGenerationPlan();
 
     try {
-      lastPreviewResult = await Api.post('/api/seed/preview', { plan });
+      lastPreviewResult = await Api.post('/api/seed/' + dbId + '/preview', { plan });
       if (insertBtn) insertBtn.disabled = false;
 
       // Render Validation Report if present
@@ -845,7 +846,7 @@
     }
 
     try {
-      const res = await Api.post('/api/seed/execute', { plan, truncate: truncateCheckbox?.checked ?? false });
+      const res = await Api.post('/api/seed/' + dbId + '/execute', { plan, truncate: truncateCheckbox?.checked ?? false });
       if (window.UI && UI.showToast) {
         UI.showToast(res.message || `Seeded ${res.totalInserted} rows successfully.`, 'success');
       }

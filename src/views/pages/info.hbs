@@ -84,7 +84,7 @@
     const errorBox = document.getElementById('ddl-error');
 
     try {
-      const res = await fetch('{{basePath}}/api/info/ddl');
+      const res = await fetch('{{basePath}}/api/info/{{encodeUri dbId}}/ddl');
       const json = await res.json();
       loader.classList.add('hidden');
       

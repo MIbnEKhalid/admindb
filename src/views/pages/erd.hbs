@@ -1,5 +1,5 @@
 {{!-- Page: ER Diagram / Relationship Visualization --}}
-<div class="flex flex-col" style="height: calc(100vh - 120px); min-height: 500px;">
+<div class="flex flex-col" style="height: calc(100vh - 180px); min-height: 520px;">
 
   {{!-- Toolbar --}}
   <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -166,15 +166,15 @@
     </div>
 
     {{!-- Side panel (hidden until a table is selected) --}}
-    <div id="erd-side-panel" class="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto" style="max-height: calc(100vh - 180px);">
-      <div class="rounded-xl border border-base-300 bg-base-100 overflow-hidden">
+    <div id="erd-side-panel" class="hidden w-80 shrink-0 flex-col gap-3 h-full max-h-full overflow-y-auto pr-0.5">
+      <div class="rounded-xl border border-base-300 bg-base-100 overflow-hidden flex flex-col shadow-sm">
         {{!-- Panel header --}}
         <div id="erd-panel-header" class="flex items-center justify-between gap-2 px-4 py-3" style="background: var(--erd-node-header); color:#fff;">
           <div class="flex items-center gap-2 min-w-0">
             {{{icon "table" class="h-4 w-4 shrink-0 opacity-80"}}}
             <span class="font-bold text-sm truncate" id="erd-panel-name"></span>
           </div>
-          <button id="erd-panel-close" class="shrink-0 rounded-full p-1 hover:bg-white/20 transition-colors">
+          <button id="erd-panel-close" class="shrink-0 rounded-full p-1 hover:bg-white/20 transition-colors" title="Close panel (Esc)">
             {{{icon "x" class="h-4 w-4"}}}
           </button>
         </div>
@@ -184,15 +184,13 @@
           <div class="flex-1 py-2"><div class="font-bold text-sm text-amber-500" id="erd-panel-fk-count"></div><div class="text-base-content/40">FK refs</div></div>
           <div class="flex-1 py-2"><div class="font-bold text-sm text-emerald-500" id="erd-panel-ref-count"></div><div class="text-base-content/40">referenced</div></div>
         </div>
-        {{!-- Columns list --}}
-        <div id="erd-panel-cols" class="divide-y divide-base-100 text-xs"></div>
-        {{!-- Actions --}}
-        <div class="flex gap-2 p-3 border-t border-base-200">
+        {{!-- Actions (pinned at the top below stats for instant accessibility) --}}
+        <div class="flex gap-2 p-3 border-b border-base-200 bg-base-200/40">
           <a id="erd-panel-browse" href="#" class="btn btn-xs btn-primary flex-1 gap-1">
             {{{icon "table" class="h-3 w-3"}}}
             Browse
           </a>
-          <a id="erd-panel-schema" href="#" class="btn btn-xs btn-ghost flex-1 gap-1 border border-base-300">
+          <a id="erd-panel-schema" href="#" class="btn btn-xs btn-outline flex-1 gap-1">
             {{{icon "schema" class="h-3 w-3"}}}
             Schema
           </a>
@@ -201,12 +199,21 @@
             Seed
           </a>
         </div>
+        {{!-- Columns section --}}
+        <div class="flex flex-col">
+          <div class="flex items-center justify-between px-4 py-2 border-b border-base-200 bg-base-200/20 text-[10px] font-semibold uppercase tracking-wider text-base-content/50">
+            <span>Columns</span>
+          </div>
+          <div id="erd-panel-cols" class="divide-y divide-base-200 text-xs max-h-60 overflow-y-auto"></div>
+        </div>
       </div>
 
       {{!-- FK relationships section --}}
-      <div id="erd-panel-rels" class="hidden rounded-xl border border-base-300 bg-base-100 overflow-hidden">
-        <div class="px-4 py-2.5 border-b border-base-200 text-[11px] font-semibold uppercase tracking-wider text-base-content/40">Relationships</div>
-        <div id="erd-panel-rels-list" class="divide-y divide-base-100 text-xs p-1"></div>
+      <div id="erd-panel-rels" class="hidden rounded-xl border border-base-300 bg-base-100 overflow-hidden flex flex-col shadow-sm">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-base-200 bg-base-200/20 text-[10px] font-semibold uppercase tracking-wider text-base-content/50">
+          <span>Relationships</span>
+        </div>
+        <div id="erd-panel-rels-list" class="divide-y divide-base-200 text-xs max-h-52 overflow-y-auto"></div>
       </div>
     </div>
   </div>
@@ -334,6 +341,7 @@
   .erd-mode-btn { color: oklch(var(--bc) / 0.55); }
   .erd-mode-btn:hover { color: oklch(var(--bc) / 0.9); background: oklch(var(--b2)); }
   .erd-mode-btn.bg-primary { color: oklch(var(--pc)); }
+  .erd-mode-btn.bg-primary:hover { color: oklch(var(--pc)); background: oklch(var(--p)); }
 </style>
 
 <script>
@@ -341,6 +349,7 @@
   'use strict';
 
   const BASE = window.APP?.basePath ?? '';
+  const DB_ID = window.APP?.dbId ?? '{{dbId}}';
 
   // ── State ────────────────────────────────────────────────────────────────
   let schema       = null;
@@ -349,6 +358,7 @@
   let scale        = 1;
   let tx = 0, ty  = 0;
   let draggingNode = null;
+  let wasNodeDragged = false;
   let isPanning    = false;
   let panStart     = { x: 0, y: 0, tx: 0, ty: 0 };
   let selectedTable = null;
@@ -415,7 +425,7 @@
   // ── Fetch ────────────────────────────────────────────────────────────────
   async function loadSchema() {
     try {
-      const res  = await fetch(BASE + '/api/erd');
+      const res  = await fetch(BASE + '/api/erd/' + encodeURIComponent(DB_ID));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (!json.success) throw new Error(json.error ?? 'API error');
@@ -593,9 +603,19 @@
     });
 
     if (isolated.length > 0) {
-      const isoX = 60 + layerNums.length * COL_WIDTH;
-      let isoY = 60;
-      isolated.forEach(t => { positions[t.name] = { x: isoX, y: isoY }; isoY += nodeHeight(t) + ROW_PADDING; });
+      const maxPerCol = 5;
+      const baseIsoX = 60 + layerNums.length * COL_WIDTH;
+      isolated.forEach((t, i) => {
+        const colIdx = Math.floor(i / maxPerCol);
+        const rowInCol = i % maxPerCol;
+        const curX = baseIsoX + colIdx * (NODE_W + 50);
+        let curY = 60;
+        for (let r = 0; r < rowInCol; r++) {
+          const prevTable = isolated[colIdx * maxPerCol + r];
+          curY += nodeHeight(prevTable) + ROW_PADDING;
+        }
+        positions[t.name] = { x: curX, y: curY };
+      });
     }
   }
 
@@ -647,14 +667,21 @@
       });
     }
 
-    // Place isolated tables in a compact column to the right of the circle
+    // Place isolated tables in a compact grid to the right of the circle
     if (isolated.length > 0) {
-      const circleRight = Math.max(...sorted.map(t => positions[t.name].x + NODE_W)) + 60;
+      const circleRight = (sorted.length > 0 ? Math.max(...sorted.map(t => positions[t.name].x + NODE_W)) : 0) + 60;
       const ROW_PAD     = 32;
-      let isoY          = 60;
-      isolated.forEach(t => {
-        positions[t.name] = { x: circleRight, y: isoY };
-        isoY += nodeHeight(t) + ROW_PAD;
+      const maxPerCol   = 5;
+      isolated.forEach((t, i) => {
+        const colIdx = Math.floor(i / maxPerCol);
+        const rowInCol = i % maxPerCol;
+        const curX = circleRight + colIdx * (NODE_W + 40);
+        let curY = 60;
+        for (let r = 0; r < rowInCol; r++) {
+          const prevTable = isolated[colIdx * maxPerCol + r];
+          curY += nodeHeight(prevTable) + ROW_PAD;
+        }
+        positions[t.name] = { x: curX, y: curY };
       });
     }
   }
@@ -701,8 +728,6 @@
     const arrX = NODE_W - 20, arrY = HEADER_H / 2;
     const arrPath = isCollapsed ? 'M-4,-2 L0,3 L4,-2' : 'M-4,2 L0,-3 L4,2';
     const arr = svgE('path', { d: arrPath, fill: 'none', stroke: 'rgba(255,255,255,0.7)', 'stroke-width': '2', 'stroke-linecap': 'round', transform: `translate(${arrX},${arrY})`, style: 'cursor:pointer;', class: 'erd-collapse-btn' });
-    arr.addEventListener('click', e => { e.stopPropagation(); toggleCollapse(t.name); });
-    g.appendChild(arr);
 
     // Table name
     const nameEl = svgE('text', { x: 14, y: 26, fill: '#fff', 'font-size': '13', 'font-weight': '700', 'font-family': 'Inter, ui-sans-serif, sans-serif', class: 'erd-node-title' });
@@ -784,8 +809,19 @@
     const hitRect = svgE('rect', { x: 0, y: 0, width: NODE_W, height: h, rx: 12, fill: 'transparent', class: 'erd-hit', style: 'cursor:grab;' });
     g.appendChild(hitRect);
 
+    // Collapse button & hit target (appended after hitRect so it receives clicks on top)
+    g.appendChild(arr);
+    const arrHit = svgE('rect', { x: NODE_W - 36, y: 0, width: 36, height: HEADER_H, fill: 'transparent', style: 'cursor:pointer;', class: 'erd-collapse-hit' });
+    arrHit.addEventListener('click', e => { e.stopPropagation(); toggleCollapse(t.name); });
+    arrHit.addEventListener('mousedown', e => { e.stopPropagation(); });
+    g.appendChild(arrHit);
+
     // Click → select
-    hitRect.addEventListener('click', e => { e.stopPropagation(); selectTable(t.name); });
+    hitRect.addEventListener('click', e => {
+      e.stopPropagation();
+      if (wasNodeDragged) { wasNodeDragged = false; return; }
+      selectTable(t.name);
+    });
 
     // Right-click → context menu
     g.addEventListener('contextmenu', e => {
@@ -797,6 +833,7 @@
     hitRect.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       e.stopPropagation();
+      wasNodeDragged = false;
       draggingNode = { name: t.name, origX: positions[t.name].x, origY: positions[t.name].y, startX: e.clientX, startY: e.clientY, moved: false };
       wrap.style.cursor = 'grabbing';
     });
@@ -944,6 +981,7 @@
     if (!t) return;
     const pal = palOf(name);
 
+    sidePanel.classList.remove('hidden');
     sidePanel.classList.add('visible');
 
     document.getElementById('erd-panel-header').style.background = pal.h;
@@ -957,9 +995,16 @@
     const panelBrowse = document.getElementById('erd-panel-browse');
     const panelSchema = document.getElementById('erd-panel-schema');
     const panelSeed = document.getElementById('erd-panel-seed');
-    panelBrowse.href = `${BASE}/tables/${encodeURIComponent(name)}`;
-    panelSchema.href = `${BASE}/tables/${encodeURIComponent(name)}/schema`;
-    if (panelSeed) panelSeed.href = `${BASE}/seed/${encodeURIComponent(name)}?mode=chain`;
+    panelBrowse.href = `${BASE}/tables/${encodeURIComponent(DB_ID)}/${encodeURIComponent(name)}`;
+    panelSchema.href = `${BASE}/schema/${encodeURIComponent(DB_ID)}/${encodeURIComponent(name)}`;
+    if (panelSeed) {
+      if (window.APP?.readonly) {
+        panelSeed.classList.add('hidden');
+      } else {
+        panelSeed.classList.remove('hidden');
+        panelSeed.href = `${BASE}/seed/${encodeURIComponent(DB_ID)}/${encodeURIComponent(name)}?mode=chain`;
+      }
+    }
 
     // Columns list
     const fkCols = new Set(t.foreignKeys.map(f => f.from));
@@ -1030,6 +1075,7 @@
 
   function hideSidePanel() {
     sidePanel.classList.remove('visible');
+    sidePanel.classList.add('hidden');
   }
 
   document.getElementById('erd-panel-close').addEventListener('click', deselectTable);
@@ -1038,16 +1084,16 @@
   function openCtxMenu(name, cx, cy) {
     ctxTable = name;
     document.getElementById('erd-ctx-title').textContent = name;
-    document.getElementById('erd-ctx-browse').href = `${BASE}/tables/${encodeURIComponent(name)}`;
-    document.getElementById('erd-ctx-schema').href = `${BASE}/tables/${encodeURIComponent(name)}/schema`;
+    document.getElementById('erd-ctx-browse').href = `${BASE}/tables/${encodeURIComponent(DB_ID)}/${encodeURIComponent(name)}`;
+    document.getElementById('erd-ctx-schema').href = `${BASE}/schema/${encodeURIComponent(DB_ID)}/${encodeURIComponent(name)}`;
     const ctxSeed = document.getElementById('erd-ctx-seed');
-    if (ctxSeed) ctxSeed.href = `${BASE}/seed/${encodeURIComponent(name)}?mode=chain`;
+    if (ctxSeed) ctxSeed.href = `${BASE}/seed/${encodeURIComponent(DB_ID)}/${encodeURIComponent(name)}?mode=chain`;
     document.getElementById('erd-ctx-collapse-label').textContent = collapsed.has(name) ? 'Expand table' : 'Collapse table';
 
     const rect = wrap.getBoundingClientRect();
     let x = cx - rect.left, y = cy - rect.top;
-    ctxMenu.style.left = Math.min(x, wrap.clientWidth  - 200) + 'px';
-    ctxMenu.style.top  = Math.min(y, wrap.clientHeight - 160) + 'px';
+    ctxMenu.style.left = Math.max(8, Math.min(x, wrap.clientWidth  - 210)) + 'px';
+    ctxMenu.style.top  = Math.max(8, Math.min(y, wrap.clientHeight - 170)) + 'px';
     ctxMenu.classList.remove('hidden');
     selectTable(name);
   }
@@ -1220,7 +1266,10 @@
     if (draggingNode) {
       const dx = (e.clientX - draggingNode.startX) / scale;
       const dy = (e.clientY - draggingNode.startY) / scale;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) draggingNode.moved = true;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        draggingNode.moved = true;
+        wasNodeDragged = true;
+      }
       positions[draggingNode.name].x = draggingNode.origX + dx;
       positions[draggingNode.name].y = draggingNode.origY + dy;
       const el = nodesG.querySelector(`[data-table="${draggingNode.name}"]`);

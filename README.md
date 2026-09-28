@@ -309,22 +309,22 @@ ADMINDB_AUTH=false npx admindb
 AdminDB exposes a comprehensive REST API under `basePath` returning `{ success, data?, error? }`:
 
 ```text
-GET    /api/tables                                 List tables
-GET    /api/tables/:table/rows                     Paginated rows (with filtering & sorting)
-GET    /api/tables/:table/row/:id                  Get a single row
-GET    /api/tables/:table/row/:id/blob/:column     Stream raw BLOB / BYTEA binary data
-GET    /api/tables/:table/row/:id/blob/:col/meta   BLOB / BYTEA metadata, MIME analysis & hex dump
-PUT    /api/tables/:table/row/:id/blob/:column     Upload / update binary content
-POST   /api/tables/:table/rows                     Insert row (single or batch)
-PUT    /api/tables/:table/row/:id                  Update row
-DELETE /api/tables/:table/row/:id                  Delete row
-POST   /api/tables/:table/rows/bulk-update         Apply staged inline edits atomically
-POST   /api/tables/:table/rows/bulk-delete         Delete selected rows atomically
-POST   /api/tables/:table/seed                     Generate & insert realistic seed rows
-POST   /api/tables                                 Create a new table
-GET    /api/tables/:table/schema                   Inspect table schema & constraints
-GET    /api/tables/:table/ddl                      Get table CREATE SQL & indexes
-POST   /api/query                                  Execute arbitrary SQL
+GET    /api/tables/:db                             List tables
+GET    /api/tables/:db/:table/rows                 Paginated rows (with filtering & sorting)
+GET    /api/tables/:db/:table/row/:id              Get a single row
+GET    /api/tables/:db/:table/row/:id/blob/:column Stream raw BLOB / BYTEA binary data
+GET    /api/tables/:db/:table/row/:id/blob/:col/meta BLOB / BYTEA metadata, MIME analysis & hex dump
+PUT    /api/tables/:db/:table/row/:id/blob/:column Upload / update binary content
+POST   /api/tables/:db/:table/rows                 Insert row (single or batch)
+PUT    /api/tables/:db/:table/row/:id              Update row
+DELETE /api/tables/:db/:table/row/:id              Delete row
+POST   /api/tables/:db/:table/rows/bulk-update     Apply staged inline edits atomically
+POST   /api/tables/:db/:table/rows/bulk-delete     Delete selected rows atomically
+POST   /api/tables/:db/:table/seed                 Generate & insert realistic seed rows
+POST   /api/tables/:db                             Create a new table
+GET    /api/tables/:db/:table/schema               Inspect table schema & constraints
+GET    /api/tables/:db/:table/ddl                  Get table CREATE SQL & indexes
+POST   /api/query/:db                              Execute arbitrary SQL
 GET    /api/databases                              List managed database connections & files
 ```
 
