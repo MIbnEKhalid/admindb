@@ -1,5 +1,11 @@
 import { spawn } from "child_process";
 
+// Prevent recursive loop caused by npm's built-in "publish" lifecycle script
+if (process.env.MBK_PUBLISH_PIPELINE_ACTIVE === "true") {
+  process.exit(0);
+}
+process.env.MBK_PUBLISH_PIPELINE_ACTIVE = "true";
+
 const isWindows = process.platform === "win32";
 const npmCmd = isWindows ? "npm.cmd" : "npm";
 
@@ -81,12 +87,12 @@ async function publishFlow() {
     }
 
     try {
-      await runCommand(npmCmd, ["publish"], { stdio: "inherit" });
+      await runCommand(npmCmd, ["publish", "--ignore-scripts"], { stdio: "inherit" });
       console.log("\n\x1b[32m✔ Package successfully published to NPM!\x1b[0m\n");
     } catch (publishErr) {
       console.log("\n\x1b[33m⚠ Initial publish failed. Prompting for npm login...\x1b[0m");
       await runCommand(npmCmd, ["login"], { stdio: "inherit" });
-      await runCommand(npmCmd, ["publish"], { stdio: "inherit" });
+      await runCommand(npmCmd, ["publish", "--ignore-scripts"], { stdio: "inherit" });
       console.log("\n\x1b[32m✔ Package successfully published to NPM!\x1b[0m\n");
     }
   } catch (err) {
