@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { SqliteDatabase } from '../src/db/database';
 import { createLogger } from '../src/utils/logger';
-import { generateOne, generateSampleValue, detectPlan, buildColumnConfigs, generateRows, buildSeedInsertSql, sanitizeColumnPlan, formatPattern, SKIP } from '../src/data/index';
+import { generateOne, generateSampleValue, detectPlan, buildColumnConfigs, generateRows, buildSeedInsertSql, sanitizeColumnPlan, formatPattern } from '../src/data/index';
 
 function openDb(): { db: SqliteDatabase; cleanup: () => void } {
   const root = mkdtempSync(path.join(tmpdir(), 'admindb-seeder-test-'));

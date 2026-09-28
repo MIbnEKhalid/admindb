@@ -108,22 +108,6 @@
       <li class="px-3 py-2 text-xs text-neutral-content/40">No tables yet</li>
       {{/each}}
     </ul>
-
-    {{#if internalTables.length}}
-    <div class="mb-2 mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-content/40">Internal</div>
-    <ul class="space-y-0.5">
-      {{#each internalTables}}
-      <li>
-        <a href="{{../basePath}}/tables/{{encodeUri ../dbId}}/{{encodeUri this}}" class="side-link {{#if (eq ../currentTable this)}}active{{/if}}">
-          <span class="table-icon">
-            {{{icon "book" class="h-4 w-4"}}}
-          </span>
-          <span class="truncate">{{this}}</span>
-        </a>
-      </li>
-      {{/each}}
-    </ul>
-    {{/if}}
   </nav>
   {{/if}}
 

@@ -1,13 +1,13 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import path from 'node:path';
-import type { DbManager } from '../db/manager';
-import type { Logger } from '../utils/logger';
-import { errorMessage } from '../utils/common';
-import { DatabasesService, type DatabaseRow, type FsEntry } from '../modules/databases/index';
+import type { DbManager } from '../../db/manager';
+import type { Logger } from '../../utils/logger';
+import { errorMessage } from '../../utils/common';
+import { DatabasesService, type DatabaseRow, type FsEntry } from './databases.service';
 
 export type { DatabaseRow, FsEntry };
 
-interface DatabasesContext {
+export interface DatabasesRoutesContext {
   manager: DbManager;
   logger: Logger;
   basePath: string;
@@ -17,7 +17,7 @@ interface DatabasesContext {
   invalidate?: (id: string) => void;
 }
 
-export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): void {
+export function registerDatabasesRoutes(router: Router, ctx: DatabasesRoutesContext): void {
   const { manager } = ctx;
   const allowBrowse = ctx.allowBrowse ?? true;
   const browseRoot = ctx.browseRoot ? path.resolve(ctx.browseRoot) : undefined;

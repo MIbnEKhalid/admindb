@@ -86,7 +86,7 @@ test('ER Chain: Topological sort and graph resolution', async () => {
 
   try {
     const listRes = await db.listTables();
-    const tableNames = (listRes.data ?? []).map((t) => t.name).filter((n) => !n.startsWith('sqlite_') && n !== '_saved_queries');
+    const tableNames = (listRes.data ?? []).map((t) => t.name).filter((n) => !n.startsWith('sqlite_'));
     const tables = [];
     for (const name of tableNames) {
       const info = await db.getTableInfo(name);

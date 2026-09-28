@@ -1,4 +1,4 @@
-import type { IDatabase } from '../../db/index';
+import type { DatabaseContext } from '../../core/context';
 
 export interface ErdColumn {
   name: string;
@@ -28,8 +28,8 @@ export interface ErdGraph {
 }
 
 export class ErdService {
-  static async getErdGraph(db: IDatabase): Promise<ErdGraph> {
-    const tablesResult = await db.listTables();
+  static async getErdGraph(ctx: DatabaseContext): Promise<ErdGraph> {
+    const tablesResult = await ctx.db.listTables();
     if (!tablesResult.success || !tablesResult.data) {
       throw new Error(tablesResult.error ?? 'Failed to list tables.');
     }
@@ -38,7 +38,7 @@ export class ErdService {
 
     const tables = await Promise.all(
       tableNames.map(async (name) => {
-        const infoResult = await db.getTableInfo(name);
+        const infoResult = await ctx.db.getTableInfo(name);
         if (!infoResult.success || !infoResult.data) {
           return { name, columns: [], foreignKeys: [], primaryKey: [] as string[] };
         }

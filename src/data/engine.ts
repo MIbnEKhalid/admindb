@@ -119,7 +119,7 @@ export class SeedEngine {
     const tableListRes = await db.listTables();
     const tableNames = (tableListRes.data ?? [])
       .map((t) => t.name)
-      .filter((name) => !name.startsWith('sqlite_') && name !== '_saved_queries');
+      .filter((name) => !name.startsWith('sqlite_'));
 
     const tableInfos = new Map<string, TableInfoData>();
     const allTableData: TableInfoData[] = [];

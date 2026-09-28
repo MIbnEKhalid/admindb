@@ -6,9 +6,7 @@ import { PostgresDatabase } from './db/postgres';
 import type { IDatabase, PostgresOptions } from './db/types';
 import { DbManager } from './db/manager';
 import { createLogger, type Logger, type LogLevel } from './utils/logger';
-import { registerPages } from './routes/pages';
-import { registerApi } from './routes/api/index';
-import { registerDatabasesRoutes } from './routes/databases';
+import { registerModules, registerDatabasesRoutes } from './modules/index';
 import { getPackageVersion } from './cli/args';
 import { errorMessage, isPostgresConnectionString } from './utils/common';
 import { renderIcon, ICONS } from './utils/icons';
@@ -83,7 +81,7 @@ export function createRouter(options: AppOptions = {}): express.Express {
     } else {
       singleDb = new SqliteDatabase(options.dbPath ?? 'admindb.db', logger, { readonly: globalReadonly });
     }
-    if (!defaultDbId) {
+    if (!defaultDbId && singleDb) {
       defaultDbId = singleDb.dialect === 'postgres' ? 'PostgreSQL' : (path.basename(singleDb.path) || 'SQLite');
     }
   }
@@ -122,33 +120,11 @@ export function createRouter(options: AppOptions = {}): express.Express {
       res.locals.isDefaultPassword = authConfig.isDefaultPassword;
       res.locals.icons = ICONS;
       res.locals.tables = [];
-      res.locals.internalTables = [];
       next();
     } catch (err) {
       next(err);
     }
   });
-
-  const getDb = (req: express.Request): IDatabase => {
-    if (manager) {
-      const dbId = String(req.params.db || req.params.dbId || req.params.id || '');
-      if (!manager.has(dbId)) {
-        const err = new Error(`Database "${dbId}" does not exist.`);
-        (err as any).status = 404;
-        throw err;
-      }
-      const rawRo = req.query.readonly;
-      if (rawRo !== undefined) {
-        const explicitRo = rawRo === '1' || rawRo === 'true';
-        if (!globalReadonly || explicitRo) {
-          manager.setReadonly(dbId, explicitRo);
-        }
-      }
-      const effectiveRo = globalReadonly ? true : manager.isDbReadOnly(dbId);
-      return manager.open(dbId, effectiveRo);
-    }
-    return singleDb!;
-  };
 
   if (manager) {
     registerDatabasesRoutes(app, {
@@ -195,8 +171,7 @@ export function createRouter(options: AppOptions = {}): express.Express {
     };
   };
 
-  registerPages(app, { getDb, getContext, logger });
-  registerApi(app, { getDb, getContext, logger });
+  registerModules(app, { getContext, logger });
 
   addErrorHandlers(app, logger);
   return app;

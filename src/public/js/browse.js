@@ -74,13 +74,14 @@
     const sizeSel = document.getElementById('page-size');
     if (!sizeSel) return;
     sizeSel.addEventListener('change', () => {
+      const db = sizeSel.dataset.db;
       const table = sizeSel.dataset.table;
       const size = sizeSel.value;
       const orderBy = sizeSel.dataset.orderby || '';
       const orderDir = sizeSel.dataset.orderdir || 'asc';
       const filters = sizeSel.dataset.filters || '';
       let href =
-        base + '/tables/' + encodeURIComponent(table) + '?page=1&size=' + encodeURIComponent(size) +
+        base + '/tables/' + encodeURIComponent(db) + '/' + encodeURIComponent(table) + '?page=1&size=' + encodeURIComponent(size) +
         '&orderBy=' + encodeURIComponent(orderBy) + '&orderDir=' + encodeURIComponent(orderDir);
       if (filters) href += '&' + filters;
       window.location.href = href;

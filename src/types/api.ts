@@ -5,13 +5,13 @@
  * `{ success: true, data: T }` on success, or `{ success: false, error: string }` on failure.
  */
 
-import type { ColumnInfo, ForeignKeyInfo, IndexInfo, SavedQuery, SchemaInfo, TableInfoData, TableListItem, WhereClause, RowFilters,} from '../db/database';
+import type { ColumnInfo, ForeignKeyInfo, IndexInfo, SchemaInfo, TableInfoData, TableListItem, WhereClause, RowFilters,} from '../db/database';
 import type { DatabaseEntry } from '../db/manager';
 import type { ColumnDef, IndexDef } from '../sql/generator';
 import type { ColumnGeneratorConfig, ColumnPlan, GeneratorStrategyId, StrategyDescriptor, StrategyCategory,} from '../data/index';
 
 // Re-export common domain types for convenience
-export type { ColumnInfo, ForeignKeyInfo, IndexInfo, SavedQuery, SchemaInfo, TableInfoData, TableListItem, WhereClause, RowFilters, ColumnDef, IndexDef, ColumnGeneratorConfig, ColumnPlan, GeneratorStrategyId, StrategyDescriptor, StrategyCategory };
+export type { ColumnInfo, ForeignKeyInfo, IndexInfo, SchemaInfo, TableInfoData, TableListItem, WhereClause, RowFilters, ColumnDef, IndexDef, ColumnGeneratorConfig, ColumnPlan, GeneratorStrategyId, StrategyDescriptor, StrategyCategory };
 
 // ============================================================================
 // Standard Envelope
@@ -408,26 +408,6 @@ export interface ExportQueryRequestBody {
   sql: string;
   format?: 'csv' | 'json';
 }
-
-/** GET /api/queries */
-export type ListSavedQueriesResponseData = SavedQuery[];
-export type ListSavedQueriesResponse = ApiResponse<ListSavedQueriesResponseData>;
-
-/** POST /api/queries */
-export interface SaveQueryRequestBody {
-  name: string;
-  sql: string;
-}
-export interface SaveQueryResponseData {
-  message: string;
-}
-export type SaveQueryResponse = ApiResponse<SaveQueryResponseData>;
-
-/** DELETE /api/queries/:id */
-export interface DeleteSavedQueryResponseData {
-  message: string;
-}
-export type DeleteSavedQueryResponse = ApiResponse<DeleteSavedQueryResponseData>;
 
 // ============================================================================
 // Multi-Database Manager & Filesystem Browser

@@ -4,11 +4,14 @@ import type { ISchemaIntrospector } from '../types';
 import type { ColumnDetail, ColumnInfo, ForeignKeyInfo, IndexInfo, ReferencingTableInfo, Result, SchemaInfo, TableInfoData, TableListItem } from '../../types';
 
 export class SqliteIntrospector implements ISchemaIntrospector {
-  private getNativeDb(driver: any): Database.Database {
-    return driver.db || driver;
+  private getNativeDb(driver: unknown): Database.Database {
+    if (driver && typeof driver === 'object' && 'db' in driver) {
+      return (driver as { db: Database.Database }).db;
+    }
+    return driver as Database.Database;
   }
 
-  async listTables(driver: any): Promise<Result<TableListItem[]>> {
+  async listTables(driver: unknown): Promise<Result<TableListItem[]>> {
     try {
       const db = this.getNativeDb(driver);
       const rows = db
@@ -42,7 +45,7 @@ export class SqliteIntrospector implements ISchemaIntrospector {
     return refs;
   }
 
-  async getTableInfo(driver: any, table: string): Promise<Result<TableInfoData>> {
+  async getTableInfo(driver: unknown, table: string): Promise<Result<TableInfoData>> {
     try {
       const db = this.getNativeDb(driver);
       const cols = db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as ColumnInfo[];
@@ -108,7 +111,7 @@ export class SqliteIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getSchema(driver: any, table: string): Promise<Result<SchemaInfo>> {
+  async getSchema(driver: unknown, table: string): Promise<Result<SchemaInfo>> {
     try {
       const db = this.getNativeDb(driver);
       const infoRes = await this.getTableInfo(driver, table);
@@ -172,7 +175,7 @@ export class SqliteIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getReferencingTables(driver: any, table: string): Promise<Result<ReferencingTableInfo[]>> {
+  async getReferencingTables(driver: unknown, table: string): Promise<Result<ReferencingTableInfo[]>> {
     try {
       const db = this.getNativeDb(driver);
       const refs = this.getIncomingFks(db, table);
@@ -202,7 +205,7 @@ export class SqliteIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getCreateStatement(driver: any, table: string): Promise<Result<string | null>> {
+  async getCreateStatement(driver: unknown, table: string): Promise<Result<string | null>> {
     try {
       const db = this.getNativeDb(driver);
       const row = db

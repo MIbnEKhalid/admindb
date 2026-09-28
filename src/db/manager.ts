@@ -22,6 +22,10 @@ export interface DbManagerOptions {
   readonly?: boolean;
   /** Whether running in a serverless runtime (e.g. Vercel). */
   serverless?: boolean;
+  /** Maximum number of concurrently open database connections in the cache. Defaults to 25. */
+  maxOpenDbs?: number;
+  /** Idle timeout in milliseconds after which unused connections can be pruned. Defaults to 0 (disabled). */
+  idleTimeoutMs?: number;
 }
 
 export interface DatabaseEntry {
@@ -48,12 +52,16 @@ export class DbManager {
   private createDir: string;
   private readonly readonlyMode: boolean;
   private readonly isServerless: boolean;
+  private readonly maxOpenDbs: number;
+  private readonly idleTimeoutMs: number;
   private files: string[] = [];
   private idByPath = new Map<string, string>();
   private pathById = new Map<string, string>();
   private nameById = new Map<string, string>();
   private readonlyById = new Map<string, boolean>();
   private openDbs = new Map<string, IDatabase>();
+  private accessOrder: string[] = [];
+  private lastAccessed = new Map<string, number>();
 
   constructor(options: DbManagerOptions | string, logger?: Logger) {
     const opts = typeof options === 'string' ? { dir: options } : (options ?? {});
@@ -62,6 +70,8 @@ export class DbManager {
     this.createDir = this.dir ?? process.cwd();
     this.readonlyMode = Boolean(opts.readonly);
     this.isServerless = opts.serverless !== undefined ? opts.serverless : isServerlessEnvironment();
+    this.maxOpenDbs = Math.max(1, opts.maxOpenDbs ?? 25);
+    this.idleTimeoutMs = Math.max(0, opts.idleTimeoutMs ?? 0);
     if (this.dir) mkdirSync(this.dir, { recursive: true });
 
     if (opts.connections) this.registerConnections(opts.connections);
@@ -202,6 +212,81 @@ export class DbManager {
     return false;
   }
 
+  private touch(id: string): void {
+    const idx = this.accessOrder.indexOf(id);
+    if (idx !== -1) {
+      this.accessOrder.splice(idx, 1);
+    }
+    this.accessOrder.push(id);
+    this.lastAccessed.set(id, Date.now());
+  }
+
+  private evictLru(): boolean {
+    while (this.accessOrder.length > 0) {
+      const oldestId = this.accessOrder.shift()!;
+      const db = this.openDbs.get(oldestId);
+      if (db) {
+        this.logger.debug?.(`Evicting idle database connection "${oldestId}" from pool.`);
+        try {
+          db.close();
+        } catch (err) {
+          this.logger.warn(`Error closing evicted database "${oldestId}": ${errorMessage(err)}`);
+        }
+        this.openDbs.delete(oldestId);
+        this.lastAccessed.delete(oldestId);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Prune database connections that have been idle longer than maxIdleAgeMs (or the configured idleTimeoutMs).
+   * Returns the count of pruned connections.
+   */
+  pruneIdle(maxIdleAgeMs?: number): number {
+    const maxAge = maxIdleAgeMs ?? this.idleTimeoutMs;
+    if (maxAge <= 0) return 0;
+    const now = Date.now();
+    let pruned = 0;
+    for (const [id, lastTime] of Array.from(this.lastAccessed.entries())) {
+      if (now - lastTime > maxAge) {
+        this.closeDb(id);
+        pruned++;
+      }
+    }
+    return pruned;
+  }
+
+  /**
+   * Close and evict a specific open database connection from the pool.
+   */
+  closeDb(id: string): void {
+    const db = this.openDbs.get(id);
+    if (db) {
+      try {
+        db.close();
+      } catch (err) {
+        this.logger.warn(`Error closing database "${id}": ${errorMessage(err)}`);
+      }
+      this.openDbs.delete(id);
+    }
+    const idx = this.accessOrder.indexOf(id);
+    if (idx !== -1) this.accessOrder.splice(idx, 1);
+    this.lastAccessed.delete(id);
+  }
+
+  /**
+   * Returns diagnostic stats regarding the current database connection pool.
+   */
+  getPoolStats(): { openConnections: number; maxOpenDbs: number; lruOrder: string[] } {
+    return {
+      openConnections: this.openDbs.size,
+      maxOpenDbs: this.maxOpenDbs,
+      lruOrder: [...this.accessOrder],
+    };
+  }
+
   setReadonly(id: string, readonly: boolean): void {
     if (this.readonlyMode && !readonly) {
       throw new Error('Manager is in global read-only mode — databases cannot be made writable.');
@@ -215,11 +300,7 @@ export class DbManager {
     }
     if (this.readonlyById.get(id) === readonly) return;
     this.readonlyById.set(id, readonly);
-    const db = this.openDbs.get(id);
-    if (db) {
-      try { db.close(); } catch {}
-      this.openDbs.delete(id);
-    }
+    this.closeDb(id);
   }
 
   open(id: string, readonlyOverride?: boolean): IDatabase {
@@ -229,17 +310,24 @@ export class DbManager {
 
     let db = this.openDbs.get(id);
     if (db && db.isReadOnly !== isRo) {
-      try { db.close(); } catch {}
-      this.openDbs.delete(id);
+      this.closeDb(id);
       db = undefined;
     }
     if (!db) {
+      if (this.idleTimeoutMs > 0) {
+        this.pruneIdle();
+      }
+      while (this.openDbs.size >= this.maxOpenDbs) {
+        if (!this.evictLru()) break;
+      }
+
       const childLogger = this.logger.child(`db:${id}`);
       db = isPostgresConnectionString(target)
         ? new PostgresDatabase(target, childLogger, { readonly: isRo })
         : new SqliteDatabase(target, childLogger, { readonly: isRo });
       this.openDbs.set(id, db);
     }
+    this.touch(id);
     return db;
   }
 
@@ -344,11 +432,7 @@ export class DbManager {
     const target = this.pathById.get(id);
     if (!target) return;
 
-    const db = this.openDbs.get(id);
-    if (db) {
-      try { db.close(); } catch {}
-      this.openDbs.delete(id);
-    }
+    this.closeDb(id);
     this.pathById.delete(id);
     this.idByPath.delete(target);
     this.nameById.delete(id);
@@ -367,6 +451,8 @@ export class DbManager {
       try { db.close(); } catch {}
     }
     this.openDbs.clear();
+    this.accessOrder = [];
+    this.lastAccessed.clear();
   }
 }
 

@@ -13,11 +13,14 @@ export class PostgresIntrospector implements ISchemaIntrospector {
     this.schema = schema;
   }
 
-  private getPool(driver: any): PgPoolLike {
-    return (driver && driver.pool) ? driver.pool : driver;
+  private getPool(driver: unknown): PgPoolLike {
+    if (driver && typeof driver === 'object' && 'pool' in driver) {
+      return (driver as { pool: PgPoolLike }).pool;
+    }
+    return driver as PgPoolLike;
   }
 
-  async listTables(driver: any): Promise<Result<TableListItem[]>> {
+  async listTables(driver: unknown): Promise<Result<TableListItem[]>> {
     try {
       const pool = this.getPool(driver);
       const res = await pool.query<{ table_name: string }>(
@@ -27,13 +30,13 @@ export class PostgresIntrospector implements ISchemaIntrospector {
          ORDER BY table_name;`,
         [this.schema],
       );
-      return { success: true, data: res.rows.map((r: any) => ({ name: r.table_name })) };
+      return { success: true, data: res.rows.map((r: { table_name: string }) => ({ name: r.table_name })) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
-  async getColumnCountMap(driver: any): Promise<Result<Record<string, number>>> {
+  async getColumnCountMap(driver: unknown): Promise<Result<Record<string, number>>> {
     try {
       const pool = this.getPool(driver);
       const colRes = await pool.query<{ table_name: string; cols: number }>(
@@ -52,7 +55,7 @@ export class PostgresIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getTableInfo(driver: any, table: string): Promise<Result<TableInfoData>> {
+  async getTableInfo(driver: unknown, table: string): Promise<Result<TableInfoData>> {
     try {
       const pool = this.getPool(driver);
       const colRes = await pool.query<{
@@ -205,7 +208,7 @@ export class PostgresIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getSchema(driver: any, table: string): Promise<Result<SchemaInfo>> {
+  async getSchema(driver: unknown, table: string): Promise<Result<SchemaInfo>> {
     try {
       const pool = this.getPool(driver);
       const infoR = await this.getTableInfo(driver, table);
@@ -273,7 +276,7 @@ export class PostgresIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getReferencingTables(driver: any, table: string): Promise<Result<ReferencingTableInfo[]>> {
+  async getReferencingTables(driver: unknown, table: string): Promise<Result<ReferencingTableInfo[]>> {
     try {
       const pool = this.getPool(driver);
       const refRes = await pool.query<{ table: string; from: string; to: string }>(
@@ -318,7 +321,7 @@ export class PostgresIntrospector implements ISchemaIntrospector {
     }
   }
 
-  async getCreateStatement(driver: any, table: string): Promise<Result<string | null>> {
+  async getCreateStatement(driver: unknown, table: string): Promise<Result<string | null>> {
     const info = await this.getTableInfo(driver, table);
     if (!info.success || !info.data) return { success: false, error: info.error };
     return { success: true, data: info.data.sql };

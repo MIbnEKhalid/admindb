@@ -1,8 +1,9 @@
-import type { IDatabase } from '../../db/index';
+import type { DatabaseContext } from '../../core/context';
 import { classifySql } from '../../sql/classifier';
 import { analyzeSqlError, type SqlErrorDetails } from '../../sql/error-analyzer';
 import { normalizeRow } from '../../utils/common';
 import { toCsv, toJson } from '../../utils/csv';
+import { createCsvStream, createJsonStream } from '../../utils/stream';
 
 export type QueryExecutionResult =
   | { kind: 'script'; message: string }
@@ -21,7 +22,8 @@ export class QueryExecutionError extends Error {
 }
 
 export class QueryService {
-  static async execute(db: IDatabase, rawSql: string): Promise<QueryExecutionResult> {
+  static async execute(ctx: DatabaseContext, rawSql: string): Promise<QueryExecutionResult> {
+    const { db } = ctx;
     const trimmed = String(rawSql ?? '').trim();
     if (!trimmed) {
       throw new QueryExecutionError('SQL query is required.', 400);
@@ -69,36 +71,11 @@ export class QueryService {
     };
   }
 
-  static async listSavedQueries(db: IDatabase) {
-    const r = await db.listSavedQueries();
-    if (!r.success) {
-      throw new QueryExecutionError(r.error ?? 'Failed to load queries.', 500);
-    }
-    return r.data;
-  }
-
-  static async saveQuery(db: IDatabase, name: string, sql: string) {
-    const trimmedName = String(name ?? '').trim();
-    const trimmedSql = String(sql ?? '').trim();
-    if (!trimmedName) throw new QueryExecutionError('Query name is required.', 400);
-    if (!trimmedSql) throw new QueryExecutionError('Query SQL is required.', 400);
-
-    const r = await db.saveQuery(trimmedName, trimmedSql);
-    if (!r.success) throw new QueryExecutionError(r.error ?? 'Failed to save query.', 400);
-    return { message: 'Query saved.' };
-  }
-
-  static async deleteSavedQuery(db: IDatabase, id: string) {
-    const r = await db.deleteSavedQuery(id);
-    if (!r.success) throw new QueryExecutionError(r.error ?? 'Failed to delete query.', 400);
-    return { message: 'Query deleted.' };
-  }
-
-  static async exportQuery(db: IDatabase, sql: string, format: 'csv' | 'json') {
+  static async exportQuery(ctx: DatabaseContext, sql: string, format: 'csv' | 'json') {
     const trimmed = String(sql ?? '').trim();
     if (!trimmed) throw new QueryExecutionError('SQL query is required.', 400);
 
-    const r = await db.all(trimmed);
+    const r = await ctx.db.all(trimmed);
     if (!r.success) throw new QueryExecutionError(r.error ?? 'Query failed.', 400);
 
     const rows = ((r.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
@@ -108,5 +85,29 @@ export class QueryService {
       return { data: toJson(rows), contentType: 'application/json; charset=utf-8', filename: 'query_results.json' };
     }
     return { data: toCsv(rows, columns), contentType: 'text/csv; charset=utf-8', filename: 'query_results.csv' };
+  }
+
+  static async streamExportQuery(
+    ctx: DatabaseContext,
+    sql: string,
+    format: 'csv' | 'json',
+  ): Promise<{ stream: NodeJS.ReadableStream; contentType: string; filename: string }> {
+    const result = await QueryService.execute(ctx, sql);
+    if (result.kind !== 'select') {
+      throw new QueryExecutionError('Query must be a SELECT statement to export.', 400);
+    }
+    const columns = result.columns;
+    const transform = format === 'json' ? createJsonStream() : createCsvStream(columns);
+
+    process.nextTick(() => {
+      for (const row of result.rows) {
+        transform.write(row);
+      }
+      transform.end();
+    });
+
+    const contentType = format === 'json' ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8';
+    const filename = `query_results.${format}`;
+    return { stream: transform, contentType, filename };
   }
 }

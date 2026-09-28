@@ -2,8 +2,7 @@ import Database from 'better-sqlite3';
 import type { Logger } from '../utils/logger';
 import { quoteIdentifier, generateAddColumn, generateRenameTable, generateRenameColumn, generateDropColumn, generateDropTable, generateCreateIndex, generateDropIndex, type ColumnDef, type IndexDef } from '../sql/generator';
 import { errorMessage } from '../utils/common';
-import type { ColumnInfo, DatabaseDialect, DbOpenOptions, IDatabase, ReferencingTableInfo, Result, RowFilters, SavedQuery, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
-import { INTERNAL_TABLES } from './types';
+import type { ColumnInfo, DatabaseDialect, DbOpenOptions, IDatabase, ReferencingTableInfo, Result, RowFilters, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
 import { buildFilterClause } from './filters';
 import { sqliteDialect } from './dialects/sqlite/dialect';
 import { modifyTableStructureSync } from './migrations';
@@ -13,8 +12,7 @@ export * from './filters';
 
 /**
  * Promise-style wrapper around the better-sqlite3 driver.
- * Every call returns a consistent `{ success, data?, error? }` shape and
- * performs one-time, idempotent schema initialization.
+ * Every call returns a consistent `{ success, data?, error? }` shape.
  */
 export class SqliteDatabase implements IDatabase {
   private db: Database.Database;
@@ -33,7 +31,6 @@ export class SqliteDatabase implements IDatabase {
       this.db.exec('PRAGMA query_only = ON;');
     } else {
       this.db.exec('PRAGMA journal_mode = WAL;');
-      this.initSchema();
     }
     this.logger.info(`Opened SQLite database at ${dbPath}${this.isReadOnly ? ' (read-only)' : ''}`);
   }
@@ -48,17 +45,6 @@ export class SqliteDatabase implements IDatabase {
     } catch (err) {
       this.logger.warn(`Failed to close database: ${errorMessage(err)}`);
     }
-  }
-
-  private initSchema(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} (
-        ${quoteIdentifier('id')} INTEGER PRIMARY KEY AUTOINCREMENT,
-        ${quoteIdentifier('name')} TEXT NOT NULL UNIQUE,
-        ${quoteIdentifier('sql')} TEXT NOT NULL,
-        ${quoteIdentifier('created_at')} TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
   }
 
   private async tryRun<T>(fn: () => T): Promise<Result<T>> {
@@ -94,8 +80,8 @@ export class SqliteDatabase implements IDatabase {
     return value as SQLInputValue;
   }
 
-  async all(sql: string, params: SQLInputValue[] = []): Promise<Result<unknown[]>> {
-    return this.tryRun(() => this.db.prepare(sql).all(...params) as unknown[]);
+  async all<T = unknown>(sql: string, params: SQLInputValue[] = []): Promise<Result<T[]>> {
+    return this.tryRun(() => this.db.prepare(sql).all(...params) as T[]);
   }
 
   async run(sql: string, params: SQLInputValue[] = []): Promise<Result<{ changes: number; lastInsertRowid: number | null }>> {
@@ -288,20 +274,6 @@ export class SqliteDatabase implements IDatabase {
         .get(table) as { sql?: string | null } | undefined;
       return row?.sql ?? null;
     });
-  }
-
-  async listSavedQueries(): Promise<Result<SavedQuery[]>> {
-    return this.all(
-      `SELECT id, name, sql, created_at FROM ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} ORDER BY name COLLATE NOCASE`,
-    ) as Promise<Result<SavedQuery[]>>;
-  }
-
-  async saveQuery(name: string, sql: string): Promise<Result<{ changes: number; lastInsertRowid: number | null }>> {
-    return this.run(`INSERT INTO ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} (name, sql) VALUES (?, ?)`, [name, sql]);
-  }
-
-  async deleteSavedQuery(id: string | number): Promise<Result<{ changes: number; lastInsertRowid: number | null }>> {
-    return this.run(`DELETE FROM ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} WHERE id = ?`, [Number(id)]);
   }
 
   async getSettings(): Promise<Result<Record<string, string>>> {

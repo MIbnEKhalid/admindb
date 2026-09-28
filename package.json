@@ -1,6 +1,6 @@
 {
   "name": "admindb",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "description": "Browser-based SQLite & PostgreSQL database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,8 @@
     "screenshots": "npm run build && node scripts/capture-screenshots.mjs",
     "lint": "tsc --noEmit",
     "testapp": "node testapp/server.js",
-    "publish": "node scripts/publish.js"
+    "publish": "node scripts/publish.js",
+    "file_doc": "node scripts/file_doc.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.9.1",
@@ -55,6 +56,7 @@
     "dist",
     "docs",
     "!docs/screenshots",
+    "!FilesStats.md",
     "README.md",
     "package.json",
     "LICENSE"

@@ -69,9 +69,9 @@ AdminDB supports both **SQLite** and **PostgreSQL** database backends seamlessly
 | ------ | -------------------- | -------------------------- |
 | POST   | `/api/query/:db`     | Run arbitrary SQL          |
 | POST   | `/api/query/:db/export` | Run a SELECT and download as `csv`/`json` |
-| GET    | `/api/queries/:db`   | List saved queries         |
-| POST   | `/api/queries/:db`   | Save a named query         |
-| DELETE | `/api/queries/:db/:id` | Delete a saved query     |
+
+> [!NOTE]
+> Saved queries are stored client-side in browser `localStorage` under scoped keys (`admindb_saved_queries_{dbId}`), avoiding any internal state tables in user databases.
 
 ## Manager mode (databases landing page)
 

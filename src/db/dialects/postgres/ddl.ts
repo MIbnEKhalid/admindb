@@ -32,9 +32,16 @@ export class PostgresDdlGenerator implements IDdlGenerator {
     return `ALTER TABLE ${quoteIdentifier(oldName)} RENAME TO ${quoteIdentifier(newName)};`;
   }
 
-  dropTable(table: string, options?: { cascade?: boolean }): string {
+  dropTable(table: string, options?: { cascade?: boolean; ifExists?: boolean }): string {
+    const ifExists = options?.ifExists ? 'IF EXISTS ' : '';
     const cascade = options?.cascade ? ' CASCADE' : '';
-    return `DROP TABLE ${quoteIdentifier(table)}${cascade};`;
+    return `DROP TABLE ${ifExists}${quoteIdentifier(table)}${cascade};`;
+  }
+
+  truncateTable(table: string, options?: { cascade?: boolean; restartIdentity?: boolean }): string {
+    const restartIdentity = options?.restartIdentity ? ' RESTART IDENTITY' : '';
+    const cascade = options?.cascade ? ' CASCADE' : '';
+    return `TRUNCATE ${quoteIdentifier(table)}${restartIdentity}${cascade};`;
   }
 
   addColumn(table: string, col: ColumnDef): string {
@@ -68,9 +75,11 @@ export class PostgresDdlGenerator implements IDdlGenerator {
     return `DROP INDEX IF EXISTS ${quoteIdentifier(indexName)} CASCADE;`;
   }
 
-  async modifyColumn(driver: any, table: string, oldCol: string, newCol: ColumnDef): Promise<Result<{ changes?: number }>> {
+  async modifyColumn(driver: unknown, table: string, oldCol: string, newCol: ColumnDef): Promise<Result<{ changes?: number }>> {
     try {
-      const pool = driver.pool || driver;
+      const pool = (driver && typeof driver === 'object' && 'pool' in driver)
+        ? (driver as { pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> } }).pool
+        : (driver as { query: (sql: string, params?: unknown[]) => Promise<unknown> });
       const newName = String(newCol.name || oldCol).trim();
 
       if (oldCol !== newName) {

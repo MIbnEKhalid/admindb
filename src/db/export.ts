@@ -42,7 +42,7 @@ export async function generateSchemaDump(db: IDatabase): Promise<DumpResult> {
   const out: string[] = [];
 
   if (db.dialect === 'sqlite') {
-    const allSchemas = await db.all(`SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_saved_queries'`);
+    const allSchemas = await db.all(`SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'`);
     if (!allSchemas.success || !allSchemas.data) {
       return { success: false, error: allSchemas.error ?? 'Failed to read sqlite_master.' };
     }

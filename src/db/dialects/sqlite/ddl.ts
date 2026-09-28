@@ -99,9 +99,19 @@ export class SqliteDdlGenerator implements IDdlGenerator {
     return `ALTER TABLE ${quoteIdentifier(oldName)} RENAME TO ${quoteIdentifier(newName)};`;
   }
 
-  dropTable(table: string, _options?: { cascade?: boolean }): string {
+  dropTable(table: string, options?: { cascade?: boolean; ifExists?: boolean }): string {
     validateIdentifier('table', table);
-    return `DROP TABLE ${quoteIdentifier(table)};`;
+    const ifExists = options?.ifExists ? 'IF EXISTS ' : '';
+    return `DROP TABLE ${ifExists}${quoteIdentifier(table)};`;
+  }
+
+  truncateTable(table: string, _options?: { cascade?: boolean; restartIdentity?: boolean }): string {
+    validateIdentifier('table', table);
+    return `DELETE FROM ${quoteIdentifier(table)};`;
+  }
+
+  setForeignKeys(enabled: boolean): string {
+    return `PRAGMA foreign_keys = ${enabled ? 'ON' : 'OFF'};`;
   }
 
   addColumn(table: string, col: ColumnDef): string {
@@ -133,9 +143,11 @@ export class SqliteDdlGenerator implements IDdlGenerator {
     return `DROP INDEX IF EXISTS ${quoteIdentifier(indexName)};`;
   }
 
-  async modifyColumn(driver: any, table: string, oldCol: string, newCol: ColumnDef): Promise<Result<{ changes?: number }>> {
+  async modifyColumn(driver: unknown, table: string, oldCol: string, newCol: ColumnDef): Promise<Result<{ changes?: number }>> {
     try {
-      const db: Database.Database = driver.db || driver;
+      const db: Database.Database = (driver && typeof driver === 'object' && 'db' in driver)
+        ? (driver as { db: Database.Database }).db
+        : (driver as Database.Database);
       const rawCols = db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as unknown as ColumnInfo[];
       if (!rawCols.length) throw new Error(`Table "${table}" does not exist.`);
 

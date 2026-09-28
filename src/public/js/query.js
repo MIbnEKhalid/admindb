@@ -754,24 +754,55 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Saved Queries
+  // Saved Queries (Browser localStorage)
   // ---------------------------------------------------------------------------
 
-  async function refreshQueries(selectName) {
-    try {
-      queriesCache = await Api.get('/api/queries/' + dbId);
-    } catch (e) {
-      queriesCache = [];
-    }
-    selectEl.innerHTML = '<option value="">— select a saved query —</option>' + queriesCache.map((q) =>
-      '<option value="' + q.id + '"' + (selectName && q.name === selectName ? ' selected' : '') + '>' + escapeHtml(q.name) + '</option>',
-    ).join('');
-    deleteBtn.disabled = true;
+  const STORAGE_KEY_PREFIX = 'admindb_saved_queries_';
+
+  function getStorageKey() {
+    return STORAGE_KEY_PREFIX + (decodeURIComponent(dbId) || 'default');
   }
 
-  async function saveQuery() {
+  function loadLocalQueries() {
+    try {
+      const raw = localStorage.getItem(getStorageKey());
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read saved queries from localStorage:', e);
+    }
+    return [];
+  }
+
+  function saveLocalQueries(queries) {
+    try {
+      localStorage.setItem(getStorageKey(), JSON.stringify(queries));
+    } catch (e) {
+      console.warn('Failed to save queries to localStorage:', e);
+    }
+  }
+
+  function refreshQueries(selectName) {
+    queriesCache = loadLocalQueries();
+    queriesCache.sort(function (a, b) {
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
+
+    if (selectEl) {
+      selectEl.innerHTML = '<option value="">— select a saved query —</option>' + queriesCache.map(function (q) {
+        return '<option value="' + escapeHtml(q.id) + '"' + (selectName && q.name === selectName ? ' selected' : '') + '>' + escapeHtml(q.name) + '</option>';
+      }).join('');
+    }
+    if (deleteBtn) deleteBtn.disabled = !selectEl || !selectEl.value;
+  }
+
+  function saveQuery() {
     const sql = getEditorText().trim();
-    const name = saveName.value.trim();
+    const name = saveName ? saveName.value.trim() : '';
     if (!sql) {
       setMessage('Write some SQL before saving.', 'warning');
       return;
@@ -781,22 +812,47 @@
       return;
     }
     try {
-      await Api.post('/api/queries/' + dbId, { name, sql });
+      const queries = loadLocalQueries();
+      const existingIdx = queries.findIndex(function (q) {
+        return (q.name || '').trim().toLowerCase() === name.toLowerCase();
+      });
+      const now = new Date().toISOString();
+
+      if (existingIdx >= 0) {
+        queries[existingIdx] = {
+          id: queries[existingIdx].id,
+          name: name,
+          sql: sql,
+          updated_at: now,
+        };
+      } else {
+        const id = 'sq_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        queries.push({
+          id: id,
+          name: name,
+          sql: sql,
+          created_at: now,
+        });
+      }
+
+      saveLocalQueries(queries);
       if (window.UI && UI.showToast) UI.showToast('Query saved.', 'success');
-      await refreshQueries(name);
+      setMessage('Query "' + name + '" saved to browser storage.', 'success');
+      refreshQueries(name);
     } catch (e) {
-      setMessage(e.message, 'error');
+      setMessage('Failed to save query: ' + e.message, 'error');
     }
   }
 
   async function deleteQuery() {
+    if (!selectEl) return;
     const id = selectEl.value;
     if (!id) return;
-    const q = queriesCache.find((x) => String(x.id) === String(id));
+    const q = queriesCache.find(function (x) { return String(x.id) === String(id); });
     const queryName = q ? q.name : 'Saved query';
     const confirmed = await UI.confirm({
       title: 'Delete Saved Query',
-      message: 'Are you sure you want to delete the saved query "' + queryName + '"?',
+      message: 'Are you sure you want to delete the saved query "' + queryName + '" from browser storage?',
       item: queryName,
       itemType: 'Saved Query',
       confirmText: 'Delete query',
@@ -804,11 +860,16 @@
     });
     if (!confirmed) return;
     try {
-      await Api.del('/api/queries/' + dbId + '/' + id);
+      const queries = loadLocalQueries().filter(function (x) { return String(x.id) !== String(id); });
+      saveLocalQueries(queries);
       if (window.UI && UI.showToast) UI.showToast('Query deleted.', 'success');
-      await refreshQueries();
+      setMessage('Query deleted.', 'info');
+      refreshQueries();
+      if (saveName && saveName.value === queryName) {
+        saveName.value = '';
+      }
     } catch (e) {
-      setMessage(e.message, 'error');
+      setMessage('Failed to delete query: ' + e.message, 'error');
     }
   }
 
@@ -822,7 +883,7 @@
       const q = queriesCache.find((x) => String(x.id) === String(id));
       if (q) {
         setEditorValue(q.sql);
-        saveName.value = q.name;
+        if (saveName) saveName.value = q.name;
         errorLineNum = null;
         setMessage('Loaded "' + q.name + '".', 'info');
         textarea.focus();
@@ -839,4 +900,5 @@
     history.record('', { start: 0, end: 0 }, 0);
   }
   syncHighlight();
+  refreshQueries();
 })();

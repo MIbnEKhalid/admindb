@@ -116,9 +116,6 @@ export function filtersToQS(filters: RowFilters | undefined): string {
   return Object.keys(out).length ? `f=${encodeURIComponent(JSON.stringify(out))}` : '';
 }
 
-/** Internal tables (kept out of user-facing pickers) start with an underscore. */
-export const isInternalTable = (name: string): boolean => name.startsWith('_');
-
 /** Encode primary-key values into a single URL path segment (comma-joined, URL-encoded). */
 export const encodePk = (values: unknown[]): string =>
   values.map((v) => encodeURIComponent(v == null ? '' : String(v))).join(',');

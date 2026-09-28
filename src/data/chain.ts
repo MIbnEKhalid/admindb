@@ -36,7 +36,7 @@ export async function getErChainConfig(
   const tableListRes = await db.listTables();
   const tableNames = (tableListRes.data ?? [])
     .map((t) => t.name)
-    .filter((name) => !name.startsWith('sqlite_') && name !== '_saved_queries');
+    .filter((name) => !name.startsWith('sqlite_'));
 
   const tables: TableInfoData[] = [];
   for (const name of tableNames) {

@@ -254,7 +254,7 @@ npx admindb name.postgres.json
 1. **Identifier Quoting:** Identifiers (table names, columns, indexes) are safely double-quoted (`"table_name"`).
 2. **Parameterized Queries:** Queries use native driver parameter placeholders (`?` for SQLite, `$1, $2, ...` for PostgreSQL).
 3. **Safe Preview Modes:** Preview endpoints return raw generated SQL strings for visual inspection without executing against the database.
-4. **Internal Table Protection:** Internal AdminDB state tables (`_saved_queries`) are protected from being dropped, renamed, or mutated.
+4. **Zero Footprint Architecture:** AdminDB does not inject any internal tables into user databases; saved queries and user state are managed client-side in the browser.
 
 ---
 

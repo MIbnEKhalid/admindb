@@ -1,15 +1,34 @@
 import type { IDatabase, TableInfoData, WhereClause, RowFilters, SQLInputValue } from '../../db/index';
+import type { DatabaseContext } from '../../core/context';
 import { coerceFormValue, decodePk, normalizeRow } from '../../utils/common';
 import { toCsv, toJson, parseCsv } from '../../utils/csv';
+import { createCsvStream, createJsonStream, parseCsvStreamBatched } from '../../utils/stream';
 import { generateInsert, generateUpdate, quoteIdentifier } from '../../sql/generator';
 import { resolveBlobBuffer, parseBlobPayload, getBlobMetadata, sniffBlobMime } from './blob.helper';
 
 export const MAX_BULK_ROWS = 1000;
 
+export interface CursorPaginationOptions {
+  cursor?: string | null;
+  limit?: number;
+  orderBy?: string;
+  orderDir?: 'asc' | 'desc';
+  filters?: RowFilters;
+}
+
+export interface CursorPaginatedResult {
+  rows: Record<string, unknown>[];
+  nextCursor: string | null;
+  prevCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
+
 export interface BulkImpactResult {
   references: { table: string; from: string; to: string; count: number }[];
   total: number;
 }
+
 
 export interface RowReferenceResult {
   table: string;
@@ -79,10 +98,11 @@ export function resolvePkRows(info: TableInfoData, ids: unknown): WhereClause[][
 }
 
 export async function computeBulkImpact(
-  db: IDatabase,
+  ctx: DatabaseContext,
   info: TableInfoData,
   wheres: WhereClause[][],
 ): Promise<BulkImpactResult> {
+  const { db } = ctx;
   const [rowsR, refInfoR] = await Promise.all([
     db.getRowsByPks(info.table, wheres),
     db.getReferencingTables(info.table),
@@ -116,9 +136,21 @@ export async function computeBulkImpact(
   return { references: results, total };
 }
 
+export function encodeCursor(values: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(values)).toString('base64url');
+}
+
+export function decodeCursor(cursor: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'));
+  } catch {
+    return null;
+  }
+}
+
 export class RowsService {
   static async getPaginatedRows(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     options: {
       page?: number;
@@ -128,6 +160,7 @@ export class RowsService {
       filters?: RowFilters;
     } = {},
   ) {
+    const { db } = ctx;
     const page = options.page ?? 1;
     const limit = options.limit ?? 50;
     const [rowsR, totalR] = await Promise.all([
@@ -140,32 +173,93 @@ export class RowsService {
     }
 
     const rows = ((rowsR.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
+    const total = totalR.success && typeof totalR.data === 'number' ? totalR.data : rows.length;
     return {
       rows,
-      total: totalR.success ? totalR.data : rows.length,
+      total,
       page,
       limit,
     };
   }
 
-  static async getRowCount(db: IDatabase, table: string, filters?: RowFilters) {
-    const r = await db.getRowCount(table, filters);
+  static async getCursorPaginatedRows(
+    ctx: DatabaseContext,
+    table: string,
+    options: CursorPaginationOptions = {},
+  ): Promise<CursorPaginatedResult> {
+    const { db } = ctx;
+    const limit = Math.max(1, Math.min(500, options.limit ?? 50));
+    const orderDir = options.orderDir === 'desc' ? 'desc' : 'asc';
+    const info = await db.getTableInfo(table);
+    const tableInfo = info.data;
+    const pkCol = tableInfo?.primaryKey[0] ?? '_rowid_';
+    const orderBy = options.orderBy ?? pkCol;
+
+    const filters: RowFilters = { ...(options.filters ?? {}) };
+    const decodedCursor = options.cursor ? decodeCursor(options.cursor) : null;
+
+    if (decodedCursor && decodedCursor[orderBy] !== undefined) {
+      const cursorVal = decodedCursor[orderBy];
+      const op = orderDir === 'asc' ? 'gt' : 'lt';
+      filters[orderBy] = { op, value: String(cursorVal) };
+    }
+
+    const rowsR = await db.getRows(table, {
+      filters,
+      orderBy,
+      orderDir,
+      limit: limit + 1,
+    });
+
+    if (!rowsR.success) {
+      throw new Error(rowsR.error ?? 'Failed to load cursor-paginated rows.');
+    }
+
+    const rawRows = ((rowsR.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
+    const hasMore = rawRows.length > limit;
+    const rows = hasMore ? rawRows.slice(0, limit) : rawRows;
+
+    let nextCursor: string | null = null;
+    let prevCursor: string | null = null;
+
+    if (rows.length > 0) {
+      const firstRow = rows[0];
+      const lastRow = rows[rows.length - 1];
+      if (hasMore) {
+        nextCursor = encodeCursor({ [orderBy]: lastRow[orderBy], [pkCol]: lastRow[pkCol] });
+      }
+      if (options.cursor) {
+        prevCursor = encodeCursor({ [orderBy]: firstRow[orderBy], [pkCol]: firstRow[pkCol] });
+      }
+    }
+
+    return {
+      rows,
+      nextCursor,
+      prevCursor,
+      hasMore,
+      limit,
+    };
+  }
+
+  static async getRowCount(ctx: DatabaseContext, table: string, filters?: RowFilters): Promise<number> {
+    const r = await ctx.db.getRowCount(table, filters);
     if (!r.success) {
       throw new Error(r.error ?? 'Failed to count rows.');
     }
-    return r.data;
+    return r.data ?? 0;
   }
 
-  static async getRow(db: IDatabase, table: string, where: WhereClause[]) {
-    const r = await db.getRow(table, where);
+  static async getRow(ctx: DatabaseContext, table: string, where: WhereClause[]) {
+    const r = await ctx.db.getRow(table, where);
     if (!r.success) {
       throw new Error(r.error ?? 'Failed to load row.');
     }
     return r.data ? normalizeRow(r.data) : null;
   }
 
-  static async getBlob(db: IDatabase, table: string, where: WhereClause[], column: string) {
-    const r = await db.getRow(table, where);
+  static async getBlob(ctx: DatabaseContext, table: string, where: WhereClause[], column: string) {
+    const r = await ctx.db.getRow(table, where);
     if (!r.success) {
       throw new Error(r.error ?? 'Failed to load row.');
     }
@@ -179,8 +273,8 @@ export class RowsService {
     return { buffer: buf, mimeInfo };
   }
 
-  static async getBlobMeta(db: IDatabase, table: string, where: WhereClause[], column: string) {
-    const r = await db.getRow(table, where);
+  static async getBlobMeta(ctx: DatabaseContext, table: string, where: WhereClause[], column: string) {
+    const r = await ctx.db.getRow(table, where);
     if (!r.success) {
       throw new Error(r.error ?? 'Failed to load row.');
     }
@@ -191,7 +285,7 @@ export class RowsService {
   }
 
   static async updateBlob(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     where: WhereClause[],
     column: string,
@@ -199,7 +293,7 @@ export class RowsService {
     format?: string,
   ): Promise<number> {
     const buf = parseBlobPayload(data, format);
-    const updateRes = await db.updateRow(table, [{ column, value: buf }], where);
+    const updateRes = await ctx.db.updateRow(table, [{ column, value: buf }], where);
     if (!updateRes.success) {
       throw new Error(updateRes.error ?? 'Failed to update BLOB.');
     }
@@ -221,66 +315,67 @@ export class RowsService {
   }
 
   static async insertRow(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     fields: { column: string; value: unknown }[],
   ) {
     if (!fields.length) throw new Error('No valid column values provided.');
-    const r = await db.insertRow(table, fields);
+    const r = await ctx.db.insertRow(table, fields);
     if (!r.success) throw new Error(r.error ?? 'Failed to insert row.');
     return r.data?.lastInsertRowid;
   }
 
   static async insertRows(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     fieldsList: { column: string; value: unknown }[][],
   ) {
     if (!fieldsList.length) throw new Error('No rows provided.');
-    const r = await db.insertRows(table, fieldsList);
+    const r = await ctx.db.insertRows(table, fieldsList);
     if (!r.success) throw new Error(r.error ?? 'Failed to insert rows.');
     return r.data?.inserted ?? 0;
   }
 
   static async updateRow(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     fields: { column: string; value: unknown }[],
     where: WhereClause[],
   ) {
     if (!fields.length) throw new Error('No fields to update.');
-    const r = await db.updateRow(table, fields, where);
+    const r = await ctx.db.updateRow(table, fields, where);
     if (!r.success) throw new Error(r.error ?? 'Failed to update row.');
   }
 
   static async updateRows(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     rowUpdates: { fields: WhereClause[]; where: WhereClause[] }[],
   ) {
     if (!rowUpdates.length) return 0;
-    const r = await db.updateRows(table, rowUpdates);
+    const r = await ctx.db.updateRows(table, rowUpdates);
     if (!r.success) throw new Error(r.error ?? 'Failed to update rows.');
     return r.data?.updated ?? 0;
   }
 
-  static async deleteRow(db: IDatabase, table: string, where: WhereClause[]) {
-    const r = await db.deleteRow(table, where);
+  static async deleteRow(ctx: DatabaseContext, table: string, where: WhereClause[]) {
+    const r = await ctx.db.deleteRow(table, where);
     if (!r.success) throw new Error(r.error ?? 'Failed to delete row.');
   }
 
-  static async deleteRows(db: IDatabase, table: string, wheres: WhereClause[][]) {
-    const r = await db.deleteRows(table, wheres);
+  static async deleteRows(ctx: DatabaseContext, table: string, wheres: WhereClause[][]) {
+    const r = await ctx.db.deleteRows(table, wheres);
     if (!r.success) throw new Error(r.error ?? 'Failed to delete rows.');
     return r.data?.deleted ?? 0;
   }
 
   static async getRowReferences(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     info: TableInfoData,
     where: WhereClause[],
   ): Promise<RowReferenceResult[]> {
+    const { db } = ctx;
     const rowR = await db.getRow(table, where);
     if (!rowR.success || !rowR.data) {
       throw new Error('Row not found.');
@@ -316,12 +411,12 @@ export class RowsService {
   }
 
   static async exportTable(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     info: TableInfoData,
     options: { filters?: RowFilters; limit?: number; format: 'csv' | 'json' },
   ) {
-    const r = await db.getRows(table, { limit: options.limit ?? 1_000_000, filters: options.filters });
+    const r = await ctx.db.getRows(table, { limit: options.limit ?? 1_000_000, filters: options.filters });
     if (!r.success) throw new Error(r.error ?? 'Failed to export table.');
     const rows = ((r.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
     const columns = info.columns.map((c) => c.name);
@@ -332,14 +427,59 @@ export class RowsService {
     return { data: toCsv(rows, columns), contentType: 'text/csv; charset=utf-8', filename: `${table}.csv` };
   }
 
+  static async streamExportTable(
+    ctx: DatabaseContext,
+    table: string,
+    info: TableInfoData,
+    options: { filters?: RowFilters; format: 'csv' | 'json'; chunkSize?: number },
+  ): Promise<{ stream: NodeJS.ReadableStream; contentType: string; filename: string }> {
+    const chunkSize = Math.max(10, options.chunkSize ?? 500);
+    const columns = info.columns.map((c) => c.name);
+    const transform = options.format === 'json' ? createJsonStream() : createCsvStream(columns);
+
+    (async () => {
+      let page = 1;
+      let hasMore = true;
+      try {
+        while (hasMore) {
+          const r = await ctx.db.getRows(table, { limit: chunkSize, page, filters: options.filters });
+          if (!r.success) {
+            transform.destroy(new Error(r.error ?? 'Failed to stream rows.'));
+            return;
+          }
+          const rows = (r.data ?? []) as Record<string, unknown>[];
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+          for (const row of rows) {
+            transform.write(normalizeRow(row));
+          }
+          if (rows.length < chunkSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        }
+        transform.end();
+      } catch (err) {
+        transform.destroy(err as Error);
+      }
+    })();
+
+    const contentType = options.format === 'json' ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8';
+    const filename = `${table}.${options.format}`;
+    return { stream: transform, contentType, filename };
+  }
+
   static async exportBulkRows(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     info: TableInfoData,
     wheres: WhereClause[][],
     format: 'csv' | 'json',
   ) {
-    const rowsR = await db.getRowsByPks(table, wheres);
+    const rowsR = await ctx.db.getRowsByPks(table, wheres);
     if (!rowsR.success) throw new Error(rowsR.error ?? 'Failed to load rows.');
 
     const rows = ((rowsR.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
@@ -352,7 +492,7 @@ export class RowsService {
   }
 
   static async importCsv(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     info: TableInfoData,
     csvText: string,
@@ -379,8 +519,58 @@ export class RowsService {
       return fields;
     });
 
-    const r = await db.insertRows(table, rows);
+    const r = await ctx.db.insertRows(table, rows);
     if (!r.success) throw new Error(r.error ?? 'Failed to import CSV.');
     return r.data?.inserted ?? 0;
   }
+
+  static async streamImportCsv(
+    ctx: DatabaseContext,
+    table: string,
+    info: TableInfoData,
+    csvStream: AsyncIterable<string | Buffer>,
+    batchSize = 500,
+  ): Promise<number> {
+    const typeMap = new Map(info.columns.map((c) => [c.name, c.type]));
+    let header: string[] | null = null;
+    let totalInserted = 0;
+
+    await parseCsvStreamBatched(
+      csvStream,
+      async (batch) => {
+        let dataRows = batch;
+        if (!header) {
+          if (batch.length === 0) return;
+          header = batch[0].map((h) => h.trim());
+          dataRows = batch.slice(1);
+        }
+        if (dataRows.length === 0) return;
+
+        const validColIndices = header
+          .map((col, idx) => (typeMap.has(col) ? idx : -1))
+          .filter((idx) => idx !== -1);
+
+        if (!validColIndices.length) {
+          throw new Error('None of the CSV columns match columns in this table.');
+        }
+
+        const rowsToInsert = dataRows.map((line) => {
+          const fields: { column: string; value: unknown }[] = [];
+          for (const i of validColIndices) {
+            const col = header![i];
+            fields.push({ column: col, value: coerceFormValue(line[i] ?? '', typeMap.get(col)!) });
+          }
+          return fields;
+        });
+
+        const r = await ctx.db.insertRows(table, rowsToInsert);
+        if (!r.success) throw new Error(r.error ?? 'Failed to import CSV batch.');
+        totalInserted += r.data?.inserted ?? rowsToInsert.length;
+      },
+      batchSize,
+    );
+
+    return totalInserted;
+  }
 }
+

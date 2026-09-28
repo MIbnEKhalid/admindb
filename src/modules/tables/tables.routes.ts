@@ -1,14 +1,73 @@
-import type { Router, Request, Response } from 'express';
-import type { ColumnDef, IndexDef } from '../../sql/generator';
-import { type ApiContext, ok, fail, wrap, requireTable } from './helpers';
-import { TableService } from '../../modules/tables/index';
-import { SchemaService } from '../../modules/schema/index';
+import type { Router, Request, Response, NextFunction } from 'express';
+import type { ColumnDef } from '../../sql/generator';
+import { type RouteContext, ok, fail, wrap, initPageLocals } from '../../core/router';
+import { TableService } from './tables.service';
 
-export function registerTableRoutes(router: Router, ctx: ApiContext): void {
-  // ---- Tables ------------------------------------------------------------
+export function registerTableRoutes(router: Router, ctx: RouteContext): void {
+  // ---- Page Routes -------------------------------------------------------
+
+  router.get('/home/:db', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = ctx.getContext(req);
+      const dbId = req.params.db;
+      const tablesList = await TableService.listTables(db);
+      const allNames = tablesList.map((t) => t.name);
+      const { tables: names } = initPageLocals(res, db, dbId, allNames);
+
+      const homeData = await TableService.getHomeStats(db, names);
+
+      res.render('pages/home', {
+        title: 'Home',
+        dbId,
+        tables: names,
+        counts: homeData.counts,
+        cols: homeData.cols,
+        totalRows: homeData.totalRows,
+        dbPath: db.path,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/info/:db', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = ctx.getContext(req);
+      const dbId = req.params.db;
+      res.locals.dbId = dbId;
+      const dbInfo = await TableService.getDatabaseInfo(db);
+      initPageLocals(res, db, dbId, dbInfo.tables);
+
+      res.render('pages/info', {
+        title: 'Database Info',
+        dbId,
+        settings: dbInfo.settings,
+        dialect: dbInfo.dialect,
+        dbPath: dbInfo.dbPath,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/export/:db', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = ctx.getContext(req);
+      const dbId = req.params.db;
+      const data = await TableService.getSqlDump(db);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(dbId)}-${stamp}.sql"`);
+      res.send(data);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- API Routes --------------------------------------------------------
 
   router.get('/api/tables/:db', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     try {
       const tables = await TableService.listTables(db);
       ok(res, tables);
@@ -18,22 +77,22 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   router.get('/api/tables/:db/:table/info', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    const info = await requireTable(db, req.params.table);
+    const db = ctx.getContext(req);
+    const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     ok(res, info);
   }));
 
   router.get('/api/tables/:db/:table/fk-options', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    const info = await requireTable(db, req.params.table);
+    const db = ctx.getContext(req);
+    const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const options = await TableService.getFkOptions(db, req.params.table, info);
     ok(res, options);
   }));
 
   router.get('/api/tables/:db/:table/ddl', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     try {
       const ddl = await TableService.getTableDdl(db, req.params.table);
       if (!ddl) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -43,8 +102,18 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     }
   }));
 
+  router.get('/api/info/:db/ddl', wrap(async (req, res) => {
+    const db = ctx.getContext(req);
+    try {
+      const dump = await TableService.getSchemaDump(db);
+      ok(res, dump);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to export schema DDL.', 500);
+    }
+  }));
+
   router.post('/api/tables/:db/:table/rename', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     const newName = String(req.body?.name ?? '').trim();
     if (!newName) return fail(res, 'New table name is required.');
     try {
@@ -56,7 +125,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   router.delete('/api/tables/:db/:table', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     try {
       await TableService.dropTable(db, req.params.table);
       ok(res, { message: `Table "${req.params.table}" dropped.` });
@@ -65,10 +134,10 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
     }
   }));
 
-  // ---- Bulk Table Operations -----------------------------------------------
+  // ---- Bulk Table Operations ---------------------------------------------
 
   router.post('/api/tables/:db/bulk-drop', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     const tables: string[] = Array.isArray(req.body?.tables)
       ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
       : [];
@@ -84,7 +153,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   router.post('/api/tables/:db/bulk-truncate', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     const tables: string[] = Array.isArray(req.body?.tables)
       ? (req.body.tables as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
       : [];
@@ -112,7 +181,7 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
   }));
 
   const createTableHandler = wrap(async (req: Request, res: Response) => {
-    const db = ctx.getDb(req);
+    const db = ctx.getContext(req);
     const name = String(req.body?.name ?? '').trim();
     const columns = (req.body?.columns ?? []) as ColumnDef[];
     if (!name) return fail(res, 'Table name is required.');
@@ -127,78 +196,4 @@ export function registerTableRoutes(router: Router, ctx: ApiContext): void {
 
   router.post('/api/tables/:db', createTableHandler);
   router.post('/api/tables/:db/create', createTableHandler);
-
-  // ---- Columns -----------------------------------------------------------
-
-  router.post('/api/tables/:db/:table/columns', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    const col = req.body as ColumnDef;
-    if (!col?.name) return fail(res, 'Column name is required.');
-    try {
-      await SchemaService.addColumn(db, req.params.table, col);
-      ok(res, { message: `Column "${col.name}" added.` }, 201);
-    } catch (err) {
-      fail(res, (err as Error).message ?? 'Failed to add column.');
-    }
-  }));
-
-  router.put('/api/tables/:db/:table/columns/:column', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    const col = req.body as ColumnDef;
-    if (!col) return fail(res, 'Column definition is required.');
-    try {
-      await SchemaService.modifyColumn(db, req.params.table, req.params.column, col);
-      ok(res, { message: `Column "${req.params.column}" updated.` });
-    } catch (err) {
-      fail(res, (err as Error).message ?? 'Failed to modify column.');
-    }
-  }));
-
-  router.post('/api/tables/:db/:table/columns/:column/rename', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    const newName = String(req.body?.name ?? '').trim();
-    if (!newName) return fail(res, 'New column name is required.');
-    try {
-      await SchemaService.renameColumn(db, req.params.table, req.params.column, newName);
-      ok(res, { message: `Column renamed to "${newName}".`, name: newName });
-    } catch (err) {
-      fail(res, (err as Error).message ?? 'Failed to rename column.');
-    }
-  }));
-
-  router.delete('/api/tables/:db/:table/columns/:column', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    try {
-      await SchemaService.dropColumn(db, req.params.table, req.params.column);
-      ok(res, { message: `Column "${req.params.column}" dropped.` });
-    } catch (err) {
-      fail(res, (err as Error).message ?? 'Failed to drop column.');
-    }
-  }));
-
-  // ---- Indexes -----------------------------------------------------------
-
-  router.post('/api/tables/:db/:table/indexes', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    const def = req.body as IndexDef;
-    if (!def || !Array.isArray(def.columns) || def.columns.length === 0) {
-      return fail(res, 'At least one column is required for an index.');
-    }
-    try {
-      await SchemaService.createIndex(db, req.params.table, def);
-      ok(res, { message: 'Index created.' }, 201);
-    } catch (err) {
-      fail(res, (err as Error).message ?? 'Failed to create index.');
-    }
-  }));
-
-  router.delete('/api/tables/:db/:table/indexes/:index', wrap(async (req, res) => {
-    const db = ctx.getDb(req);
-    try {
-      await SchemaService.dropIndex(db, req.params.index);
-      ok(res, { message: `Index "${req.params.index}" dropped.` });
-    } catch (err) {
-      fail(res, (err as Error).message ?? 'Failed to drop index.');
-    }
-  }));
 }

@@ -99,13 +99,6 @@ function seedDatabase(dbPath) {
       created_at DATETIME DEFAULT (datetime('now', '-1 hour'))
     );
 
-    CREATE TABLE _saved_queries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      sql TEXT NOT NULL,
-      created_at DATETIME DEFAULT (datetime('now', '-5 days'))
-    );
-
     INSERT INTO customers (name, email, role, is_verified, spend_total, created_at) VALUES
       ('Alice Johnson', 'alice.j@example.com', 'admin', 1, 1420.50, '2026-08-01 10:15:00'),
       ('Marcus Chen', 'marcus.chen@techcorp.io', 'member', 1, 890.00, '2026-08-03 14:22:00'),
@@ -139,9 +132,6 @@ function seedDatabase(dbPath) {
       ('USER_LOGIN', 'alice.j@example.com', '192.168.1.10', 'Successful admin authentication', '2026-08-21 08:00:00'),
       ('DATA_EXPORT', 'alice.j@example.com', '192.168.1.10', 'Exported orders table to CSV', '2026-08-21 09:14:00');
 
-    INSERT INTO _saved_queries (name, sql, created_at) VALUES
-      ('Recent High-Value Orders', 'SELECT o.order_number, c.name AS customer, p.title AS product, o.quantity, o.total_amount, o.status FROM orders o JOIN customers c ON o.customer_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.total_amount DESC LIMIT 10;', '2026-08-15 10:00:00'),
-      ('Product Stock & Revenue Summary', 'SELECT p.title, p.category, p.stock, p.price, COALESCE(SUM(o.quantity), 0) AS total_sold, COALESCE(SUM(o.total_amount), 0) AS total_revenue FROM products p LEFT JOIN orders o ON p.id = o.product_id GROUP BY p.id ORDER BY total_revenue DESC;', '2026-08-16 12:00:00');
   `);
 
   db.close();
@@ -248,13 +238,13 @@ async function capture() {
 
   try {
     // 1. Home Dashboard Overview
-    await takeScreenshot(`${singleServer.url}/`, 'home.png');
+    await takeScreenshot(`${singleServer.url}/home/ecommerce.db`, 'home.png');
 
     // 2. Table Browser (Clean state)
-    await takeScreenshot(`${singleServer.url}/tables/orders`, 'table.png');
+    await takeScreenshot(`${singleServer.url}/tables/ecommerce.db/orders`, 'table.png');
 
     // 3. Inline Row Editing & Staged Changes Bar
-    await takeScreenshot(`${singleServer.url}/tables/orders`, 'inline-editing.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/tables/ecommerce.db/orders`, 'inline-editing.png', async (p) => {
       await p.evaluate(() => {
         const rows = document.querySelectorAll('#main-table tbody tr');
         if (rows[0]) {
@@ -282,10 +272,10 @@ async function capture() {
     });
 
     // 4. Read-Only Mode (Top banner + locked state)
-    await takeScreenshot(`${roServer.url}/tables/orders`, 'readonly.png');
+    await takeScreenshot(`${roServer.url}/tables/ecommerce.db/orders`, 'readonly.png');
 
     // 5. Bulk Row Operations (Multi-select toolbar)
-    await takeScreenshot(`${singleServer.url}/tables/orders`, 'bulk-actions.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/tables/ecommerce.db/orders`, 'bulk-actions.png', async (p) => {
       await p.evaluate(() => {
         const checkboxes = document.querySelectorAll('.row-checkbox');
         if (checkboxes[0]) {
@@ -305,7 +295,7 @@ async function capture() {
     });
 
     // 6. JSON / Universal Data Inspector Modal
-    await takeScreenshot(`${singleServer.url}/tables/products`, 'inspector.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/tables/ecommerce.db/products`, 'inspector.png', async (p) => {
       await p.evaluate(() => {
         if (window.Inspector && window.Inspector.open) {
           window.Inspector.open({
@@ -322,10 +312,10 @@ async function capture() {
     });
 
     // 7. Schema Inspector
-    await takeScreenshot(`${singleServer.url}/tables/orders/schema`, 'schema.png');
+    await takeScreenshot(`${singleServer.url}/schema/ecommerce.db/orders`, 'schema.png');
 
     // 8. Visual Schema Designer
-    await takeScreenshot(`${singleServer.url}/designer`, 'designer.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/designer/ecommerce.db`, 'designer.png', async (p) => {
       await p.evaluate(() => {
         const tableNameInput = document.getElementById('table-name');
         if (tableNameInput) {
@@ -404,7 +394,7 @@ async function capture() {
     });
 
     // 9. Query Editor with Execution Results
-    await takeScreenshot(`${singleServer.url}/query`, 'query.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/query/ecommerce.db`, 'query.png', async (p) => {
       await p.evaluate(async () => {
         const queryText = `SELECT 
   o.order_number,
@@ -434,10 +424,10 @@ ORDER BY o.total_amount DESC;`;
     });
 
     // 10. Form / Edit Row
-    await takeScreenshot(`${singleServer.url}/tables/customers/rows/1/edit`, 'form.png');
+    await takeScreenshot(`${singleServer.url}/tables/ecommerce.db/customers/rows/1/edit`, 'form.png');
 
     // 11. Mock Data Seeder with Live Preview
-    await takeScreenshot(`${singleServer.url}/seed/customers`, 'seed.png', async (p) => {
+    await takeScreenshot(`${singleServer.url}/seed/ecommerce.db/customers`, 'seed.png', async (p) => {
       await p.evaluate(() => {
         const previewBtn = document.getElementById('seed-preview');
         if (previewBtn) {
@@ -450,6 +440,24 @@ ORDER BY o.total_amount DESC;`;
 
     // 12. Multi-Database Manager
     await takeScreenshot(`${mgrServer.url}/`, 'databases.png');
+
+    // 13. Entity Relationship Diagram (ERD)
+    await takeScreenshot(`${singleServer.url}/erd/ecommerce.db`, 'erd.png', async (p) => {
+      // Wait for the ERD canvas to finish rendering
+      await new Promise((r) => setTimeout(r, 1200));
+    });
+
+    // 14. New Row Form
+    await takeScreenshot(`${singleServer.url}/tables/ecommerce.db/customers/rows/new`, 'new-row.png');
+
+    // 15. Schema Designer with existing table loaded
+    await takeScreenshot(`${singleServer.url}/designer/ecommerce.db/orders`, 'designer-table.png');
+
+    // 16. Seed Table Picker (top-level seed page)
+    await takeScreenshot(`${singleServer.url}/seed/ecommerce.db`, 'seed-picker.png');
+
+    // 17. Database Info / Stats Page
+    await takeScreenshot(`${singleServer.url}/info/ecommerce.db`, 'db-info.png');
 
     console.log('\n✨ All comprehensive screenshots captured successfully!');
   } finally {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { SqliteDatabase } from '../src/db/database';
 import { createLogger } from '../src/utils/logger';
-import { createPrng, evaluateTemplate, extractTemplateDependencies, orderColumnDependencies, buildSchemaGraph, sortTopologically, isJunctionTable, validateGenerationPlan, SeedEngine, type GenerationPlan } from '../src/data/index';
+import { createPrng, evaluateTemplate, extractTemplateDependencies, orderColumnDependencies, isJunctionTable, validateGenerationPlan, SeedEngine, type GenerationPlan } from '../src/data/index';
 
 function openDb(schemaSql?: string): { db: SqliteDatabase; cleanup: () => void } {
   const root = mkdtempSync(path.join(tmpdir(), 'admindb-unified-test-'));

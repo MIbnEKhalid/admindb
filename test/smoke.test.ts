@@ -410,25 +410,6 @@ test('Smoke Tests: Single Database API Endpoints', async (t) => {
     assert.equal(json.data.rows[0].total, 4);
   });
 
-  await t.test('POST /api/queries saves a named query with 201 Created', async () => {
-    const res = await fetch(`${baseUrl}/api/queries/test.db`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Active Admins', sql: "SELECT * FROM users WHERE role = 'superadmin'" }),
-    });
-    assert.equal(res.status, 201);
-    const json = (await res.json()) as { success: boolean };
-    assert.equal(json.success, true);
-  });
-
-  await t.test('GET /api/queries lists saved queries with 200 OK', async () => {
-    const res = await fetch(`${baseUrl}/api/queries/test.db`);
-    assert.equal(res.status, 200);
-    const json = (await res.json()) as { success: boolean; data: { name: string }[] };
-    assert.equal(json.success, true);
-    assert.ok(json.data.some((q) => q.name === 'Active Admins'));
-  });
-
   await t.test('GET /api/tables/:table/seed/plan detects intelligent seed plan with 200 OK', async () => {
     const res = await fetch(`${baseUrl}/api/tables/test.db/users/seed/plan`);
     assert.equal(res.status, 200);

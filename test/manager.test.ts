@@ -24,7 +24,7 @@ test('DbManager scans a directory and supports create/list/has/remove', async ()
     assert.equal(mgr.list()[0].name, 'app.db');
     assert.equal(mgr.list()[0].id, 'app.db');
     assert.ok(existsSync(path.join(root, 'data', 'app.db')));
-    assert.ok((await mgr.countTables('app.db')) >= 1); // _saved_queries exists
+    assert.equal(await mgr.countTables('app.db'), 0);
 
     mgr.remove('app.db');
     assert.equal(mgr.has('app.db'), false);
@@ -55,7 +55,7 @@ test('DbManager includes explicit file paths from anywhere', async () => {
     assert.equal(list[0].name, 'sales.sqlite');
     assert.equal(list[0].path, external);
     assert.ok(mgr.has('sales.sqlite'));
-    assert.ok((await mgr.countTables('sales.sqlite')) >= 1);
+    assert.equal(await mgr.countTables('sales.sqlite'), 0);
   } finally {
     try {
       mgr?.closeAll();
@@ -102,7 +102,7 @@ test('DbManager dedupes colliding file names across sources', async () => {
     const ids = mgr.list().map((e) => e.id).sort();
     assert.deepEqual(ids, ['shared.db', 'shared__2.db']);
     assert.ok(mgr.has('shared__2.db'));
-    assert.ok((await mgr.countTables('shared__2.db')) >= 1);
+    assert.equal(await mgr.countTables('shared__2.db'), 0);
   } finally {
     try {
       mgr?.closeAll();
@@ -184,4 +184,79 @@ test('DbManager supports per-database readonly selection and mode toggling', asy
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('DbManager LRU connection pooling respects maxOpenDbs and evicts least-recently used', async () => {
+  const root = tempRoot();
+  const logger = createLogger('error');
+  let mgr: DbManager | undefined;
+  try {
+    const dir = path.join(root, 'data');
+    mgr = new DbManager({ dir, maxOpenDbs: 3 }, logger);
+
+    const dbs = ['db1', 'db2', 'db3', 'db4', 'db5'].map((name) => mgr!.create(name));
+    assert.equal(mgr.list().length, 5);
+
+    // Open db1, db2, db3
+    mgr.open('db1.db');
+    mgr.open('db2.db');
+    mgr.open('db3.db');
+
+    let stats = mgr.getPoolStats();
+    assert.equal(stats.openConnections, 3);
+    assert.deepEqual(stats.lruOrder, ['db1.db', 'db2.db', 'db3.db']);
+
+    // Access db1 again (moves it to the end of LRU)
+    mgr.open('db1.db');
+    stats = mgr.getPoolStats();
+    assert.deepEqual(stats.lruOrder, ['db2.db', 'db3.db', 'db1.db']);
+
+    // Open db4 -> should evict db2.db (the least recently used)
+    mgr.open('db4.db');
+    stats = mgr.getPoolStats();
+    assert.equal(stats.openConnections, 3);
+    assert.equal(mgr.get('db2.db'), undefined);
+    assert.deepEqual(stats.lruOrder, ['db3.db', 'db1.db', 'db4.db']);
+
+    // Open db5 -> should evict db3.db
+    mgr.open('db5.db');
+    stats = mgr.getPoolStats();
+    assert.equal(stats.openConnections, 3);
+    assert.equal(mgr.get('db3.db'), undefined);
+    assert.deepEqual(stats.lruOrder, ['db1.db', 'db4.db', 'db5.db']);
+  } finally {
+    try {
+      mgr?.closeAll();
+    } catch { /* ignore */ }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('DbManager pruneIdle closes idle connections older than threshold', async () => {
+  const root = tempRoot();
+  const logger = createLogger('error');
+  let mgr: DbManager | undefined;
+  try {
+    const dir = path.join(root, 'data');
+    mgr = new DbManager({ dir, idleTimeoutMs: 100 }, logger);
+    mgr.create('test1');
+    mgr.create('test2');
+
+    mgr.open('test1.db');
+    mgr.open('test2.db');
+    assert.equal(mgr.getPoolStats().openConnections, 2);
+
+    // Wait 120ms
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    const pruned = mgr.pruneIdle();
+    assert.equal(pruned, 2);
+    assert.equal(mgr.getPoolStats().openConnections, 0);
+  } finally {
+    try {
+      mgr?.closeAll();
+    } catch { /* ignore */ }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 

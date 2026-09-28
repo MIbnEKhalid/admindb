@@ -1,8 +1,10 @@
 import type { FilterCondition, FilterValue } from '../utils/common';
 import type { ColumnDef, IndexDef } from '../sql/generator';
+import type { IDatabaseDriver } from './dialects/types';
 
 /** Structured filter types are shared with the API layer. */
 export type { FilterCondition, FilterValue } from '../utils/common';
+export type { IDatabaseDriver } from './dialects/types';
 
 export type DatabaseDialect = 'sqlite' | 'postgres';
 
@@ -52,13 +54,6 @@ export interface TableInfoData {
   indexes: IndexInfo[];
   /** The table's `CREATE TABLE` statement (used to parse CHECK constraints). */
   sql: string | null;
-}
-
-export interface SavedQuery {
-  id: number;
-  name: string;
-  sql: string;
-  created_at: string;
 }
 
 export interface WhereClause {
@@ -136,23 +131,10 @@ export interface QueryOptions {
   filters?: RowFilters;
 }
 
-export const INTERNAL_TABLES = {
-  savedQueries: '_saved_queries',
-} as const;
-
 /**
  * Common interface implemented by both SQLite and PostgreSQL database adapters.
  */
-export interface IDatabase {
-  readonly path: string;
-  readonly isReadOnly: boolean;
-  readonly dialect: DatabaseDialect;
-
-  close(): Promise<void> | void;
-
-  all(sql: string, params?: SQLInputValue[]): Promise<Result<unknown[]>>;
-  run(sql: string, params?: SQLInputValue[]): Promise<Result<MutationResult>>;
-  execResult(sql: string): Promise<Result<{ changes?: number }>>;
+export interface IDatabase extends IDatabaseDriver {
   hasMultipleStatements(sql: string): boolean;
   runWrite(sql: string): Promise<Result<{ changes?: number }>>;
 
@@ -171,10 +153,6 @@ export interface IDatabase {
   getRowsByPks(table: string, pks: WhereClause[][]): Promise<Result<Record<string, unknown>[]>>;
   getRowsByFk(table: string, column: string, value: unknown, limit?: number): Promise<Result<{ rows: Record<string, unknown>[]; total: number }>>;
   getCreateStatement(table: string): Promise<Result<string | null>>;
-
-  listSavedQueries(): Promise<Result<SavedQuery[]>>;
-  saveQuery(name: string, sql: string): Promise<Result<MutationResult>>;
-  deleteSavedQuery(id: string | number): Promise<Result<MutationResult>>;
 
   getSettings(): Promise<Result<Record<string, string>>>;
   getSchema(table: string): Promise<Result<SchemaInfo>>;

@@ -87,8 +87,7 @@ test('ERD API: GET /api/erd', async (t) => {
       const res  = await fetch(`${baseUrl}/api/erd/test.db`);
       const json = await res.json() as ErdResponse;
       assert.equal(json.success, true);
-      const userTables = json.data.tables.filter((t) => t.name !== '_saved_queries');
-      assert.equal(userTables.length, 0);
+      assert.equal(json.data.tables.length, 0);
     } finally { await close(); }
   });
 

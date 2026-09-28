@@ -40,13 +40,23 @@ A modern database management and administration tool designed to make working wi
 
 <img src="schema.png" alt="Database Schema" width="100%">
 
-#### Database Designer
+#### Database Designer (Blank)
 
 <img src="designer.png" alt="Database Designer" width="100%">
+
+#### Database Designer (Existing Table)
+
+<img src="designer-table.png" alt="Database Designer with Table" width="100%">
 
 #### Inspector
 
 <img src="inspector.png" alt="Database Inspector" width="100%">
+
+---
+
+### Entity Relationship Diagram (ERD)
+
+<img src="erd.png" alt="Entity Relationship Diagram" width="100%">
 
 ---
 
@@ -58,10 +68,28 @@ A modern database management and administration tool designed to make working wi
 
 ### Data Forms
 
-<img src="form.png" alt="Data Form" width="100%">
+#### Edit Row
+
+<img src="form.png" alt="Edit Row Form" width="100%">
+
+#### New Row
+
+<img src="new-row.png" alt="New Row Form" width="100%">
 
 ---
 
 ### Seed Data Generator
 
+#### Table Picker
+
+<img src="seed-picker.png" alt="Seed Table Picker" width="100%">
+
+#### Generator with Preview
+
 <img src="seed.png" alt="Database Seed Generator" width="100%">
+
+---
+
+### Database Info
+
+<img src="db-info.png" alt="Database Info & Stats" width="100%">

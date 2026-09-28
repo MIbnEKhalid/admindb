@@ -2,9 +2,10 @@ import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import type { Logger } from '../utils/logger';
 import { quoteIdentifier, type ColumnDef, type IndexDef } from '../sql/generator';
 import { errorMessage, sanitizeConnectionString } from '../utils/common';
-import type { ColumnDetail, ColumnInfo, DatabaseDialect, ForeignKeyInfo, IDatabase, IndexInfo, MutationResult, PostgresOptions, QueryOptions, ReferencingTableInfo, Result, RowFilters, SavedQuery, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
-import { INTERNAL_TABLES } from './types';
+import type { DatabaseDialect, IDatabase, MutationResult, PostgresOptions, QueryOptions, ReferencingTableInfo, Result, RowFilters, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
 import { buildFilterClause, convertPlaceholdersToPostgres } from './filters';
+import { getDialect } from './dialects/index';
+import type { IDialect } from './dialects/types';
 
 export class PostgresDatabase implements IDatabase {
   private pool: Pool;
@@ -13,6 +14,7 @@ export class PostgresDatabase implements IDatabase {
   readonly isReadOnly: boolean;
   readonly dialect: DatabaseDialect = 'postgres';
   readonly schema: string;
+  readonly dialectInstance: IDialect;
 
   constructor(
     connection: string | PostgresOptions,
@@ -26,6 +28,7 @@ export class PostgresDatabase implements IDatabase {
 
     this.isReadOnly = Boolean(opts.readonly);
     this.schema = opts.schema || 'public';
+    this.dialectInstance = getDialect('postgres', this.schema);
 
     let sslConfig = opts.ssl;
     if (opts.connectionString) {
@@ -70,12 +73,6 @@ export class PostgresDatabase implements IDatabase {
       this.logger.error(`Unexpected PostgreSQL client error: ${errorMessage(err)}`);
     });
 
-    if (!this.isReadOnly) {
-      this.initSchema().catch((err) => {
-        this.logger.warn(`Failed to initialize Postgres schema: ${errorMessage(err)}`);
-      });
-    }
-
     this.logger.info(`Initialized PostgreSQL pool for ${this.path}${this.isReadOnly ? ' (read-only)' : ''}`);
   }
 
@@ -119,17 +116,6 @@ export class PostgresDatabase implements IDatabase {
     }
   }
 
-  private async initSchema(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE,
-        sql TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-  }
-
   hasMultipleStatements(sql: string): boolean {
     const s = String(sql ?? '').trim();
     if (!s) return false;
@@ -150,10 +136,10 @@ export class PostgresDatabase implements IDatabase {
     return count > 0;
   }
 
-  async all(sql: string, params: SQLInputValue[] = []): Promise<Result<unknown[]>> {
+  async all<T = unknown>(sql: string, params: SQLInputValue[] = []): Promise<Result<T[]>> {
     return this.tryRun(async () => {
       const res = await this.pool.query(convertPlaceholdersToPostgres(sql), params as unknown[]);
-      return res.rows;
+      return res.rows as T[];
     });
   }
 
@@ -181,159 +167,11 @@ export class PostgresDatabase implements IDatabase {
   }
 
   async listTables(): Promise<Result<TableListItem[]>> {
-    return this.tryRun(async () => {
-      const res = await this.pool.query<{ name: string }>(
-        `SELECT table_name AS name
-         FROM information_schema.tables
-         WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-         ORDER BY table_name;`,
-        [this.schema],
-      );
-      return res.rows.map((r) => ({ name: r.name }));
-    });
+    return this.dialectInstance.introspector.listTables(this.pool);
   }
 
   async getTableInfo(table: string): Promise<Result<TableInfoData>> {
-    return this.tryRun(async () => {
-      const [colRes, pkRes, fkRes, idxRes] = await Promise.all([
-        this.pool.query<{
-          cid: number;
-          name: string;
-          type: string;
-          udt_name: string;
-          notnull: number;
-          dflt_value: string | null;
-        }>(
-          `SELECT
-             ordinal_position AS cid,
-             column_name AS name,
-             data_type AS type,
-             udt_name,
-             CASE WHEN is_nullable = 'NO' THEN 1 ELSE 0 END AS notnull,
-             column_default AS dflt_value
-           FROM information_schema.columns
-           WHERE table_schema = $1 AND table_name = $2
-           ORDER BY ordinal_position;`,
-          [this.schema, table],
-        ),
-        this.pool.query<{ column_name: string }>(
-          `SELECT kcu.column_name
-           FROM information_schema.table_constraints tc
-           JOIN information_schema.key_column_usage kcu
-             ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema = kcu.table_schema
-           WHERE tc.constraint_type = 'PRIMARY KEY'
-             AND tc.table_schema = $1
-             AND tc.table_name = $2
-           ORDER BY kcu.ordinal_position;`,
-          [this.schema, table],
-        ),
-        this.pool.query<{
-          id: number;
-          seq: number;
-          table: string;
-          from: string;
-          to: string | null;
-          on_update: string;
-          on_delete: string;
-        }>(
-          `SELECT
-             row_number() OVER () AS id,
-             kcu.position_in_unique_constraint AS seq,
-             ccu.table_name AS table,
-             kcu.column_name AS "from",
-             ccu.column_name AS "to",
-             rc.update_rule AS on_update,
-             rc.delete_rule AS on_delete
-           FROM information_schema.table_constraints AS tc
-           JOIN information_schema.key_column_usage AS kcu
-             ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema = kcu.table_schema
-           JOIN information_schema.constraint_column_usage AS ccu
-             ON ccu.constraint_name = tc.constraint_name
-             AND ccu.table_schema = tc.table_schema
-           JOIN information_schema.referential_constraints AS rc
-             ON rc.constraint_name = tc.constraint_name
-             AND rc.constraint_schema = tc.table_schema
-           WHERE tc.constraint_type = 'FOREIGN KEY'
-             AND tc.table_schema = $1
-             AND tc.table_name = $2;`,
-          [this.schema, table],
-        ),
-        this.pool.query<{
-          name: string;
-          unique: boolean;
-          sql: string | null;
-          columns: string[];
-        }>(
-          `SELECT
-             i.relname AS name,
-             ix.indisunique AS unique,
-             pg_get_indexdef(ix.indexrelid) AS sql,
-             ARRAY(
-               SELECT pg_get_indexdef(ix.indexrelid, k + 1, true)
-               FROM generate_subscripts(ix.indkey, 1) as k
-               ORDER BY k
-             ) AS columns
-           FROM pg_index ix
-           JOIN pg_class t ON t.oid = ix.indrelid
-           JOIN pg_class i ON i.oid = ix.indexrelid
-           JOIN pg_namespace n ON n.oid = t.relnamespace
-           WHERE n.nspname = $1 AND t.relname = $2;`,
-          [this.schema, table],
-        ),
-      ]);
-
-      const primaryKey = pkRes.rows.map((r) => r.column_name);
-      const columns: ColumnInfo[] = colRes.rows.map((c) => {
-        const isPk = primaryKey.includes(c.name);
-        const displayType = c.type === 'USER-DEFINED' ? c.udt_name : c.type;
-        return {
-          cid: c.cid,
-          name: c.name,
-          type: displayType.toUpperCase(),
-          notnull: c.notnull,
-          dflt_value: c.dflt_value,
-          pk: isPk ? primaryKey.indexOf(c.name) + 1 : 0,
-        };
-      });
-
-      const indexes: IndexInfo[] = idxRes.rows.map((ix) => ({
-        name: ix.name,
-        unique: Boolean(ix.unique),
-        partial: 0,
-        origin: 'c',
-        columns: Array.isArray(ix.columns) ? ix.columns : [],
-        sql: ix.sql,
-      }));
-
-      const colDefs = columns.map((c) => {
-        let def = `  ${quoteIdentifier(c.name)} ${c.type}`;
-        if (c.notnull) def += ' NOT NULL';
-        if (c.dflt_value) def += ` DEFAULT ${c.dflt_value}`;
-        return def;
-      });
-      if (primaryKey.length) {
-        colDefs.push(`  PRIMARY KEY (${primaryKey.map(quoteIdentifier).join(', ')})`);
-      }
-
-      return {
-        table,
-        columns,
-        foreignKeys: fkRes.rows.map((f) => ({
-          id: Number(f.id),
-          seq: Number(f.seq ?? 1),
-          table: f.table,
-          from: f.from,
-          to: f.to,
-          on_update: f.on_update,
-          on_delete: f.on_delete,
-        })),
-        primaryKey,
-        indexes,
-        sql: `CREATE TABLE ${quoteIdentifier(table)} (\n${colDefs.join(',\n')}\n);`,
-      };
-    });
+    return this.dialectInstance.introspector.getTableInfo(this.pool, table);
   }
 
   async getRowCount(table: string, filters?: RowFilters): Promise<Result<number>> {
@@ -522,35 +360,6 @@ export class PostgresDatabase implements IDatabase {
     return { success: true, data: info.data.sql };
   }
 
-  async listSavedQueries(): Promise<Result<SavedQuery[]>> {
-    return this.tryRun(async () => {
-      const res = await this.pool.query<SavedQuery>(
-        `SELECT id, name, sql, created_at FROM ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} ORDER BY name`,
-      );
-      return res.rows;
-    });
-  }
-
-  async saveQuery(name: string, sql: string): Promise<Result<MutationResult>> {
-    return this.tryRun(async () => {
-      const res = await this.pool.query(
-        `INSERT INTO ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} (name, sql) VALUES ($1, $2) RETURNING id`,
-        [name, sql],
-      );
-      return { changes: res.rowCount ?? 1, lastInsertRowid: Number(res.rows[0]?.id ?? null) };
-    });
-  }
-
-  async deleteSavedQuery(id: string | number): Promise<Result<MutationResult>> {
-    return this.tryRun(async () => {
-      const res = await this.pool.query(
-        `DELETE FROM ${quoteIdentifier(INTERNAL_TABLES.savedQueries)} WHERE id = $1`,
-        [Number(id)],
-      );
-      return { changes: res.rowCount ?? 0, lastInsertRowid: null };
-    });
-  }
-
   async getSettings(): Promise<Result<Record<string, string>>> {
     return this.tryRun(async () => {
       const keys = ['server_version', 'max_connections', 'port', 'timezone', 'shared_buffers', 'work_mem'];
@@ -572,113 +381,17 @@ export class PostgresDatabase implements IDatabase {
   }
 
   async getSchema(table: string): Promise<Result<SchemaInfo>> {
-    return this.tryRun(async () => {
-      const infoR = await this.getTableInfo(table);
-      if (!infoR.success || !infoR.data) throw new Error(infoR.error || `Table ${table} not found.`);
-      const { columns, foreignKeys, indexes, primaryKey } = infoR.data;
-
-      const refRes = await this.pool.query<{ table: string; from: string; to: string }>(
-        `SELECT
-           tc.table_name AS table,
-           kcu.column_name AS "from",
-           ccu.column_name AS "to"
-         FROM information_schema.table_constraints AS tc
-         JOIN information_schema.key_column_usage AS kcu
-           ON tc.constraint_name = kcu.constraint_name
-           AND tc.table_schema = kcu.table_schema
-         JOIN information_schema.constraint_column_usage AS ccu
-           ON ccu.constraint_name = tc.constraint_name
-           AND ccu.table_schema = tc.table_schema
-         WHERE tc.constraint_type = 'FOREIGN KEY'
-           AND tc.table_schema = $1
-           AND ccu.table_name = $2;`,
-        [this.schema, table],
-      );
-
-      const references = refRes.rows;
-      const columnDetails: ColumnDetail[] = columns.map((col) => {
-        const isPk = primaryKey.includes(col.name);
-        const fk = foreignKeys.find((f) => f.from === col.name) ?? null;
-        const matchingIndexes = indexes.filter((i) => i.columns.includes(col.name));
-        const unique = matchingIndexes.some((i) => i.unique && i.columns.length === 1 && i.columns[0] === col.name);
-        const indexed = matchingIndexes.length > 0;
-        const referencedBy = references
-          .filter((r) => r.to === col.name)
-          .map((r) => ({ table: r.table, from: r.from }));
-
-        const dropBlockers: string[] = [];
-        if (isPk && primaryKey.length === 1) dropBlockers.push('Primary key');
-        if (referencedBy.length > 0) {
-          dropBlockers.push(`Referenced by ${referencedBy.map((r) => `${r.table}.${r.from}`).join(', ')}`);
-        }
-
-        return {
-          ...col,
-          unique,
-          indexed,
-          referencedBy,
-          fk,
-          canDrop: dropBlockers.length === 0,
-          dropBlockers,
-        };
-      });
-
-      return {
-        table,
-        columns: columnDetails,
-        foreignKeys,
-        indexes,
-        references,
-      };
-    });
+    return this.dialectInstance.introspector.getSchema(this.pool, table);
   }
 
   async getReferencingTables(table: string): Promise<Result<ReferencingTableInfo[]>> {
-    return this.tryRun(async () => {
-      const refRes = await this.pool.query<{ table: string; from: string; to: string }>(
-        `SELECT
-           tc.table_name AS table,
-           kcu.column_name AS "from",
-           ccu.column_name AS "to"
-         FROM information_schema.table_constraints AS tc
-         JOIN information_schema.key_column_usage AS kcu
-           ON tc.constraint_name = kcu.constraint_name
-           AND tc.table_schema = kcu.table_schema
-         JOIN information_schema.constraint_column_usage AS ccu
-           ON ccu.constraint_name = tc.constraint_name
-           AND ccu.table_schema = tc.table_schema
-         WHERE tc.constraint_type = 'FOREIGN KEY'
-           AND tc.table_schema = $1
-           AND ccu.table_name = $2;`,
-        [this.schema, table],
-      );
-
-      const byTable = new Map<string, { from: string; to: string }[]>();
-      for (const r of refRes.rows) {
-        if (!byTable.has(r.table)) byTable.set(r.table, []);
-        byTable.get(r.table)!.push({ from: r.from, to: r.to });
-      }
-
-      const results: ReferencingTableInfo[] = [];
-      for (const [tbl, refs] of byTable.entries()) {
-        try {
-          const countRes = await this.pool.query<{ c: string | number }>(
-            `SELECT COUNT(*) AS c FROM ${quoteIdentifier(tbl)} WHERE ${refs.map((r) => `${quoteIdentifier(r.from)} IS NOT NULL`).join(' OR ')}`,
-          );
-          results.push({ table: tbl, refs, refCount: Number(countRes.rows[0]?.c ?? 0) });
-        } catch {
-          results.push({ table: tbl, refs, refCount: 0 });
-        }
-      }
-
-      return results;
-    });
+    return this.dialectInstance.introspector.getReferencingTables(this.pool, table);
   }
 
   async renameTable(oldName: string, newName: string): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      await this.pool.query(`ALTER TABLE ${quoteIdentifier(oldName)} RENAME TO ${quoteIdentifier(newName)};`);
+      await this.pool.query(this.dialectInstance.ddl.renameTable(oldName, newName));
       return { changes: 1 };
     });
   }
@@ -686,83 +399,29 @@ export class PostgresDatabase implements IDatabase {
   async addColumn(table: string, col: ColumnDef): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      let sql = `ALTER TABLE ${quoteIdentifier(table)} ADD COLUMN ${quoteIdentifier(col.name)} ${col.type}`;
-      if (col.notNull) sql += ' NOT NULL';
-      if (col.defaultValue !== undefined && col.defaultValue !== null && col.defaultValue !== '') {
-        sql += ` DEFAULT ${col.defaultValue}`;
-      }
-      if (col.foreignKey) {
-        sql += ` REFERENCES ${quoteIdentifier(col.foreignKey.table)} (${quoteIdentifier(col.foreignKey.column)})`;
-      }
-      await this.pool.query(sql);
-
+      await this.pool.query(this.dialectInstance.ddl.addColumn(table, col));
       if (col.unique) {
-        const idxName = `idx_${table}_${col.name}_unique`;
         await this.pool.query(
-          `CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(idxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(col.name)});`,
+          this.dialectInstance.ddl.createIndex(table, {
+            name: `idx_${table}_${col.name}_unique`,
+            columns: [col.name],
+            unique: true,
+          }),
         );
       }
-
       return { changes: 1 };
     });
   }
 
   async modifyColumn(table: string, oldColName: string, newColDef: ColumnDef): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
-    return this.tryRun(async () => {
-      const newName = String(newColDef.name || oldColName).trim();
-
-      if (oldColName !== newName) {
-        await this.pool.query(
-          `ALTER TABLE ${quoteIdentifier(table)} RENAME COLUMN ${quoteIdentifier(oldColName)} TO ${quoteIdentifier(newName)};`,
-        );
-      }
-
-      const colToModify = newName;
-
-      if (newColDef.type) {
-        await this.pool.query(
-          `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} TYPE ${newColDef.type} USING ${quoteIdentifier(colToModify)}::${newColDef.type};`,
-        );
-      }
-
-      if (newColDef.notNull !== undefined) {
-        const action = newColDef.notNull ? 'SET NOT NULL' : 'DROP NOT NULL';
-        await this.pool.query(
-          `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} ${action};`,
-        );
-      }
-
-      if (newColDef.defaultValue !== undefined) {
-        const action = newColDef.defaultValue === null || newColDef.defaultValue === ''
-          ? 'DROP DEFAULT'
-          : `SET DEFAULT ${newColDef.defaultValue}`;
-        await this.pool.query(
-          `ALTER TABLE ${quoteIdentifier(table)} ALTER COLUMN ${quoteIdentifier(colToModify)} ${action};`,
-        );
-      }
-
-      if (newColDef.unique !== undefined) {
-        const idxName = `idx_${table}_${colToModify}_unique`;
-        if (newColDef.unique) {
-          await this.pool.query(
-            `CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(idxName)} ON ${quoteIdentifier(table)} (${quoteIdentifier(colToModify)});`,
-          );
-        } else {
-          await this.pool.query(`DROP INDEX IF EXISTS ${quoteIdentifier(idxName)};`);
-        }
-      }
-
-      return { changes: 1 };
-    });
+    return this.dialectInstance.ddl.modifyColumn(this.pool, table, oldColName, newColDef);
   }
 
   async renameColumn(table: string, oldName: string, newName: string): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      await this.pool.query(
-        `ALTER TABLE ${quoteIdentifier(table)} RENAME COLUMN ${quoteIdentifier(oldName)} TO ${quoteIdentifier(newName)};`,
-      );
+      await this.pool.query(this.dialectInstance.ddl.renameColumn(table, oldName, newName));
       return { changes: 1 };
     });
   }
@@ -770,9 +429,7 @@ export class PostgresDatabase implements IDatabase {
   async dropColumn(table: string, column: string): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      await this.pool.query(
-        `ALTER TABLE ${quoteIdentifier(table)} DROP COLUMN ${quoteIdentifier(column)} CASCADE;`,
-      );
+      await this.pool.query(this.dialectInstance.ddl.dropColumn(table, column));
       return { changes: 1 };
     });
   }
@@ -780,7 +437,7 @@ export class PostgresDatabase implements IDatabase {
   async dropTable(table: string): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      await this.pool.query(`DROP TABLE ${quoteIdentifier(table)} CASCADE;`);
+      await this.pool.query(this.dialectInstance.ddl.dropTable(table, { cascade: true }));
       return { changes: 1 };
     });
   }
@@ -788,12 +445,7 @@ export class PostgresDatabase implements IDatabase {
   async createIndex(table: string, index: IndexDef): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      const unique = index.unique ? 'UNIQUE ' : '';
-      const cols = index.columns.map(quoteIdentifier).join(', ');
-      const name = index.name || `idx_${table}_${index.columns.join('_')}`;
-      await this.pool.query(
-        `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdentifier(name)} ON ${quoteIdentifier(table)} (${cols});`,
-      );
+      await this.pool.query(this.dialectInstance.ddl.createIndex(table, index));
       return { changes: 1 };
     });
   }
@@ -801,8 +453,9 @@ export class PostgresDatabase implements IDatabase {
   async dropIndex(indexName: string): Promise<Result<{ changes?: number }>> {
     if (this.isReadOnly) return this.readonlyBlocked();
     return this.tryRun(async () => {
-      await this.pool.query(`DROP INDEX IF EXISTS ${quoteIdentifier(indexName)} CASCADE;`);
+      await this.pool.query(this.dialectInstance.ddl.dropIndex(indexName));
       return { changes: 1 };
     });
   }
 }
+

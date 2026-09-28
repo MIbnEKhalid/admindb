@@ -49,7 +49,7 @@
         {{{icon "seed" class="h-6 w-6"}}}
       </span>
       <div>
-        <div class="text-2xl font-extrabold tabular-nums">{{savedQueries}}</div>
+        <div class="text-2xl font-extrabold tabular-nums" id="stat-saved-queries">0</div>
         <div class="text-[13px] text-base-content/50">Saved queries</div>
       </div>
     </div>
@@ -265,3 +265,14 @@
 {{#if tables.length}}
 <script src="{{basePath}}/js/home.js" defer></script>
 {{/if}}
+<script>
+  (function () {
+    try {
+      var currentDbId = '{{dbId}}';
+      var raw = localStorage.getItem('admindb_saved_queries_' + currentDbId);
+      var count = raw ? JSON.parse(raw).length : 0;
+      var el = document.getElementById('stat-saved-queries');
+      if (el) el.textContent = String(count);
+    } catch (_) {}
+  })();
+</script>

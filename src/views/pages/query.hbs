@@ -30,9 +30,6 @@
       <label class="field-label" for="saved-query-select">Saved queries</label>
       <select id="saved-query-select" class="field-select">
         <option value="">— select a saved query —</option>
-        {{#each savedQueries}}
-          <option value="{{this.id}}">{{this.name}}</option>
-        {{/each}}
       </select>
     </div>
     {{#unless readonly}}

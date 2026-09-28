@@ -1,4 +1,5 @@
 import type { IDatabase, TableInfoData } from '../../db/index';
+import type { DatabaseContext } from '../../core/context';
 import { quoteIdentifier } from '../../sql/generator';
 import { buildColumnConfigs, buildSeedInsertSql, generateRows, getErChainConfig, generateChainRows, executeChainInsert, MAX_SEED_ROWS, SeedEngine, validateGenerationPlan, sanitizeColumnPlan, type ColumnPlan, type ErChainScope, type GenerationPlan, type TableGenerationMode, type TableGenerationSpec, type RelationshipConfig } from '../../data/index';
 
@@ -116,21 +117,21 @@ export function parseUnifiedGenerationPlan(body: unknown): GenerationPlan {
 }
 
 export class SeedService {
-  static async validatePlan(db: IDatabase, plan: GenerationPlan) {
-    return validateGenerationPlan(db, plan);
+  static async validatePlan(ctx: DatabaseContext, plan: GenerationPlan) {
+    return validateGenerationPlan(ctx.db, plan);
   }
 
-  static async previewPlan(db: IDatabase, plan: GenerationPlan) {
-    return SeedEngine.executePlan(db, plan, { previewLimit: 50 });
+  static async previewPlan(ctx: DatabaseContext, plan: GenerationPlan) {
+    return SeedEngine.executePlan(ctx.db, plan, { previewLimit: 50 });
   }
 
-  static async generatePlan(db: IDatabase, plan: GenerationPlan) {
-    return SeedEngine.executePlan(db, plan);
+  static async generatePlan(ctx: DatabaseContext, plan: GenerationPlan) {
+    return SeedEngine.executePlan(ctx.db, plan);
   }
 
-  static async executePlan(db: IDatabase, plan: GenerationPlan, truncate = false) {
-    const gen = await SeedEngine.executePlan(db, plan, { truncateAll: truncate });
-    const exec = await executeChainInsert(db, gen, truncate);
+  static async executePlan(ctx: DatabaseContext, plan: GenerationPlan, truncate = false) {
+    const gen = await SeedEngine.executePlan(ctx.db, plan, { truncateAll: truncate });
+    const exec = await executeChainInsert(ctx.db, gen, truncate);
     return {
       message: `${truncate ? 'Cleared tables and seeded' : 'Seeded'} ${exec.totalInserted} row(s) across ${Object.keys(exec.inserted).length} table(s) in ${exec.elapsedMs}ms.`,
       inserted: exec.inserted,
@@ -145,35 +146,36 @@ export class SeedService {
   }
 
   static async previewSingleTable(
-    db: IDatabase,
+    ctx: DatabaseContext,
     info: TableInfoData,
     count: number,
     plan: Record<string, ColumnPlan>,
   ) {
     const configs = buildColumnConfigs(info);
-    const gen = await generateRows(db, info, configs, Math.min(50, count), plan);
+    const gen = await generateRows(ctx.db, info, configs, Math.min(50, count), plan);
     return { table: info.table, previewRows: gen.previewRows, warnings: gen.warnings };
   }
 
   static async generateSingleTable(
-    db: IDatabase,
+    ctx: DatabaseContext,
     info: TableInfoData,
     count: number,
     plan: Record<string, ColumnPlan>,
   ) {
     const configs = buildColumnConfigs(info);
-    const gen = await generateRows(db, info, configs, count, plan);
+    const gen = await generateRows(ctx.db, info, configs, count, plan);
     return { table: info.table, count: gen.rows.length, sql: buildSeedInsertSql(info.table, gen.rows), previewRows: gen.previewRows, warnings: gen.warnings };
   }
 
   static async seedSingleTable(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     info: TableInfoData,
     count: number,
     plan: Record<string, ColumnPlan>,
     truncate: boolean,
   ) {
+    const { db } = ctx;
     const configs = buildColumnConfigs(info);
     const t0 = Date.now();
 
@@ -198,12 +200,12 @@ export class SeedService {
     };
   }
 
-  static async getChainConfig(db: IDatabase, table: string, scope: ErChainScope) {
-    return getErChainConfig(db, table, scope);
+  static async getChainConfig(ctx: DatabaseContext, table: string, scope: ErChainScope) {
+    return getErChainConfig(ctx.db, table, scope);
   }
 
   static async previewChain(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     scope: ErChainScope,
     counts: Record<string, number>,
@@ -211,16 +213,16 @@ export class SeedService {
     modes?: Record<string, TableGenerationMode>,
     seed?: number | null,
   ) {
-    const config = await getErChainConfig(db, table, scope);
+    const config = await getErChainConfig(ctx.db, table, scope);
     const previewCounts: Record<string, number> = {};
     for (const t of config.tables) {
       previewCounts[t.name] = Math.min(50, counts[t.name] ?? t.suggestedCount ?? 10);
     }
-    return generateChainRows(db, config, plans, previewCounts, false, modes, seed);
+    return generateChainRows(ctx.db, config, plans, previewCounts, false, modes, seed);
   }
 
   static async generateChain(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     scope: ErChainScope,
     counts: Record<string, number>,
@@ -228,12 +230,12 @@ export class SeedService {
     modes?: Record<string, TableGenerationMode>,
     seed?: number | null,
   ) {
-    const config = await getErChainConfig(db, table, scope);
-    return generateChainRows(db, config, plans, counts, false, modes, seed);
+    const config = await getErChainConfig(ctx.db, table, scope);
+    return generateChainRows(ctx.db, config, plans, counts, false, modes, seed);
   }
 
   static async executeChain(
-    db: IDatabase,
+    ctx: DatabaseContext,
     table: string,
     scope: ErChainScope,
     counts: Record<string, number>,
@@ -242,9 +244,9 @@ export class SeedService {
     modes?: Record<string, TableGenerationMode>,
     seed?: number | null,
   ) {
-    const config = await getErChainConfig(db, table, scope);
-    const gen = await generateChainRows(db, config, plans, counts, truncate, modes, seed);
-    const exec = await executeChainInsert(db, gen, truncate);
+    const config = await getErChainConfig(ctx.db, table, scope);
+    const gen = await generateChainRows(ctx.db, config, plans, counts, truncate, modes, seed);
+    const exec = await executeChainInsert(ctx.db, gen, truncate);
     return {
       message: `${truncate ? 'Cleared tables in reverse order and seeded' : 'Seeded'} ${exec.totalInserted} row(s) across ${Object.keys(exec.inserted).length} table(s) in ${exec.elapsedMs}ms.`,
       inserted: exec.inserted,

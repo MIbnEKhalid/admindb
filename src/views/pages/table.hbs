@@ -129,7 +129,7 @@
           </button>
           <label class="flex items-center gap-2 text-xs text-base-content/55">
             Per page
-            <select id="page-size" class="field-select !w-auto !py-1 !text-xs" data-table="{{table}}" data-orderby="{{orderBy}}" data-orderdir="{{orderDir}}" data-filters="{{filterQS}}">
+            <select id="page-size" class="field-select !w-auto !py-1 !text-xs" data-db="{{dbId}}" data-table="{{table}}" data-orderby="{{orderBy}}" data-orderdir="{{orderDir}}" data-filters="{{filterQS}}">
               {{#each sizes}}<option value="{{this}}" {{#if (eq this ../pageSize)}}selected{{/if}}>{{this}}</option>{{/each}}
             </select>
           </label>
