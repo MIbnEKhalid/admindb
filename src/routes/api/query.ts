@@ -1,8 +1,6 @@
 import type { Router } from 'express';
-import { classifySql } from '../../sql/classifier';
-import { analyzeSqlError } from '../../sql/error-analyzer';
-import { normalizeRow } from '../../utils/common';
 import { type ApiContext, ok, fail, wrap } from './helpers';
+import { QueryService, QueryExecutionError } from '../../modules/query/index';
 
 export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
   // ---- Query runner ------------------------------------------------------
@@ -12,53 +10,30 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
     const rawSql = String(req.body?.sql ?? '').trim();
     if (!rawSql) return fail(res, 'SQL query is required.');
 
-    const { kind } = classifySql(rawSql);
-
-    if (db.hasMultipleStatements(rawSql)) {
-      if (db.isReadOnly) {
-        return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
+    try {
+      const result = await QueryService.execute(db, rawSql);
+      ok(res, result);
+    } catch (err) {
+      if (err instanceof QueryExecutionError) {
+        return fail(res, err.message, err.statusCode, err.details as unknown as Record<string, unknown>);
       }
-      const r = await db.execResult(rawSql);
-      if (!r.success) {
-        const details = await analyzeSqlError(rawSql, r.error ?? 'Script execution failed.', db);
-        return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
-      }
-      return ok(res, { kind: 'script', message: 'Script executed successfully.' });
+      fail(res, (err as Error).message ?? 'Query failed.', 500);
     }
-
-    if (kind === 'select' || kind === 'read' || kind === 'count') {
-      const r = await db.all(rawSql);
-      if (!r.success) {
-        const details = await analyzeSqlError(rawSql, r.error ?? 'Query execution failed.', db);
-        return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
-      }
-      const rows = ((r.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
-      return ok(res, { kind: 'select', columns: rows.length ? Object.keys(rows[0]) : [], rows });
-    }
-
-    if (db.isReadOnly) {
-      return fail(res, 'Database is open in read-only mode — write statements are disabled.', 403);
-    }
-    const r = await db.runWrite(rawSql);
-    if (!r.success) {
-      const details = await analyzeSqlError(rawSql, r.error ?? 'Statement execution failed.', db);
-      return fail(res, r.error ?? 'Query failed.', 400, details as unknown as Record<string, unknown>);
-    }
-    const changes = r.data?.changes as number | undefined;
-    ok(res, {
-      kind: 'write',
-      changes: changes ?? null,
-      message: changes != null ? `${changes} row(s) affected.` : 'Statement executed successfully.',
-    });
   }));
 
   // ---- Saved queries -----------------------------------------------------
 
   router.get('/api/queries/:db', wrap(async (req, res) => {
     const db = ctx.getDb(req);
-    const r = await db.listSavedQueries();
-    if (!r.success) return fail(res, r.error ?? 'Failed to load queries.', 500);
-    ok(res, r.data);
+    try {
+      const queries = await QueryService.listSavedQueries(db);
+      ok(res, queries);
+    } catch (err) {
+      if (err instanceof QueryExecutionError) {
+        return fail(res, err.message, err.statusCode);
+      }
+      fail(res, (err as Error).message ?? 'Failed to load queries.', 500);
+    }
   }));
 
   router.post('/api/queries/:db', wrap(async (req, res) => {
@@ -67,15 +42,27 @@ export function registerQueryRoutes(router: Router, ctx: ApiContext): void {
     const sql = String(req.body?.sql ?? '').trim();
     if (!name) return fail(res, 'Query name is required.');
     if (!sql) return fail(res, 'Query SQL is required.');
-    const r = await db.saveQuery(name, sql);
-    if (!r.success) return fail(res, r.error ?? 'Failed to save query.', 400);
-    ok(res, { message: 'Query saved.' }, 201);
+    try {
+      const result = await QueryService.saveQuery(db, name, sql);
+      ok(res, result, 201);
+    } catch (err) {
+      if (err instanceof QueryExecutionError) {
+        return fail(res, err.message, err.statusCode);
+      }
+      fail(res, (err as Error).message ?? 'Failed to save query.', 400);
+    }
   }));
 
   router.delete('/api/queries/:db/:id', wrap(async (req, res) => {
     const db = ctx.getDb(req);
-    const r = await db.deleteSavedQuery(req.params.id);
-    if (!r.success) return fail(res, r.error ?? 'Failed to delete query.', 400);
-    ok(res, { message: 'Query deleted.' });
+    try {
+      const result = await QueryService.deleteSavedQuery(db, req.params.id);
+      ok(res, result);
+    } catch (err) {
+      if (err instanceof QueryExecutionError) {
+        return fail(res, err.message, err.statusCode);
+      }
+      fail(res, (err as Error).message ?? 'Failed to delete query.', 400);
+    }
   }));
 }

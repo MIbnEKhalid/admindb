@@ -1,9 +1,11 @@
 import type { Router, Request, Response, NextFunction } from 'express';
-import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { DbManager, DatabaseEntry } from '../db/manager';
+import type { DbManager } from '../db/manager';
 import type { Logger } from '../utils/logger';
-import { errorMessage, isPathWithinRoot, formatBytes, isPostgresConnectionString } from '../utils/common';
+import { errorMessage } from '../utils/common';
+import { DatabasesService, type DatabaseRow, type FsEntry } from '../modules/databases/index';
+
+export type { DatabaseRow, FsEntry };
 
 interface DatabasesContext {
   manager: DbManager;
@@ -13,42 +15,6 @@ interface DatabasesContext {
   allowBrowse?: boolean;
   browseRoot?: string;
   invalidate?: (id: string) => void;
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-}
-
-export interface DatabaseRow extends DatabaseEntry {
-  sizeLabel: string;
-  modifiedLabel: string;
-  tables: number;
-}
-
-export interface FsEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  isDb: boolean;
-  size: number;
-}
-
-async function getDatabaseRows(manager: DbManager): Promise<DatabaseRow[]> {
-  const entries = manager.list();
-  return Promise.all(
-    entries.map(async (e) => ({
-      ...e,
-      isPostgres: e.dialect === 'postgres',
-      isSqlite: e.dialect === 'sqlite',
-      sizeLabel: e.dialect === 'postgres' ? 'Remote' : formatBytes(e.size),
-      modifiedLabel: e.dialect === 'postgres' ? 'Connected' : (e.modified ? formatDate(e.modified) : '—'),
-      tables: await manager.countTables(e.id),
-    })),
-  );
 }
 
 export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): void {
@@ -72,7 +38,7 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
       res.render('pages/databases', {
         title: 'Databases',
         databasesMode: true,
-        databases: await getDatabaseRows(manager),
+        databases: await DatabasesService.getDatabaseRows(manager),
         dbDir: manager.directory,
         readonly: Boolean(ctx.readonly),
         allowBrowse,
@@ -85,91 +51,47 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
   });
 
   router.get('/api/databases', wrap(async (_req, res) => {
-    res.json({ success: true, data: await getDatabaseRows(manager) });
+    res.json({ success: true, data: await DatabasesService.getDatabaseRows(manager) });
   }));
-
-  const BLOCKED_NAMES = new Set([
-    'node_modules',
-    '.git',
-    '.svn',
-    '.hg',
-    'System Volume Information',
-    '$RECYCLE.BIN',
-    '.env',
-    '.aws',
-    '.ssh',
-  ]);
-
-  function listDirectory(abs: string): FsEntry[] {
-    const entries: FsEntry[] = [];
-    for (const name of readdirSync(abs)) {
-      if (name.startsWith('.') || BLOCKED_NAMES.has(name) || name.toLowerCase().startsWith('.env')) continue;
-      const full = path.join(abs, name);
-      let isDir = false;
-      let size = 0;
-      try {
-        const st = statSync(full);
-        isDir = st.isDirectory();
-        size = isDir ? 0 : st.size;
-      } catch {
-        continue;
-      }
-      if (!isDir && !manager.isDbFile(name)) continue;
-      if (browseRoot && !isPathWithinRoot(browseRoot, full)) continue;
-      entries.push({ name, path: full, isDir, isDb: !isDir, size });
-    }
-    entries.sort((a, b) =>
-      a.isDir === b.isDir ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) : a.isDir ? -1 : 1,
-    );
-    return entries;
-  }
 
   router.get('/api/fs/list', wrap(async (req, res) => {
     if (!allowBrowse) {
-      return res.status(403).json({ success: false, error: 'File browsing is disabled — this server was started with specific database files.' });
+      return res.status(403).json({
+        success: false,
+        error: 'File browsing is disabled — this server was started with specific database files.',
+      });
     }
     const raw = String(req.query.path ?? '').trim();
-    if (raw.includes('\0')) return res.status(400).json({ success: false, error: 'Invalid path.' });
-
     const base = raw ? path.resolve(raw) : manager.directory;
-    if (browseRoot && !isPathWithinRoot(browseRoot, base)) {
-      return res.status(403).json({ success: false, error: `Path is outside the allowed folder: ${browseRoot}` });
-    }
-    if (!existsSync(base)) return res.status(404).json({ success: false, error: `Path does not exist: ${base}` });
-    if (!statSync(base).isDirectory()) return res.status(400).json({ success: false, error: `Not a directory: ${base}` });
 
-    let entries: FsEntry[];
     try {
-      entries = listDirectory(base);
+      const data = DatabasesService.listDirectory(base, manager, browseRoot);
+      res.json({ success: true, data });
     } catch (err) {
-      return res.status(400).json({ success: false, error: `Could not list "${base}": ${errorMessage(err)}` });
+      const msg = errorMessage(err);
+      if (msg.includes('outside the allowed folder')) return res.status(403).json({ success: false, error: msg });
+      if (msg.includes('does not exist')) return res.status(404).json({ success: false, error: msg });
+      return res.status(400).json({ success: false, error: msg });
     }
-    const parent = path.dirname(base) === base ? null : path.dirname(base);
-    const effectiveParent = parent && (!browseRoot || isPathWithinRoot(browseRoot, parent)) ? parent : null;
-    res.json({
-      success: true,
-      data: {
-        path: base,
-        name: path.basename(base) || base,
-        parent: effectiveParent,
-        entries,
-      },
-    });
   }));
 
   router.post('/api/databases/open', wrap(async (req, res) => {
     if (!allowBrowse) {
-      return res.status(403).json({ success: false, error: 'File browsing is disabled — this server was started with specific database files.' });
+      return res.status(403).json({
+        success: false,
+        error: 'File browsing is disabled — this server was started with specific database files.',
+      });
     }
     const p = String(req.body?.path ?? '').trim();
-    if (!p || p.includes('\0')) return res.status(400).json({ success: false, error: 'Valid database path is required.' });
-    const abs = path.resolve(p);
-    if (browseRoot && !isPathWithinRoot(browseRoot, abs)) {
-      return res.status(403).json({ success: false, error: `Cannot open a database outside the allowed folder: ${browseRoot}` });
-    }
     const isRo = req.body?.readonly !== undefined ? Boolean(req.body.readonly) : undefined;
-    const id = manager.openFile(p, isRo);
-    res.json({ success: true, data: { id, message: `Opened "${id}".` } });
+    try {
+      const id = DatabasesService.openDatabaseFile(manager, p, isRo, browseRoot);
+      res.json({ success: true, data: { id, message: `Opened "${id}".` } });
+    } catch (err) {
+      const msg = errorMessage(err);
+      if (msg.includes('outside the allowed folder')) return res.status(403).json({ success: false, error: msg });
+      return res.status(400).json({ success: false, error: msg });
+    }
   }));
 
   router.post('/api/databases/connect-postgres', wrap(async (req, res) => {
@@ -177,22 +99,12 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
     const name = String(req.body?.name ?? '').trim();
     const connectionString = String(req.body?.connectionString ?? req.body?.connection ?? '').trim();
     const isRo = Boolean(req.body?.readonly);
-    if (!connectionString) {
-      return res.status(400).json({ success: false, error: 'PostgreSQL connection string is required (e.g. postgresql://user:password@localhost:5432/dbname).' });
-    }
-    if (!isPostgresConnectionString(connectionString)) {
-      return res.status(400).json({ success: false, error: 'Invalid connection protocol. Connection string must start with postgres:// or postgresql://' });
-    }
-    let id: string;
     try {
-      id = manager.addConnection(name, connectionString, isRo);
-      const db = manager.open(id);
-      await db.listTables();
+      const id = await DatabasesService.connectPostgres(manager, name, connectionString, isRo);
+      res.status(201).json({ success: true, data: { id, message: `Connected to PostgreSQL database "${id}".` } });
     } catch (err) {
-      if (id!) manager.remove(id);
-      return res.status(400).json({ success: false, error: `Failed to connect to PostgreSQL: ${errorMessage(err)}` });
+      res.status(400).json({ success: false, error: errorMessage(err) });
     }
-    res.status(201).json({ success: true, data: { id, message: `Connected to PostgreSQL database "${id}".` } });
   }));
 
   router.post('/api/databases/:id/mode', wrap(async (req, res) => {
@@ -200,34 +112,45 @@ export function registerDatabasesRoutes(router: Router, ctx: DatabasesContext): 
       return res.status(403).json({ success: false, error: 'Server is in global read-only mode.' });
     }
     const id = String(req.params.id);
-    if (!manager.has(id)) return res.status(404).json({ success: false, error: `Database "${id}" does not exist.` });
     const targetRo = Boolean(req.body?.readonly);
-    manager.setReadonly(id, targetRo);
-    if (ctx.invalidate) ctx.invalidate(id);
-    res.json({
-      success: true,
-      data: {
-        id,
-        readonly: targetRo,
-        message: `Database "${id}" mode set to ${targetRo ? 'Read-only' : 'Writable'}.`,
-      },
-    });
+    try {
+      DatabasesService.setDatabaseMode(manager, id, targetRo, ctx.invalidate);
+      res.json({
+        success: true,
+        data: {
+          id,
+          readonly: targetRo,
+          message: `Database "${id}" mode set to ${targetRo ? 'Read-only' : 'Writable'}.`,
+        },
+      });
+    } catch (err) {
+      const msg = errorMessage(err);
+      if (msg.includes('does not exist')) return res.status(404).json({ success: false, error: msg });
+      res.status(400).json({ success: false, error: msg });
+    }
   }));
 
   router.post('/api/databases', wrap(async (req, res) => {
     if (ctx.readonly) return res.status(403).json({ success: false, error: 'Read-only mode — creating databases is disabled.' });
     const name = String(req.body?.name ?? '').trim();
-    if (!name) return res.status(400).json({ success: false, error: 'Database name is required.' });
-    const id = manager.create(name);
-    res.status(201).json({ success: true, data: { id, message: `Database "${id}" created.` } });
+    try {
+      const id = DatabasesService.createDatabase(manager, name);
+      res.status(201).json({ success: true, data: { id, message: `Database "${id}" created.` } });
+    } catch (err) {
+      res.status(400).json({ success: false, error: errorMessage(err) });
+    }
   }));
 
   router.delete('/api/databases/:id', wrap(async (req, res) => {
     if (ctx.readonly) return res.status(403).json({ success: false, error: 'Read-only mode — deleting databases is disabled.' });
     const id = String(req.params.id);
-    if (!manager.has(id)) return res.status(404).json({ success: false, error: `Database "${id}" does not exist.` });
-    if (ctx.invalidate) ctx.invalidate(id);
-    manager.remove(id);
-    res.json({ success: true, data: { message: `Database "${id}" removed.` } });
+    try {
+      DatabasesService.removeDatabase(manager, id, ctx.invalidate);
+      res.json({ success: true, data: { message: `Database "${id}" removed.` } });
+    } catch (err) {
+      const msg = errorMessage(err);
+      if (msg.includes('does not exist')) return res.status(404).json({ success: false, error: msg });
+      res.status(400).json({ success: false, error: msg });
+    }
   }));
 }

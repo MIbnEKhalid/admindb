@@ -5,7 +5,7 @@ import { errorMessage } from '../utils/common';
 import type { ColumnInfo, DatabaseDialect, DbOpenOptions, IDatabase, ReferencingTableInfo, Result, RowFilters, SavedQuery, SchemaInfo, SQLInputValue, TableInfoData, TableListItem, WhereClause } from './types';
 import { INTERNAL_TABLES } from './types';
 import { buildFilterClause } from './filters';
-import { getSchemaSync, getTableInfoSync, listTablesSync, getReferencingTablesSync } from './introspection';
+import { sqliteDialect } from './dialects/sqlite/dialect';
 import { modifyTableStructureSync } from './migrations';
 
 export * from './types';
@@ -147,17 +147,17 @@ export class SqliteDatabase implements IDatabase {
   }
 
   async listTables(): Promise<Result<TableListItem[]>> {
-    return this.tryRun(() => listTablesSync(this.db));
+    return sqliteDialect.introspector.listTables(this.db);
   }
 
   async getTableInfo(table: string): Promise<Result<TableInfoData>> {
-    return this.tryRun(() => getTableInfoSync(this.db, table));
+    return sqliteDialect.introspector.getTableInfo(this.db, table);
   }
 
   async getRowCount(table: string, filters?: RowFilters): Promise<Result<number>> {
     return this.tryRun(() => {
-      const info = this.getTableInfoSync(table);
-      const { where, params } = buildFilterClause(filters, info?.columns.map((c) => c.name) ?? []);
+      const cols = (this.db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as { name: string }[]);
+      const { where, params } = buildFilterClause(filters, cols.map((c) => c.name));
       const row = this.db
         .prepare(`SELECT COUNT(*) AS c FROM ${quoteIdentifier(table)}${where}`)
         .get(...params) as { c: number | bigint };
@@ -170,9 +170,8 @@ export class SqliteDatabase implements IDatabase {
     opts: { page?: number; limit?: number; orderBy?: string; orderDir?: 'asc' | 'desc'; filters?: RowFilters } = {},
   ): Promise<Result<Record<string, unknown>[]>> {
     return this.tryRun(() => {
-      const info = this.getTableInfoSync(table);
-      const cols = info?.columns ?? [];
-      const orderCol = opts.orderBy || info?.primaryKey?.[0] || cols[0]?.name;
+      const cols = (this.db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as { name: string }[]);
+      const orderCol = opts.orderBy || cols[0]?.name;
       const orderDir = opts.orderDir === 'desc' ? 'DESC' : 'ASC';
       const limit = opts.limit && opts.limit > 0 ? opts.limit : 200;
       const page = opts.page && opts.page > 0 ? opts.page : 1;
@@ -320,11 +319,11 @@ export class SqliteDatabase implements IDatabase {
   }
 
   async getSchema(table: string): Promise<Result<SchemaInfo>> {
-    return this.tryRun(() => getSchemaSync(this.db, table));
+    return sqliteDialect.introspector.getSchema(this.db, table);
   }
 
   async getReferencingTables(table: string): Promise<Result<ReferencingTableInfo[]>> {
-    return this.tryRun(() => getReferencingTablesSync(this.db, table));
+    return sqliteDialect.introspector.getReferencingTables(this.db, table);
   }
 
   async getRowsByFk(table: string, column: string, value: unknown, limit = 50): Promise<Result<{ rows: Record<string, unknown>[]; total: number }>> {

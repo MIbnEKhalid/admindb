@@ -123,20 +123,7 @@ Pass `auth: false`, CLI `--no-auth`, or `ADMINDB_AUTH=false` to turn off built-i
 All request and response types, data inspection helpers, and serverless handlers are exported by the package entry point:
 
 ```ts
-import {
-  createRouter,
-  createServerlessHandler,
-  createLambdaHandler,
-  sniffMimeType,
-  generateHexDump,
-  analyzeBlob,
-  isJsonString,
-  formatJsonSafely,
-  type ApiResponse,
-  type GetRowsResponseData,
-  type BlobMetaResponseData,
-  type TableDdlResponseData,
-} from 'admindb';
+import { createRouter, createServerlessHandler, createLambdaHandler, sniffMimeType, generateHexDump, analyzeBlob, isJsonString, formatJsonSafely, type ApiResponse, type GetRowsResponseData, type BlobMetaResponseData, type TableDdlResponseData } from 'admindb';
 import { analyzeSqlError } from 'admindb/dist/sql/error-analyzer.js';
 
 // 1. Sniff MIME type from binary magic bytes

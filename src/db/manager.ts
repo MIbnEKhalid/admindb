@@ -6,6 +6,8 @@ import type { IDatabase } from './types';
 import { createLogger, type Logger } from '../utils/logger';
 import { errorMessage, isPostgresConnectionString, sanitizeConnectionString } from '../utils/common';
 import { isServerlessEnvironment } from '../serverless';
+import { getDialect } from './dialects/index';
+import type { DatabaseContext } from '../core/context';
 
 const DB_EXTENSIONS = ['.db', '.sqlite', '.sqlite3'];
 
@@ -239,6 +241,29 @@ export class DbManager {
       this.openDbs.set(id, db);
     }
     return db;
+  }
+
+  /**
+   * Resolve a full DatabaseContext for the given database ID.
+   * Bundles the IDatabase instance with the correct IDialect, capabilities,
+   * identity metadata, and a scoped logger.
+   */
+  getContext(id: string, readonlyOverride?: boolean): DatabaseContext {
+    const db = this.open(id, readonlyOverride);
+    const target = this.pathById.get(id)!;
+    const isPg = isPostgresConnectionString(target);
+    const schema = isPg ? (db as any).schema || 'public' : undefined;
+    const dialect = getDialect(isPg ? 'postgres' : 'sqlite', schema);
+    return {
+      id,
+      name: this.nameById.get(id) ?? id,
+      path: db.path,
+      db,
+      dialect,
+      capabilities: dialect.capabilities,
+      isReadOnly: db.isReadOnly,
+      logger: this.logger.child(`db:${id}`),
+    };
   }
 
   openFile(absPath: string, readonly?: boolean): string {

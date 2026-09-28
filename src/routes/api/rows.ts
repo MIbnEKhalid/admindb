@@ -1,9 +1,7 @@
 import type { Router, Request, Response } from 'express';
-import { parseFilters, normalizeRow } from '../../utils/common';
-import { sniffMimeType, analyzeBlob } from '../../utils/datatype';
-import { toCsv, toJson } from '../../utils/csv';
-import { generateInsert, generateUpdate } from '../../sql/generator';
-import { type ApiContext, ok, fail, wrap, requireTable, buildFields, buildUpdateFields, pkWhere, resolvePkRows, computeBulkImpact, MAX_BULK_ROWS } from './helpers';
+import { parseFilters } from '../../utils/common';
+import { type ApiContext, ok, fail, wrap, requireTable } from './helpers';
+import { RowsService, buildFields, buildUpdateFields, pkWhere, resolvePkRows, computeBulkImpact, MAX_BULK_ROWS } from '../../modules/rows/index';
 import type { WhereClause } from '../../db/database';
 
 export function registerRowRoutes(router: Router, ctx: ApiContext): void {
@@ -17,26 +15,29 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const orderDir = req.query.orderDir === 'desc' ? 'desc' : 'asc';
     const filters = parseFilters(req.query.f);
 
-    const [rowsR, totalR] = await Promise.all([
-      db.getRows(req.params.table, { page, limit, orderBy, orderDir, filters }),
-      db.getRowCount(req.params.table, filters),
-    ]);
-    if (!rowsR.success) return fail(res, rowsR.error ?? 'Failed to load rows.');
-    const rows = ((rowsR.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
-    ok(res, {
-      rows,
-      total: totalR.success ? totalR.data : rows.length,
-      page,
-      limit,
-    });
+    try {
+      const data = await RowsService.getPaginatedRows(db, req.params.table, {
+        page,
+        limit,
+        orderBy,
+        orderDir,
+        filters,
+      });
+      ok(res, data);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to load rows.');
+    }
   }));
 
   router.get('/api/tables/:db/:table/rows/count', wrap(async (req, res) => {
     const db = ctx.getDb(req);
     const filters = parseFilters(req.query.f);
-    const r = await db.getRowCount(req.params.table, filters);
-    if (!r.success) return fail(res, r.error ?? 'Failed to count rows.');
-    ok(res, { count: r.data });
+    try {
+      const count = await RowsService.getRowCount(db, req.params.table, filters);
+      ok(res, { count });
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to count rows.');
+    }
   }));
 
   router.get('/api/tables/:db/:table/row/:id', wrap(async (req, res) => {
@@ -45,10 +46,14 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const where = pkWhere(info, req.params.id);
     if (!where) return fail(res, 'Invalid primary key.', 400);
-    const r = await db.getRow(req.params.table, where);
-    if (!r.success) return fail(res, r.error ?? 'Failed to load row.');
-    if (!r.data) return fail(res, 'Row not found.', 404);
-    ok(res, normalizeRow(r.data));
+
+    try {
+      const row = await RowsService.getRow(db, req.params.table, where);
+      if (!row) return fail(res, 'Row not found.', 404);
+      ok(res, row);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to load row.');
+    }
   }));
 
   router.get('/api/tables/:db/:table/row/:id/blob/:column', wrap(async (req, res) => {
@@ -58,37 +63,26 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const where = pkWhere(info, req.params.id);
     if (!where) return fail(res, 'Invalid primary key.', 400);
 
-    const r = await db.getRow(req.params.table, where);
-    if (!r.success) return fail(res, r.error ?? 'Failed to load row.');
-    if (!r.data) return fail(res, 'Row not found.', 404);
+    try {
+      const blobResult = await RowsService.getBlob(db, req.params.table, where, req.params.column);
+      if (!blobResult) {
+        return fail(res, 'Column value is NULL.', 404);
+      }
 
-    const colName = req.params.column;
-    const rawVal = r.data[colName];
-    if (rawVal === null || rawVal === undefined) {
-      return fail(res, 'Column value is NULL.', 404);
+      const { buffer, mimeInfo } = blobResult;
+      res.setHeader('Content-Type', mimeInfo.mime);
+      res.setHeader('Content-Length', buffer.length);
+      res.setHeader('Cache-Control', 'no-cache');
+
+      if (req.query.download === '1' || req.query.download === 'true') {
+        const filename = `${req.params.table}_${req.params.column}_${req.params.id}.${mimeInfo.ext}`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      }
+
+      res.end(buffer);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to load row.');
     }
-
-    let buf: Buffer;
-    if (Buffer.isBuffer(rawVal) || rawVal instanceof Uint8Array) {
-      buf = Buffer.isBuffer(rawVal) ? rawVal : Buffer.from(rawVal);
-    } else if (typeof rawVal === 'string' && (/^0x[0-9a-f]*$/i.test(rawVal))) {
-      buf = Buffer.from(rawVal.slice(2), 'hex');
-    } else {
-      buf = Buffer.from(String(rawVal), 'utf8');
-    }
-
-    const mimeInfo = sniffMimeType(buf);
-
-    res.setHeader('Content-Type', mimeInfo.mime);
-    res.setHeader('Content-Length', buf.length);
-    res.setHeader('Cache-Control', 'no-cache');
-
-    if (req.query.download === '1' || req.query.download === 'true') {
-      const filename = `${req.params.table}_${colName}_${req.params.id}.${mimeInfo.ext}`;
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    }
-
-    res.end(buf);
   }));
 
   router.get('/api/tables/:db/:table/row/:id/blob/:column/meta', wrap(async (req, res) => {
@@ -98,18 +92,13 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const where = pkWhere(info, req.params.id);
     if (!where) return fail(res, 'Invalid primary key.', 400);
 
-    const r = await db.getRow(req.params.table, where);
-    if (!r.success) return fail(res, r.error ?? 'Failed to load row.');
-    if (!r.data) return fail(res, 'Row not found.', 404);
-
-    const colName = req.params.column;
-    const rawVal = r.data[colName];
-    if (rawVal === null || rawVal === undefined) {
-      return ok(res, { isNull: true, size: 0, sizeFormatted: '0 B' });
+    try {
+      const meta = await RowsService.getBlobMeta(db, req.params.table, where, req.params.column);
+      if (!meta) return fail(res, 'Row not found.', 404);
+      ok(res, meta);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to load row.');
     }
-
-    const meta = analyzeBlob(rawVal as Uint8Array | Buffer | string);
-    ok(res, { isNull: false, ...meta });
   }));
 
   router.put('/api/tables/:db/:table/row/:id/blob/:column', wrap(async (req, res) => {
@@ -120,26 +109,23 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!where) return fail(res, 'Invalid primary key.', 400);
 
     const colName = req.params.column;
-    let buf: Buffer;
-
-    if (req.body?.data !== undefined) {
-      const format = req.body.format || 'base64';
-      if (format === 'base64') {
-        const base64Str = String(req.body.data).replace(/^data:[^;]+;base64,/, '');
-        buf = Buffer.from(base64Str, 'base64');
-      } else if (format === 'hex') {
-        const hexStr = String(req.body.data).replace(/^0x/i, '');
-        buf = Buffer.from(hexStr, 'hex');
-      } else {
-        buf = Buffer.from(String(req.body.data), 'utf8');
-      }
-    } else {
+    if (req.body?.data === undefined) {
       return fail(res, 'Payload data is required.');
     }
 
-    const updateRes = await db.updateRow(req.params.table, [{ column: colName, value: buf }], where);
-    if (!updateRes.success) return fail(res, updateRes.error ?? 'Failed to update BLOB.');
-    ok(res, { message: `Updated BLOB in column "${colName}".`, size: buf.length });
+    try {
+      const size = await RowsService.updateBlob(
+        db,
+        req.params.table,
+        where,
+        colName,
+        req.body.data,
+        req.body.format,
+      );
+      ok(res, { message: `Updated BLOB in column "${colName}".`, size });
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to update BLOB.');
+    }
   }));
 
   router.post('/api/tables/:db/:table/rows/generate', wrap(async (req, res) => {
@@ -147,8 +133,11 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const info = await requireTable(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
     const fields = buildFields(info, req.body?.values ?? req.body ?? {});
-    if (!fields.length) return fail(res, 'No valid column values provided.');
-    ok(res, { sql: generateInsert(req.params.table, fields) });
+    try {
+      ok(res, { sql: RowsService.generateInsertSql(req.params.table, fields) });
+    } catch (err) {
+      fail(res, (err as Error).message);
+    }
   }));
 
   const generateUpdateHandler = wrap(async (req: Request, res: Response) => {
@@ -161,8 +150,11 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!where) return fail(res, 'Invalid primary key.', 400);
     const nulls = Array.isArray(req.body?.nulls) ? (req.body.nulls as string[]) : [];
     const fields = buildUpdateFields(info, req.body?.values ?? req.body ?? {}, nulls);
-    if (!fields.length) return fail(res, 'No fields to update.');
-    ok(res, { sql: generateUpdate(req.params.table, fields, where) });
+    try {
+      ok(res, { sql: RowsService.generateUpdateSql(req.params.table, fields, where) });
+    } catch (err) {
+      fail(res, (err as Error).message);
+    }
   });
 
   router.put('/api/tables/:db/:table/row/:id/generate', generateUpdateHandler);
@@ -182,17 +174,17 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!rowList.length) return fail(res, 'No rows provided.');
 
     const fieldsList = rowList.map((row) => buildFields(info, row));
-    if (!isBatch) {
-      const fields = fieldsList[0];
-      if (!fields.length) return fail(res, 'No valid column values provided.');
-      const r = await db.insertRow(req.params.table, fields);
-      if (!r.success) return fail(res, r.error ?? 'Failed to insert row.');
-      return ok(res, { message: 'Row inserted.', id: r.data?.lastInsertRowid }, 201);
-    }
+    try {
+      if (!isBatch) {
+        const id = await RowsService.insertRow(db, req.params.table, fieldsList[0]);
+        return ok(res, { message: 'Row inserted.', id }, 201);
+      }
 
-    const r = await db.insertRows(req.params.table, fieldsList);
-    if (!r.success) return fail(res, r.error ?? 'Failed to insert rows.');
-    ok(res, { message: `${r.data?.inserted ?? 0} row(s) inserted.`, inserted: r.data?.inserted }, 201);
+      const inserted = await RowsService.insertRows(db, req.params.table, fieldsList);
+      ok(res, { message: `${inserted} row(s) inserted.`, inserted }, 201);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to insert row(s).');
+    }
   }));
 
   const updateSingleRowHandler = wrap(async (req: Request, res: Response) => {
@@ -205,10 +197,13 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!where) return fail(res, 'Invalid primary key.');
     const nulls = Array.isArray(req.body?.nulls) ? (req.body.nulls as string[]) : [];
     const fields = buildUpdateFields(info, req.body?.values ?? req.body ?? {}, nulls);
-    if (!fields.length) return fail(res, 'No fields to update.');
-    const r = await db.updateRow(req.params.table, fields, where);
-    if (!r.success) return fail(res, r.error ?? 'Failed to update row.');
-    ok(res, { message: 'Row updated.' });
+
+    try {
+      await RowsService.updateRow(db, req.params.table, fields, where);
+      ok(res, { message: 'Row updated.' });
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to update row.');
+    }
   });
 
   const bulkUpdateHandler = wrap(async (req: Request, res: Response) => {
@@ -231,10 +226,12 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
         if (fields.length) rowUpdates.push({ fields, where });
       }
 
-      if (!rowUpdates.length) return ok(res, { message: 'No changes to apply.', updated: 0 });
-      const r = await db.updateRows(req.params.table, rowUpdates);
-      if (!r.success) return fail(res, r.error ?? 'Failed to update rows.');
-      return ok(res, { message: `${r.data?.updated ?? 0} row(s) updated.`, updated: r.data?.updated });
+      try {
+        const updated = await RowsService.updateRows(db, req.params.table, rowUpdates);
+        return ok(res, { message: updated ? `${updated} row(s) updated.` : 'No changes to apply.', updated });
+      } catch (err) {
+        return fail(res, (err as Error).message ?? 'Failed to update rows.');
+      }
     }
 
     return updateSingleRowHandler(req, res);
@@ -252,9 +249,13 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     if (!id) return fail(res, 'Primary key id is required.');
     const where = pkWhere(info, id);
     if (!where) return fail(res, 'Invalid primary key.');
-    const r = await db.deleteRow(req.params.table, where);
-    if (!r.success) return fail(res, r.error ?? 'Failed to delete row.');
-    ok(res, { message: 'Row deleted.' });
+
+    try {
+      await RowsService.deleteRow(db, req.params.table, where);
+      ok(res, { message: 'Row deleted.' });
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to delete row.');
+    }
   });
 
   router.delete('/api/tables/:db/:table/row/:id', deleteSingleRowHandler);
@@ -269,36 +270,14 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const where = pkWhere(info, req.params.id);
     if (!where) return fail(res, 'Invalid primary key.', 400);
 
-    const rowR = await db.getRow(req.params.table, where);
-    if (!rowR.success || !rowR.data) return fail(res, 'Row not found.', 404);
-
-    const refInfoR = await db.getReferencingTables(req.params.table);
-    const referencing = refInfoR.data ?? [];
-    const results: { table: string; from: string; to: string; value?: unknown; columns?: string[]; rows: Record<string, unknown>[]; count?: number; total: number }[] = [];
-
-    for (const item of referencing) {
-      for (const ref of item.refs) {
-        const targetCol = ref.to || info.primaryKey[0];
-        if (!targetCol) continue;
-        const val = rowR.data[targetCol];
-        if (val == null) continue;
-        const fkR = await db.getRowsByFk(item.table, ref.from, val);
-        if (fkR.success && fkR.data) {
-          const rows = fkR.data.rows.map(normalizeRow);
-          results.push({
-            table: item.table,
-            from: ref.from,
-            to: targetCol,
-            value: val,
-            columns: rows.length > 0 ? Object.keys(rows[0]) : [],
-            rows,
-            count: fkR.data.total,
-            total: fkR.data.total,
-          });
-        }
-      }
+    try {
+      const references = await RowsService.getRowReferences(db, req.params.table, info, where);
+      ok(res, { references });
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg === 'Row not found.') return fail(res, msg, 404);
+      fail(res, msg ?? 'Failed to fetch references.');
     }
-    ok(res, { references: results });
   }));
 
   // ---- Bulk row operations -----------------------------------------------
@@ -315,9 +294,12 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const wheres = resolvePkRows(info, ids);
     if (!wheres) return fail(res, 'Invalid or unresolvable row IDs.');
 
-    const r = await db.deleteRows(req.params.table, wheres);
-    if (!r.success) return fail(res, r.error ?? 'Failed to delete rows.');
-    ok(res, { message: `${r.data?.deleted ?? 0} row(s) deleted.`, deleted: r.data?.deleted });
+    try {
+      const deleted = await RowsService.deleteRows(db, req.params.table, wheres);
+      ok(res, { message: `${deleted} row(s) deleted.`, deleted });
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to delete rows.');
+    }
   }));
 
   router.post('/api/tables/:db/:table/rows/bulk-impact', wrap(async (req, res) => {
@@ -346,21 +328,14 @@ export function registerRowRoutes(router: Router, ctx: ApiContext): void {
     const wheres = resolvePkRows(info, ids);
     if (!wheres) return fail(res, 'Invalid or unresolvable row IDs.');
 
-    const format = String(req.body?.format ?? 'csv').toLowerCase();
-    const rowsR = await db.getRowsByPks(req.params.table, wheres);
-    if (!rowsR.success) return fail(res, rowsR.error ?? 'Failed to load rows.');
-
-    const rows = ((rowsR.data ?? []) as Record<string, unknown>[]).map(normalizeRow);
-    const columns = info.columns.map((c) => c.name);
-
-    if (format === 'json') {
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${req.params.table}_selected.json"`);
-      return res.send(toJson(rows));
+    const format = String(req.body?.format ?? 'csv').toLowerCase() === 'json' ? 'json' : 'csv';
+    try {
+      const exp = await RowsService.exportBulkRows(db, req.params.table, info, wheres, format);
+      res.setHeader('Content-Type', exp.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${exp.filename}"`);
+      res.send(exp.data);
+    } catch (err) {
+      fail(res, (err as Error).message ?? 'Failed to load rows.');
     }
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.table}_selected.csv"`);
-    res.send(toCsv(rows, columns));
   }));
 }

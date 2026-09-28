@@ -1,14 +1,17 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import type { IDatabase, TableInfoData } from '../db/index';
 import type { Logger } from '../utils/logger';
+import type { DatabaseContext } from '../core/context';
 import { generateSqlDump } from '../db/export';
 import { quoteIdentifier } from '../sql/generator';
 import { decodePk, encodePk, normalizeCell, parseFilters, filtersToQS, formatBytes } from '../utils/common';
-import { sniffMimeType, isJsonString } from '../utils/datatype';
+import { resolveBlobBuffer, sniffBlobMime } from '../modules/rows/index';
+import { isJsonString } from '../utils/datatype';
 import { buildColumnConfigs, MAX_SEED_ROWS } from '../data/index';
 
 export interface PageContext {
   getDb: (req: Request) => IDatabase;
+  getContext?: (req: Request) => DatabaseContext;
   logger: Logger;
 }
 
@@ -60,15 +63,8 @@ function buildDisplayRows(rawRows: Record<string, unknown>[], info: TableInfoDat
         if (!isNull) {
           const str = String(v);
           if (isBlob) {
-            let buf: Buffer;
-            if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
-              buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
-            } else if (typeof v === 'string' && (/^0x[0-9a-f]*$/i.test(v) || /^\\x[0-9a-f]*$/i.test(v))) {
-              buf = Buffer.from(v.slice(2), 'hex');
-            } else {
-              buf = Buffer.from(str, 'utf8');
-            }
-            const mimeInfo = sniffMimeType(buf);
+            const buf = resolveBlobBuffer(raw ?? v);
+            const mimeInfo = sniffBlobMime(buf);
             blobSize = formatBytes(buf.length);
             blobMime = mimeInfo.mime;
             blobExt = mimeInfo.ext;

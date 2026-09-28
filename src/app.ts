@@ -14,6 +14,9 @@ import { errorMessage, isPostgresConnectionString } from './utils/common';
 import { renderIcon, ICONS } from './utils/icons';
 import { isServerlessEnvironment } from './serverless';
 import { resolveAuthConfig, createAuthMiddleware, registerAuthRoutes, type AuthConfig } from './auth';
+import { getDialect } from './db/dialects/index';
+import type { DatabaseContext } from './core/context';
+import type { IDialect } from './db/dialects/types';
 
 const APP_VERSION = getPackageVersion();
 
@@ -83,6 +86,13 @@ export function createRouter(options: AppOptions = {}): express.Express {
     if (!defaultDbId) {
       defaultDbId = singleDb.dialect === 'postgres' ? 'PostgreSQL' : (path.basename(singleDb.path) || 'SQLite');
     }
+  }
+
+  // Resolve the IDialect for single-database mode
+  let singleDialect: IDialect | undefined;
+  if (singleDb) {
+    const pgSchema = (singleDb as any).schema || 'public';
+    singleDialect = getDialect(singleDb.dialect, singleDb.dialect === 'postgres' ? pgSchema : undefined);
   }
 
   const app = express();
@@ -155,8 +165,38 @@ export function createRouter(options: AppOptions = {}): express.Express {
     });
   }
 
-  registerPages(app, { getDb, logger });
-  registerApi(app, { getDb, logger });
+  const getContext = (req: express.Request): DatabaseContext => {
+    if (manager) {
+      const dbId = String(req.params.db || req.params.dbId || req.params.id || '');
+      if (!manager.has(dbId)) {
+        const err = new Error(`Database "${dbId}" does not exist.`);
+        (err as any).status = 404;
+        throw err;
+      }
+      const rawRo = req.query.readonly;
+      if (rawRo !== undefined) {
+        const explicitRo = rawRo === '1' || rawRo === 'true';
+        if (!globalReadonly || explicitRo) {
+          manager.setReadonly(dbId, explicitRo);
+        }
+      }
+      const effectiveRo = globalReadonly ? true : manager.isDbReadOnly(dbId);
+      return manager.getContext(dbId, effectiveRo);
+    }
+    return {
+      id: defaultDbId!,
+      name: defaultDbId!,
+      path: singleDb!.path,
+      db: singleDb!,
+      dialect: singleDialect!,
+      capabilities: singleDialect!.capabilities,
+      isReadOnly: singleDb!.isReadOnly,
+      logger,
+    };
+  };
+
+  registerPages(app, { getDb, getContext, logger });
+  registerApi(app, { getDb, getContext, logger });
 
   addErrorHandlers(app, logger);
   return app;
