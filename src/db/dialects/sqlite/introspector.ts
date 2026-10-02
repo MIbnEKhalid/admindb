@@ -62,7 +62,9 @@ export class SqliteIntrospector implements ISchemaIntrospector {
       const indexes: IndexInfo[] = indexRows.map((ix) => {
         const ixCols = (
           db.prepare(`PRAGMA index_info(${quoteIdentifier(ix.name)})`).all() as { seqno: number; cid: number; name: string }[]
-        ).map((c) => c.name);
+        )
+          .map((c) => c.name)
+          .filter((n): n is string => Boolean(n));
         const sqlRow = db
           .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
           .get(ix.name) as { sql?: string | null } | undefined;
@@ -123,8 +125,9 @@ export class SqliteIntrospector implements ISchemaIntrospector {
       const uniqueCols = new Set<string>();
       const indexedCols = new Set<string>();
       for (const ix of indexes) {
-        if (ix.unique) ix.columns.forEach((c) => uniqueCols.add(c));
-        if (ix.origin === 'c') ix.columns.forEach((c) => indexedCols.add(c));
+        const cols = Array.isArray(ix.columns) ? ix.columns.filter(Boolean) : [];
+        if (ix.unique) cols.forEach((c) => uniqueCols.add(c));
+        if (ix.origin === 'c') cols.forEach((c) => indexedCols.add(c));
       }
 
       const refs = this.getIncomingFks(db, table);

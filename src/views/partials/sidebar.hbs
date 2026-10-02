@@ -21,9 +21,15 @@
   <nav class="flex-1 overflow-y-auto px-3 py-2">
     <ul class="space-y-0.5">
       <li>
-        <a href="{{basePath}}/" class="side-link active">
+        <a href="{{basePath}}/" class="side-link {{#if (eq currentPath '/')}}active{{/if}}">
           {{{icon "database" class="h-4 w-4"}}}
           Databases
+        </a>
+      </li>
+      <li>
+        <a href="{{basePath}}/diff" class="side-link {{#if (startsWith currentPath '/diff')}}active{{else}}{{#if (startsWith currentPath '/sync')}}active{{/if}}{{/if}}">
+          {{{icon "diff" class="h-4 w-4"}}}
+          Diff & Replicate
         </a>
       </li>
     </ul>
@@ -71,6 +77,12 @@
         <a href="{{basePath}}/seed/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/seed')}}active{{/if}}">
           {{{icon "seed" class="h-4 w-4"}}}
           Seed generator
+        </a>
+      </li>
+      <li>
+        <a href="{{basePath}}/diff/{{encodeUri dbId}}" class="side-link {{#if (startsWith currentPath '/diff')}}active{{else}}{{#if (startsWith currentPath '/sync')}}active{{/if}}{{/if}}">
+          {{{icon "diff" class="h-4 w-4"}}}
+          Diff & Replicate
         </a>
       </li>
       <li>

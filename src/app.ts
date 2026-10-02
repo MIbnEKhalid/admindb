@@ -171,7 +171,20 @@ export function createRouter(options: AppOptions = {}): express.Express {
     };
   };
 
-  registerModules(app, { getContext, logger });
+  const getNamedContext = (dbId: string, readonlyOverride?: boolean): DatabaseContext => {
+    if (manager) {
+      if (!manager.has(dbId)) {
+        const err = new Error(`Database "${dbId}" does not exist.`);
+        (err as any).status = 404;
+        throw err;
+      }
+      const effectiveRo = globalReadonly ? true : manager.isDbReadOnly(dbId);
+      return manager.getContext(dbId, readonlyOverride !== undefined ? readonlyOverride : effectiveRo);
+    }
+    return getContext({ params: { db: defaultDbId } } as any);
+  };
+
+  registerModules(app, { getContext, getNamedContext, manager, logger });
 
   addErrorHandlers(app, logger);
   return app;

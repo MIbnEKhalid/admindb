@@ -1,0 +1,485 @@
+{{!-- Page: Diff & Replication Studio · URL: /diff or /sync --}}
+<div class="space-y-6 max-w-7xl mx-auto">
+
+  <!-- Page Header -->
+  <div class="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-base-100 via-base-200/50 to-primary/5 p-6 shadow-sm">
+    <div class="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="badge badge-primary badge-sm font-mono uppercase tracking-wider font-bold">Studio</span>
+          <span class="text-xs text-base-content/50 font-mono">SQLite ⇄ PostgreSQL</span>
+        </div>
+        <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2.5">
+          <span class="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-inner">
+            {{{icon "diff" class="h-6 w-6"}}}
+          </span>
+          Diff & Replication Studio
+        </h1>
+        <p class="mt-1.5 text-xs text-base-content/70 max-w-2xl leading-relaxed">
+          Compare database schemas with Git-style unified diffs, inspect table data row-by-row, generate UP/DOWN SQL migration patches, and safely clone databases across engines and environments.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 pt-2 md:pt-0">
+        <button id="btn-generate-sql" type="button" class="btn btn-outline btn-sm gap-1.5 shadow-sm transition hover:scale-[1.02]" disabled title="Generate UP and DOWN SQL migration scripts">
+          {{{icon "sql" class="h-4 w-4 text-primary"}}}
+          Migration SQL
+        </button>
+        <button id="btn-dry-run" type="button" class="btn btn-outline btn-info btn-sm gap-1.5 shadow-sm transition hover:scale-[1.02]" disabled title="Simulate replication without writing data">
+          {{{icon "inspect" class="h-4 w-4"}}}
+          Dry Run
+        </button>
+        <button id="btn-execute-sync" type="button" class="btn btn-primary btn-sm gap-1.5 shadow-sm transition hover:scale-[1.02]" disabled title="Synchronize / replicate data">
+          {{{icon "sync" class="h-4 w-4"}}}
+          Replicate Database
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Source & Target Selectors Card -->
+  <div class="app-card border border-base-300 p-5 shadow-sm space-y-4">
+    <div class="grid grid-cols-1 items-center gap-4 lg:grid-cols-[1fr,auto,1fr]">
+      
+      <!-- Source Database Card -->
+      <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.03] p-4 space-y-3 transition hover:border-emerald-500/50">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            Source Database (Origin)
+          </span>
+          <span id="src-badge-engine" class="badge badge-sm font-mono badge-success">SQLite</span>
+        </div>
+        <div>
+          <label class="text-[11px] font-semibold text-base-content/60 mb-1 block">Choose source instance:</label>
+          <select id="select-source-db" class="select select-bordered select-sm w-full font-mono text-xs focus:border-emerald-500">
+            <option value="" disabled selected>Select source database…</option>
+            {{#each databases}}
+              <option value="{{this.id}}" data-dialect="{{this.dialect}}" data-readonly="{{this.readonly}}" {{#if (eq this.id ../dbId)}}selected{{/if}}>
+                {{this.name}} ({{this.dialect}}{{#if this.readonly}} · Read-only{{/if}})
+              </option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-base-content/50 font-mono truncate" id="src-path-label">
+          <span>Select database above</span>
+        </div>
+      </div>
+
+      <!-- Direction & Swap Button (⇄) -->
+      <div class="flex flex-col items-center justify-center gap-1">
+        <button id="btn-swap-dbs" type="button" class="btn btn-circle btn-sm btn-ghost border border-base-300 shadow-sm hover:bg-primary/10 hover:text-primary hover:border-primary/40 hover:rotate-180 transition-all duration-300" title="Swap direction (Source ⇄ Target)">
+          {{{icon "swap" class="h-4 w-4"}}}
+        </button>
+        <span class="text-[10px] uppercase font-mono tracking-widest text-base-content/40 font-semibold">Transfer</span>
+      </div>
+
+      <!-- Target Database Card -->
+      <div class="rounded-xl border border-info/30 bg-info/[0.03] p-4 space-y-3 transition hover:border-info/50">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-info flex items-center gap-1.5">
+            <span class="relative flex h-2 w-2">
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-info"></span>
+            </span>
+            Target Database (Destination)
+          </span>
+          <span id="tgt-badge-engine" class="badge badge-sm font-mono badge-info">PostgreSQL</span>
+        </div>
+        <div>
+          <label class="text-[11px] font-semibold text-base-content/60 mb-1 block">Choose target destination:</label>
+          <select id="select-target-db" class="select select-bordered select-sm w-full font-mono text-xs focus:border-info">
+            <option value="" disabled selected>Select target database…</option>
+            {{#each databases}}
+              <option value="{{this.id}}" data-dialect="{{this.dialect}}" data-readonly="{{this.readonly}}">
+                {{this.name}} ({{this.dialect}}{{#if this.readonly}} · Read-only{{/if}})
+              </option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-base-content/50 font-mono truncate" id="tgt-path-label">
+          <span>Select target database above</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Quick Actions Bar -->
+    <div class="pt-3 border-t border-base-200 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2 text-xs text-base-content/60">
+        <span class="badge badge-xs badge-info"></span>
+        <span>Select source and target instances to run schema diffing or cross-database replication.</span>
+      </div>
+      <button id="btn-compare-now" type="button" class="btn btn-primary btn-sm gap-1.5 shadow-sm transition hover:scale-[1.02]">
+        {{{icon "search" class="h-4 w-4"}}}
+        Compare Diff Now
+      </button>
+    </div>
+  </div>
+
+  <!-- Replication Options Accordion -->
+  <div class="app-card border border-base-300 overflow-hidden shadow-sm">
+    <div class="p-4 bg-base-200/40 border-b border-base-200 flex items-center justify-between cursor-pointer select-none transition hover:bg-base-200/60" id="toggle-options-header">
+      <div class="flex items-center gap-2.5">
+        <span class="p-1 rounded bg-base-300/60 text-base-content/70">
+          {{{icon "settings" class="h-4 w-4"}}}
+        </span>
+        <span class="text-sm font-bold tracking-tight">Replication & Safety Options</span>
+        <span class="badge badge-sm badge-outline font-mono text-[10px]" id="badge-active-mode">Full Clone</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-base-content/50 font-mono">
+        <span id="options-toggle-hint">Customize mode, masking & tables</span>
+        {{{icon "chevronDown" class="h-3.5 w-3.5 transition-transform duration-200" id="options-chevron"}}}
+      </div>
+    </div>
+
+    <div class="p-5 space-y-5 hidden" id="options-panel">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Mode Selection -->
+        <div class="space-y-2.5">
+          <label class="field-label font-bold text-xs uppercase tracking-wider text-base-content/70">Select Replication Strategy</label>
+          <div class="space-y-2.5">
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-base-300 bg-base-100 hover:border-primary/40 hover:bg-primary/[0.02] cursor-pointer transition">
+              <input type="radio" name="sync-mode" value="full" class="radio radio-primary radio-sm mt-0.5" checked />
+              <div>
+                <div class="text-xs font-bold text-base-content flex items-center gap-2">
+                  Full Clone
+                  <span class="badge badge-xs badge-error">Drops & Recreates</span>
+                </div>
+                <div class="text-[11px] text-base-content/60 mt-0.5 leading-relaxed">
+                  Drops target tables in dependency order, recreates DDL matching source schema, and transfers all records with automatic sequence sync.
+                </div>
+              </div>
+            </label>
+
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-base-300 bg-base-100 hover:border-primary/40 hover:bg-primary/[0.02] cursor-pointer transition">
+              <input type="radio" name="sync-mode" value="schema_only" class="radio radio-primary radio-sm mt-0.5" />
+              <div>
+                <div class="text-xs font-bold text-base-content flex items-center gap-2">
+                  Schema Only
+                  <span class="badge badge-xs badge-success">Non-Destructive</span>
+                </div>
+                <div class="text-[11px] text-base-content/60 mt-0.5 leading-relaxed">
+                  Creates missing tables, columns, indexes, and constraints without touching or transferring row records.
+                </div>
+              </div>
+            </label>
+
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-base-300 bg-base-100 hover:border-primary/40 hover:bg-primary/[0.02] cursor-pointer transition">
+              <input type="radio" name="sync-mode" value="data_only_replace" class="radio radio-primary radio-sm mt-0.5" />
+              <div>
+                <div class="text-xs font-bold text-base-content flex items-center gap-2">
+                  Data Only (Clean & Replace)
+                  <span class="badge badge-xs badge-warning">Truncates Data</span>
+                </div>
+                <div class="text-[11px] text-base-content/60 mt-0.5 leading-relaxed">
+                  Preserves existing target table schemas, truncates target data rows, and streams fresh records from source.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Privacy & Table Cherry-Picking -->
+        <div class="space-y-4">
+          <div>
+            <label class="field-label font-bold text-xs uppercase tracking-wider text-base-content/70">Anonymization & Privacy Guard</label>
+            <div class="p-3.5 rounded-xl border border-warning/30 bg-warning/[0.03] space-y-2">
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" id="chk-mask-data" class="checkbox checkbox-warning checkbox-sm mt-0.5" checked />
+                <div>
+                  <div class="text-xs font-bold text-warning flex items-center gap-1.5">
+                    {{{icon "lock" class="h-3.5 w-3.5"}}}
+                    Anonymize Sensitive Data (Prod ➔ Test Masking)
+                  </div>
+                  <div class="text-[11px] text-base-content/65 mt-0.5 leading-relaxed">
+                    Automatically replaces emails (<code class="font-mono text-[10px]">user1@masked.test</code>), password hashes, phone numbers, and full names with synthetic mock data during replication.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Table Cherry-Pick -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="field-label font-bold text-xs uppercase tracking-wider text-base-content/70 mb-0">Tables to Transfer</label>
+              <div class="flex items-center gap-2 text-xs">
+                <button type="button" id="btn-select-all-tables" class="text-primary font-semibold hover:underline">Select All</button>
+                <span class="text-base-content/30">|</span>
+                <button type="button" id="btn-deselect-all-tables" class="text-base-content/60 hover:underline">Clear</button>
+              </div>
+            </div>
+            <div id="table-checkboxes-container" class="max-h-40 overflow-y-auto p-2.5 rounded-xl border border-base-300 bg-base-100 divide-y divide-base-200/50 text-xs font-mono">
+              <span class="text-base-content/40 italic p-1 block">Select source database above to load tables.</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Diff Studio Workspace -->
+  <div class="app-card border border-base-300 overflow-hidden shadow-sm">
+    
+    <!-- Workspace Navigation Bar -->
+    <div class="border-b border-base-300 bg-base-200/50 px-4 pt-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="tabs tabs-boxed bg-base-300/40 p-1 gap-1 rounded-xl" id="diff-tabs">
+        <button type="button" class="tab tab-sm tab-active font-semibold gap-1.5 rounded-lg" data-tab="unified">
+          {{{icon "diff" class="h-3.5 w-3.5"}}}
+          Git Unified Diff
+        </button>
+        <button type="button" class="tab tab-sm font-semibold gap-1.5 rounded-lg" data-tab="visual">
+          {{{icon "table" class="h-3.5 w-3.5"}}}
+          Visual Breakdown
+        </button>
+        <button type="button" class="tab tab-sm font-semibold gap-1.5 rounded-lg" data-tab="data">
+          {{{icon "inspect" class="h-3.5 w-3.5"}}}
+          Data Diff (Row-by-Row)
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 pb-2 text-xs" id="diff-stats-chips">
+        <!-- Badges rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- Tab 1: Git Unified Diff View -->
+    <div id="tab-content-unified" class="p-5 space-y-3">
+      <div class="flex items-center justify-between text-xs text-base-content/60">
+        <span class="font-mono text-[11px] flex items-center gap-1.5">
+          <span class="h-2 w-2 rounded-full bg-primary"></span>
+          Standard Git Patch format · Green (+) additions, Red (-) deletions, Amber (~) modifications
+        </span>
+        <button id="btn-copy-unified-diff" type="button" class="btn btn-ghost btn-xs gap-1 font-mono hover:text-primary">
+          {{{icon "copy" class="h-3 w-3"}}}
+          Copy Diff Text
+        </button>
+      </div>
+
+      <div id="unified-diff-view" class="bg-neutral text-neutral-content rounded-xl p-4 font-mono text-xs overflow-x-auto min-h-[300px] max-h-[600px] leading-relaxed select-text border border-neutral-focus shadow-inner">
+        <div class="text-neutral-content/40 italic text-center py-20">
+          Select source and target instances above and click <strong>Compare Diff Now</strong> to compute git-style schema differences.
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Visual Breakdown View -->
+    <div id="tab-content-visual" class="p-5 hidden space-y-4">
+      
+      <!-- Table Filter Bar -->
+      <div class="flex flex-wrap items-center justify-between gap-3 p-2 rounded-xl bg-base-200/50 border border-base-300">
+        <div class="relative flex-1 min-w-[200px]">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none">
+            {{{icon "search" class="h-3.5 w-3.5"}}}
+          </span>
+          <input type="text" id="input-filter-visual-tables" class="input input-sm input-bordered w-full pl-8 font-mono text-xs" placeholder="Filter tables by name…" autocomplete="off" />
+        </div>
+        <div class="flex items-center gap-1 text-xs" id="filter-status-buttons">
+          <button type="button" class="btn btn-xs btn-ghost btn-active js-filter-status" data-filter="all">All</button>
+          <button type="button" class="btn btn-xs btn-ghost js-filter-status text-warning" data-filter="modified">Modified</button>
+          <button type="button" class="btn btn-xs btn-ghost js-filter-status text-success" data-filter="added">Added</button>
+          <button type="button" class="btn btn-xs btn-ghost js-filter-status text-error" data-filter="removed">Removed</button>
+        </div>
+      </div>
+
+      <div id="visual-diff-cards" class="space-y-3">
+        <div class="text-base-content/40 italic text-center py-20">
+          No comparison performed yet. Select databases and click "Compare Diff Now".
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Data Diff View (Row-by-Row) -->
+    <div id="tab-content-data" class="p-5 hidden space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <label class="text-xs font-bold uppercase tracking-wider text-base-content/60">Table to Compare:</label>
+          <select id="select-data-diff-table" class="select select-bordered select-xs font-mono min-w-[180px]">
+            <option value="" disabled selected>Select table…</option>
+          </select>
+
+          <label class="text-xs font-bold uppercase tracking-wider text-base-content/60 ml-2">Sample Limit:</label>
+          <select id="select-data-diff-limit" class="select select-bordered select-xs font-mono">
+            <option value="50">50 rows</option>
+            <option value="150" selected>150 rows</option>
+            <option value="300">300 rows</option>
+            <option value="500">500 rows</option>
+          </select>
+
+          <button id="btn-fetch-data-diff" type="button" class="btn btn-primary btn-xs gap-1 shadow-sm">
+            {{{icon "refresh" class="h-3 w-3"}}}
+            Compare Rows
+          </button>
+        </div>
+
+        <div id="data-diff-stats" class="flex items-center gap-1.5 text-xs font-mono"></div>
+      </div>
+
+      <div id="data-diff-results" class="bg-base-200/30 rounded-xl p-4 font-mono text-xs overflow-x-auto min-h-[250px] max-h-[550px] border border-base-300">
+        <div class="text-base-content/40 italic text-center py-16">
+          Select a table and click <strong>Compare Rows</strong> to inspect added, removed, and modified data rows.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Migration SQL Patch Modal -->
+<dialog id="modal-sql-patch" class="modal">
+  <div class="modal-box max-w-3xl border border-base-300 bg-base-100 p-6 space-y-4 shadow-2xl">
+    <div class="flex items-center justify-between border-b border-base-200 pb-3">
+      <h3 class="font-bold text-base flex items-center gap-2">
+        <span class="p-1 rounded bg-primary/10 text-primary">
+          {{{icon "sql" class="h-5 w-5"}}}
+        </span>
+        Generated Migration SQL Patch
+      </h3>
+      <form method="dialog">
+        <button class="btn btn-sm btn-circle btn-ghost">✕</button>
+      </form>
+    </div>
+
+    <div class="tabs tabs-boxed bg-base-200/60 p-1 gap-1 rounded-xl">
+      <button type="button" id="tab-up-sql" class="tab tab-sm tab-active font-bold rounded-lg">UP Script (Migrate Target)</button>
+      <button type="button" id="tab-down-sql" class="tab tab-sm font-bold rounded-lg">DOWN Script (Rollback Changes)</button>
+    </div>
+
+    <div class="relative">
+      <pre id="patch-sql-code" class="bg-neutral text-neutral-content p-4 rounded-xl font-mono text-xs max-h-96 overflow-auto border border-neutral-focus select-all shadow-inner leading-relaxed"></pre>
+      <div class="absolute top-3 right-3 flex items-center gap-1.5">
+        <button id="btn-copy-patch-sql" type="button" class="btn btn-xs btn-outline gap-1 bg-base-100 shadow-sm text-base-content hover:bg-base-200">
+          {{{icon "copy" class="h-3 w-3"}}}
+          Copy SQL
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-action flex justify-between items-center pt-2 border-t border-base-200">
+      <span class="text-xs text-base-content/50">Run this script in your target database query editor to align schema structure.</span>
+      <form method="dialog">
+        <button class="btn btn-sm">Close</button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>
+
+<!-- Destructive Action & Confirmation Modal -->
+<dialog id="modal-sync-execute" class="modal">
+  <div class="modal-box max-w-lg border border-base-300 bg-base-100 p-6 space-y-4 shadow-2xl">
+    
+    <!-- Modal Header -->
+    <div class="flex items-center justify-between border-b border-base-200 pb-3">
+      <h3 class="font-bold text-base flex items-center gap-2" id="exec-modal-title">
+        <span class="p-1 rounded bg-error/10 text-error" id="exec-modal-icon-badge">
+          {{{icon "warning" class="h-5 w-5"}}}
+        </span>
+        Confirm Replication Execution
+      </h3>
+      <form method="dialog">
+        <button id="btn-exec-close-x" class="btn btn-sm btn-circle btn-ghost">✕</button>
+      </form>
+    </div>
+
+    <!-- Confirmation Body -->
+    <div id="exec-prompt-content" class="space-y-4 text-xs leading-relaxed">
+      
+      <!-- Destructive Danger Banner -->
+      <div id="exec-destructive-banner" class="p-4 rounded-xl border border-error/40 bg-error/[0.06] text-error space-y-2.5">
+        <div class="font-bold flex items-center gap-2 text-sm">
+          {{{icon "warning" class="h-4 w-4 shrink-0 text-error"}}}
+          Caution: Destructive Action Ahead!
+        </div>
+        <p class="text-[11.5px] leading-relaxed text-base-content/80">
+          This operation will <strong class="text-error font-bold" id="lbl-destructive-action-desc">permanently drop/truncate</strong> existing tables and data on target database <code class="font-mono font-bold text-error px-1 py-0.5 rounded bg-error/10" id="lbl-confirm-tgt-highlight"></code>.
+        </p>
+        <div class="text-[11px] text-base-content/60 font-mono">
+          Affected tables: <span id="lbl-affected-tables-list" class="font-bold text-base-content">All selected tables</span>
+        </div>
+      </div>
+
+      <!-- Overview Stats -->
+      <div class="p-3.5 rounded-xl border border-base-200 bg-base-200/40 space-y-1.5 font-mono text-[11.5px]">
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Source (Origin):</span>
+          <span id="lbl-confirm-src" class="font-bold text-emerald-600 dark:text-emerald-400"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Target (Destination):</span>
+          <span id="lbl-confirm-tgt" class="font-bold text-info"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Selected Mode:</span>
+          <span id="lbl-confirm-mode" class="font-bold"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">PII Data Anonymization:</span>
+          <span id="lbl-confirm-mask" class="font-bold text-warning"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Tables Selected:</span>
+          <span id="lbl-confirm-tables" class="font-bold"></span>
+        </div>
+      </div>
+
+      <!-- Destructive Action Safety Locks -->
+      <div id="exec-safety-locks" class="space-y-3 pt-1">
+        <!-- Lock 1: Acknowledgment Checkbox -->
+        <label class="flex items-start gap-2.5 p-2.5 rounded-lg border border-base-300 bg-base-100 hover:bg-base-200/50 cursor-pointer">
+          <input type="checkbox" id="chk-confirm-destruction" class="checkbox checkbox-error checkbox-sm mt-0.5" />
+          <span class="text-[11.5px] font-medium text-base-content/80 select-none">
+            I understand that existing tables and records on the target database will be overwritten.
+          </span>
+        </label>
+
+        <!-- Lock 2: Type Confirmation Word (OVERWRITE or Target Name) -->
+        <div id="box-confirm-phrase" class="space-y-1.5">
+          <label class="text-[11px] font-bold text-base-content/70 block">
+            Type <code class="font-mono text-error font-bold px-1 rounded bg-error/10" id="lbl-required-confirm-word">OVERWRITE</code> to unlock replication:
+          </label>
+          <input type="text" id="input-confirm-phrase" class="input input-sm input-bordered w-full font-mono text-xs bg-base-100 focus:border-error" placeholder="Type here to confirm" autocomplete="off" spellcheck="false" />
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Live Execution Progress Bar -->
+    <div id="exec-progress-container" class="space-y-3 hidden">
+      <div class="flex items-center justify-between text-xs font-mono">
+        <span id="exec-current-table" class="font-semibold flex items-center gap-2">
+          <span class="loading loading-spinner loading-xs text-primary"></span>
+          Synchronizing records...
+        </span>
+        <span id="exec-progress-percent" class="text-primary font-bold">0%</span>
+      </div>
+      <progress id="exec-progress-bar" class="progress progress-primary w-full h-3" value="0" max="100"></progress>
+      <div id="exec-log-container" class="max-h-40 overflow-y-auto font-mono text-[11px] p-3 rounded-xl bg-neutral text-neutral-content border border-neutral-focus space-y-1 select-text"></div>
+    </div>
+
+    <!-- Modal Footer Actions -->
+    <div class="modal-action pt-3 border-t border-base-200 flex justify-between items-center" id="exec-modal-buttons">
+      <form method="dialog">
+        <button id="btn-exec-cancel" class="btn btn-sm btn-ghost">Cancel</button>
+      </form>
+      <button id="btn-exec-start" type="button" class="btn btn-sm btn-error gap-1.5 shadow-sm" disabled>
+        {{{icon "sync" class="h-4 w-4"}}}
+        Confirm & Start Replication
+      </button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>
+
+<script src="{{basePath}}/js/sync.js" defer></script>

@@ -172,7 +172,7 @@ export class PostgresIntrospector implements ISchemaIntrospector {
         unique: Boolean(r.indisunique),
         partial: 0,
         origin: r.indisprimary ? 'pk' : r.indisunique ? 'u' : 'c',
-        columns: r.columns || [],
+        columns: Array.isArray(r.columns) ? r.columns.filter((c): c is string => typeof c === 'string' && c.length > 0) : [],
         sql: r.indexdef,
       }));
 

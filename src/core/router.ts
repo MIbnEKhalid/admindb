@@ -3,8 +3,12 @@ import type { DatabaseContext } from './context';
 import type { Logger } from '../utils/logger';
 import { errorMessage } from '../utils/common';
 
+import type { DbManager } from '../db/manager';
+
 export interface RouteContext {
   getContext: (req: Request) => DatabaseContext;
+  getNamedContext?: (id: string, readonlyOverride?: boolean) => DatabaseContext;
+  manager?: DbManager;
   logger: Logger;
 }
 
