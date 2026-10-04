@@ -981,11 +981,25 @@
             UI.showToast('Cell value copied.', 'info');
           });
         }
+      } else if (e.key === 'x' || e.key === 'X' || (e.shiftKey && e.key === ' ')) {
+        const tr = focusedCell ? focusedCell.closest('tr') : null;
+        if (tr) {
+          const cb = tr.querySelector('.row-checkbox');
+          if (cb) {
+            e.preventDefault();
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
       }
     });
   }
 
   // ---- Bulk row operations ------------------------------------------------
+
+  function getRowCheckboxes() {
+    return Array.prototype.slice.call(document.querySelectorAll('.row-checkbox'));
+  }
 
   function selectedRows() {
     return Array.prototype.slice
@@ -993,6 +1007,8 @@
       .map((cb) => cb.value)
       .filter(Boolean);
   }
+
+  let lastCheckedCheckbox = null;
 
   function initBulk() {
     const bulkBar = document.getElementById('bulk-bar');
@@ -1003,31 +1019,112 @@
     const exportCsv = document.getElementById('bulk-export-csv');
     const exportJson = document.getElementById('bulk-export-json');
     const clearBtn = document.getElementById('bulk-clear');
-    const checkboxes = Array.prototype.slice.call(document.querySelectorAll('.row-checkbox'));
 
     function update() {
+      const checkboxes = getRowCheckboxes();
       const ids = selectedRows();
       const n = ids.length;
       if (countEl) countEl.textContent = String(n);
       bulkBar.classList.toggle('hidden', n === 0);
-      if (selectAll) selectAll.checked = n > 0 && n === checkboxes.length;
+
+      if (selectAll) {
+        if (checkboxes.length === 0) {
+          selectAll.checked = false;
+          selectAll.indeterminate = false;
+          selectAll.disabled = true;
+        } else {
+          selectAll.disabled = false;
+          if (n === 0) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+          } else if (n === checkboxes.length) {
+            selectAll.checked = true;
+            selectAll.indeterminate = false;
+          } else {
+            selectAll.checked = false;
+            selectAll.indeterminate = true;
+          }
+        }
+      }
+
       if (deleteBtn) deleteBtn.disabled = readonly || n === 0;
+
+      // Update row visual selection highlight
+      checkboxes.forEach((cb) => {
+        const tr = cb.closest('tr');
+        if (!tr) return;
+        if (cb.checked) {
+          tr.classList.add('bg-primary/[0.08]', 'is-selected');
+        } else {
+          tr.classList.remove('bg-primary/[0.08]', 'is-selected');
+        }
+      });
     }
 
-    checkboxes.forEach((cb) => cb.addEventListener('change', update));
+    // Handle shift-click range selection
+    function handleCheckboxClick(e, cb) {
+      const checkboxes = getRowCheckboxes();
+      if (e.shiftKey && lastCheckedCheckbox && lastCheckedCheckbox !== cb) {
+        const startIdx = checkboxes.indexOf(lastCheckedCheckbox);
+        const endIdx = checkboxes.indexOf(cb);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const min = Math.min(startIdx, endIdx);
+          const max = Math.max(startIdx, endIdx);
+          const targetState = cb.checked;
+          for (let i = min; i <= max; i++) {
+            checkboxes[i].checked = targetState;
+          }
+        }
+      }
+      lastCheckedCheckbox = cb;
+      update();
+    }
+
+    const tableEl = document.getElementById('main-table');
+    if (tableEl) {
+      tableEl.addEventListener('click', (e) => {
+        // Direct checkbox click
+        if (e.target && e.target.classList.contains('row-checkbox')) {
+          handleCheckboxClick(e, e.target);
+          return;
+        }
+
+        // Click inside the selection TD cell (toggle checkbox if clicked outside the input)
+        const selectTd = e.target.closest('td');
+        if (selectTd && selectTd.querySelector('.row-checkbox') && !e.target.closest('a, button, input, select, textarea')) {
+          const cb = selectTd.querySelector('.row-checkbox');
+          if (cb) {
+            cb.checked = !cb.checked;
+            handleCheckboxClick(e, cb);
+          }
+        }
+      });
+    }
+
     if (selectAll) {
-      selectAll.addEventListener('change', () => {
-        checkboxes.forEach((cb) => { cb.checked = selectAll.checked; });
+      selectAll.addEventListener('click', (e) => {
+        const checkboxes = getRowCheckboxes();
+        const shouldCheck = selectAll.checked;
+        checkboxes.forEach((cb) => { cb.checked = shouldCheck; });
+        lastCheckedCheckbox = null;
         update();
       });
     }
-    if (clearBtn) clearBtn.addEventListener('click', () => {
-      checkboxes.forEach((cb) => { cb.checked = false; });
-      update();
-    });
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        const checkboxes = getRowCheckboxes();
+        checkboxes.forEach((cb) => { cb.checked = false; });
+        lastCheckedCheckbox = null;
+        update();
+      });
+    }
+
     if (exportCsv) exportCsv.addEventListener('click', () => bulkExport('csv'));
     if (exportJson) exportJson.addEventListener('click', () => bulkExport('json'));
     if (deleteBtn) deleteBtn.addEventListener('click', bulkDelete);
+
+    update();
   }
 
   async function bulkExport(format) {

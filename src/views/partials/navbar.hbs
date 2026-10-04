@@ -23,6 +23,15 @@
             SQLite
           </span>
         {{/if}}
+
+        <button id="global-search-trigger" type="button" class="btn btn-ghost btn-sm gap-2 border border-base-300 bg-base-200/60 hover:bg-base-200 text-base-content/70 hover:text-base-content font-normal text-xs rounded-xl px-3 py-1.5 h-auto transition-all shadow-xs sm:ml-2" title="Search tables, columns, commands (Ctrl+K)">
+          {{{icon "search" class="h-3.5 w-3.5 text-base-content/50"}}}
+          <span class="hidden md:inline font-medium text-base-content/70">Search tables, columns…</span>
+          <span class="inline md:hidden font-medium text-base-content/70">Search</span>
+          <kbd class="hidden sm:inline-flex items-center gap-0.5 rounded border border-base-300 bg-base-100 px-1.5 py-0.5 text-[10px] font-mono text-base-content/60 font-semibold shadow-xs">
+            <span class="text-[9px]">Ctrl</span> K
+          </kbd>
+        </button>
       {{/unless}}
     </div>
 

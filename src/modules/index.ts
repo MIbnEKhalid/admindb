@@ -7,6 +7,7 @@ import { registerQueryRoutes } from './query/query.routes';
 import { registerSeedRoutes } from './seed/seed.routes';
 import { registerErdRoutes } from './erd/erd.routes';
 import { registerSyncRoutes } from './sync/sync.routes';
+import { registerSearchRoutes } from './search/search.routes';
 
 export * from './databases/index';
 export * from './tables/index';
@@ -16,6 +17,7 @@ export * from './schema/index';
 export * from './seed/index';
 export * from './erd/index';
 export * from './sync/index';
+export * from './search/index';
 
 export function registerModules(router: Router, ctx: RouteContext): void {
   // In read-only mode every mutating request is rejected (GET, the generate-only
@@ -30,7 +32,8 @@ export function registerModules(router: Router, ctx: RouteContext): void {
       p.includes('/api/query/') ||
       p.endsWith('/rows/bulk-impact') ||
       p.endsWith('/rows/bulk-export') ||
-      p.startsWith('/api/sync/')
+      p.startsWith('/api/sync/') ||
+      p.startsWith('/api/search/')
     ) {
       return next();
     }
@@ -55,4 +58,5 @@ export function registerModules(router: Router, ctx: RouteContext): void {
   registerSeedRoutes(router, ctx);
   registerErdRoutes(router, ctx);
   registerSyncRoutes(router, ctx);
+  registerSearchRoutes(router, ctx);
 }
