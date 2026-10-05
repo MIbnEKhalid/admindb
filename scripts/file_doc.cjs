@@ -43,16 +43,6 @@ const PUBLIC_DIR = 'public';
 /** Case-insensitive locale compare options (reused) */
 const CI = { sensitivity: 'base' };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const isBackendJs = (rel) =>
-  rel.endsWith('.js') && !rel.replace(/\\/g, '/').startsWith(PUBLIC_DIR + '/');
-
-const isAssetJs = (rel) => {
-  const norm = rel.replace(/\\/g, '/');
-  return norm.endsWith('.js') && norm.startsWith(PUBLIC_DIR + '/');
-};
-
 /**
  * Derive the "bucket" label used for the per-extension summary.
  *  - .js outside public/  → "backend-js"

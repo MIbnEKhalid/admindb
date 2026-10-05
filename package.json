@@ -1,6 +1,6 @@
 {
   "name": "admindb",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Browser-based SQLite & PostgreSQL database administration tool — embed it in your Express app or run it standalone.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,13 +21,13 @@
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
-    "express": "^5.1.0",
-    "express-handlebars": "^8.0.3",
-    "pg": "^8.23.0"
+    "express": "^5.2.1",
+    "express-handlebars": "^9.0.1",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.6",
     "@types/node": "^18.19.0",
     "@types/pg": "^8.23.1",
     "concurrently": "^9.1.0",

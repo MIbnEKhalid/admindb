@@ -1,12 +1,12 @@
 import type { Router, Request, Response, NextFunction } from 'express';
-import { type RouteContext, ok, fail, wrap, initPageLocals } from '../../core/router';
+import { type RouteContext, type RequestParams, ok, fail, wrap, initPageLocals } from '../../core/router';
 import { TableService } from '../tables/tables.service';
 import { QueryService, QueryExecutionError } from './query.service';
 
 export function registerQueryRoutes(router: Router, ctx: RouteContext): void {
   // ---- Page Routes -------------------------------------------------------
 
-  router.get('/query/:db', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/query/:db', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;

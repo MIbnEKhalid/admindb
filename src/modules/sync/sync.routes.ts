@@ -1,5 +1,5 @@
 import type { Router, Request, Response, NextFunction } from 'express';
-import { type RouteContext, ok, fail, wrap, initPageLocals } from '../../core/router';
+import { type RouteContext, type RequestParams, ok, fail, wrap, initPageLocals } from '../../core/router';
 import { TableService } from '../tables/tables.service';
 import { SyncService } from './sync.service';
 import type { SupportedDialect } from '../../core/transfer/dialect-mapper';
@@ -14,7 +14,7 @@ export function registerSyncRoutes(router: Router, ctx: RouteContext): void {
 
   // ---- Page Routes: /diff and /sync ---------------------------------------
 
-  const renderSyncPage = async (req: Request, res: Response, next: NextFunction) => {
+  const renderSyncPage = async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const activeDbId = req.params.db || (res.locals.dbId as string) || '';
       let currentCtx = null;

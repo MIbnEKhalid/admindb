@@ -4,7 +4,7 @@
 [Back To Main](../README.md)
 
 
-35 directories, 188 files
+38 directories, 197 files
 
 ### Files
 ```
@@ -22,14 +22,6 @@ Repo
 ├───.github
 │   └───workflows
 │           checkLatestVersion.yml
-│
-├───db
-│       admindb.db
-│       admindb.db-shm
-│       admindb.db-wal
-│       admindb1.db
-│       admindb1.db-shm
-│       admindb1.db-wal
 │
 ├───docs
 │   │   API.md
@@ -86,11 +78,22 @@ Repo
 │   │       runner.ts
 │   │
 │   ├───core
-│   │       context.ts
-│   │       errors.ts
-│   │       index.ts
-│   │       result.ts
-│   │       router.ts
+│   │   │   context.ts
+│   │   │   errors.ts
+│   │   │   index.ts
+│   │   │   result.ts
+│   │   │   router.ts
+│   │   │
+│   │   ├───diff
+│   │   │       data-differ.ts
+│   │   │       patch-generator.ts
+│   │   │       schema-differ.ts
+│   │   │
+│   │   └───transfer
+│   │           dialect-mapper.ts
+│   │           masking.ts
+│   │           sync-engine.ts
+│   │           topological-sort.ts
 │   │
 │   ├───data
 │   │       chain.ts
@@ -162,10 +165,21 @@ Repo
 │   │   │       schema.routes.ts
 │   │   │       schema.service.ts
 │   │   │
+│   │   ├───search
+│   │   │       index.ts
+│   │   │       search.routes.ts
+│   │   │       search.service.ts
+│   │   │       search.types.ts
+│   │   │
 │   │   ├───seed
 │   │   │       index.ts
 │   │   │       seed.routes.ts
 │   │   │       seed.service.ts
+│   │   │
+│   │   ├───sync
+│   │   │       index.ts
+│   │   │       sync.routes.ts
+│   │   │       sync.service.ts
 │   │   │
 │   │   └───tables
 │   │           index.ts
@@ -189,7 +203,9 @@ Repo
 │   │           inspector.js
 │   │           query.js
 │   │           schema.js
+│   │           search.js
 │   │           seed.js
+│   │           sync.js
 │   │
 │   ├───sql
 │   │       classifier.ts
@@ -227,6 +243,7 @@ Repo
 │       │       schema.hbs
 │       │       seed-select.hbs
 │       │       seed.hbs
+│       │       sync.hbs
 │       │       table.hbs
 │       │
 │       └───partials
@@ -247,17 +264,15 @@ Repo
 │       harness.ts
 │       manager.test.ts
 │       postgres.test.ts
+│       search.test.ts
 │       seeder.test.ts
 │       serverless.test.ts
 │       smoke.test.ts
 │       streaming-cursor.test.ts
+│       sync.test.ts
 │       unified-seed-engine.test.ts
 │
 └───testapp
-        .env
-        admindb.db
-        admindb.db-shm
-        admindb.db-wal
         index.html
         package-lock.json
         package.json
@@ -272,50 +287,58 @@ exlcuding node_modules,docs,documenatation,data,package-lock.json,gitignore,git,
 'jpeg','png','gif','svg','webp','ico','bmp','mp4','mov','mkv','webm','avi',
 
 ```
-TOTAL_LINES 37293
+TOTAL_LINES 42942
 
-ts           11736
-css          9891
-backend-js   7981
-hbs          4312
-md           2025
+ts           14798
+css          10473
+backend-js   9454
+hbs          4819
+md           2057
 mjs          770
 html         390
-json         119
+json         118
 yml          41
 noext        21
-env          6
 npmrc        1
 --- Top files by lines ---
-    9292 src\public\css\app.css
-    1874 src\public\js\browse.js
+    9874 src\public\css\app.css
+    1971 src\public\js\browse.js
     1461 src\views\pages\erd.hbs
     1068 src\public\js\seed.js
     1020 src\public\js\inspector.js
      904 src\public\js\query.js
      793 src\public\js\forms.js
+     741 src\public\js\sync.js
      668 test\smoke.test.ts
+     635 src\public\js\search.js
      607 src\sql\error-analyzer.ts
      599 src\public\css\input.css
-     584 src\modules\rows\rows.routes.ts
      579 docs\EXAMPLES.md
      579 test\database.test.ts
      576 src\modules\rows\rows.service.ts
+     575 src\modules\rows\rows.routes.ts
+     536 src\modules\search\search.service.ts
+     485 src\views\pages\sync.hbs
      481 scripts\capture-screenshots.mjs
      467 src\types\api.ts
      463 test\chain-seeder.test.ts
+     458 test\sync.test.ts
      454 test\unified-seed-engine.test.ts
+     450 docs\FilesStats.md
      432 src\views\pages\table.hbs
-     418 docs\FilesStats.md
      407 src\public\js\schema.js
      390 testapp\index.html
      388 test\serverless.test.ts
      371 src\views\pages\seed.hbs
      368 README.md
+     362 src\core\transfer\dialect-mapper.ts
      332 src\public\js\home.js
      329 test\postgres.test.ts
      320 src\views\pages\schema.hbs
+     312 src\core\diff\data-differ.ts
+     300 src\core\transfer\sync-engine.ts
      297 src\sql\generator.ts
+     295 src\core\diff\schema-differ.ts
      288 src\views\pages\seed-select.hbs
      281 test\erd.test.ts
      278 src\views\pages\home.hbs
@@ -328,9 +351,9 @@ npmrc        1
      261 src\public\js\common.js
      258 src\modules\seed\seed.service.ts
      255 src\views\pages\databases.hbs
+     247 src\app.ts
      244 src\utils\datatype.ts
-     236 src\modules\seed\seed.routes.ts
-     234 src\app.ts
+     231 src\modules\seed\seed.routes.ts
      222 src\public\js\databases.js
      220 src\cli\runner.ts
      219 src\utils\common.ts
@@ -341,13 +364,15 @@ npmrc        1
      203 src\serverless.ts
      203 test\auth.test.ts
      199 src\modules\tables\tables.routes.ts
+     176 test\search.test.ts
      175 src\modules\schema\schema.routes.ts
+     167 src\modules\sync\sync.routes.ts
      156 src\modules\databases\databases.routes.ts
      156 src\views\pages\query.hbs
      154 test\error-analyzer.test.ts
      152 src\cli\config.ts
+     151 src\views\partials\sidebar.hbs
      141 docs\API.md
-     139 src\views\partials\sidebar.hbs
      139 test\streaming-cursor.test.ts
      137 src\utils\stream.ts
      130 src\modules\databases\databases.service.ts
@@ -360,32 +385,38 @@ npmrc        1
      103 src\views\pages\designer.hbs
      100 src\auth\middleware.ts
      100 src\modules\rows\display.helper.ts
-      97 src\utils\icons.ts
+     100 src\utils\icons.ts
+     100 src\views\partials\navbar.hbs
+      96 src\views\layouts\main.hbs
       95 docs\screenshots\index.md
-      95 src\views\layouts\main.hbs
+      95 src\core\diff\patch-generator.ts
       93 src\auth\routes.ts
       93 testapp\server.js
       92 tailwind.config.js
-      91 src\views\partials\navbar.hbs
+      89 src\modules\search\search.types.ts
       84 testapp\README.md
-      82 package.json
+      81 package.json
+      76 src\modules\sync\sync.service.ts
       75 CONTRIBUTING.md
       75 test\datatype.test.ts
+      72 src\core\transfer\topological-sort.ts
       71 test\harness.ts
       69 src\modules\erd\erd.service.ts
       69 src\views\pages\form.hbs
       68 test\csv.test.ts
       67 scripts\generate-hash.mjs
       64 src\utils\csv.ts
+      62 src\modules\index.ts
+      61 src\core\transfer\masking.ts
       60 src\utils\colors.ts
       57 src\modules\query\query.routes.ts
+      56 src\core\router.ts
       56 src\public\js\api.js
       55 src\modules\schema\schema.service.ts
-      54 src\modules\index.ts
       52 src\utils\logger.ts
-      50 src\core\router.ts
       46 src\sql\classifier.ts
       44 test\classifier.test.ts
+      42 src\modules\search\search.routes.ts
       41 .github\workflows\checkLatestVersion.yml
       40 src\auth\types.ts
       40 src\core\errors.ts
@@ -399,18 +430,19 @@ npmrc        1
       16 testapp\package.json
       12 src\views\pages\error.hbs
        6 scripts\clean-dist.mjs
-       6 testapp\.env
        5 src\auth\index.ts
        4 src\cli\index.ts
        4 src\cli.ts
        4 src\core\index.ts
        4 src\modules\rows\index.ts
        4 src\utils\index.ts
+       3 src\modules\search\index.ts
        2 src\modules\databases\index.ts
        2 src\modules\erd\index.ts
        2 src\modules\query\index.ts
        2 src\modules\schema\index.ts
        2 src\modules\seed\index.ts
+       2 src\modules\sync\index.ts
        2 src\modules\tables\index.ts
        2 src\sql\index.ts
        2 src\views\partials\icon.hbs

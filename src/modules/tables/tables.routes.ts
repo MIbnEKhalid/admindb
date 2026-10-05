@@ -1,12 +1,12 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import type { ColumnDef } from '../../sql/generator';
-import { type RouteContext, ok, fail, wrap, initPageLocals } from '../../core/router';
+import { type RouteContext, type RequestParams, ok, fail, wrap, initPageLocals } from '../../core/router';
 import { TableService } from './tables.service';
 
 export function registerTableRoutes(router: Router, ctx: RouteContext): void {
   // ---- Page Routes -------------------------------------------------------
 
-  router.get('/home/:db', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/home/:db', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -30,7 +30,7 @@ export function registerTableRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
-  router.get('/info/:db', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/info/:db', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -50,7 +50,7 @@ export function registerTableRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
-  router.get('/export/:db', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/export/:db', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;

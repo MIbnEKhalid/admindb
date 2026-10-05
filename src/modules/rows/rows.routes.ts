@@ -1,24 +1,15 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import { decodePk, parseFilters, filtersToQS } from '../../utils/common';
-import { type RouteContext, ok, fail, wrap, notFound, initPageLocals } from '../../core/router';
+import { type RouteContext, type RequestParams, ok, fail, wrap, notFound, initPageLocals } from '../../core/router';
 import { TableService } from '../tables/tables.service';
 import { SchemaService } from '../schema/schema.service';
-import {
-  RowsService,
-  buildDisplayRows,
-  buildFields,
-  buildUpdateFields,
-  pkWhere,
-  resolvePkRows,
-  computeBulkImpact,
-  MAX_BULK_ROWS,
-} from './index';
+import { RowsService, buildDisplayRows, buildFields, buildUpdateFields, pkWhere, resolvePkRows, computeBulkImpact, MAX_BULK_ROWS } from './index';
 import type { WhereClause } from '../../db/types';
 
 export function registerRowRoutes(router: Router, ctx: RouteContext): void {
   // ---- Page Routes -------------------------------------------------------
 
-  router.get('/tables/:db/:table', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/tables/:db/:table', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -123,7 +114,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
-  router.get('/tables/:db/:table/rows/new', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/tables/:db/:table/rows/new', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -154,7 +145,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
-  router.get('/tables/:db/:table/rows/:id/edit', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/tables/:db/:table/rows/:id/edit', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -346,7 +337,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
     }
   }));
 
-  const generateUpdateHandler = wrap(async (req: Request, res: Response) => {
+  const generateUpdateHandler = wrap(async (req, res) => {
     const db = ctx.getContext(req);
     const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -393,7 +384,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
     }
   }));
 
-  const updateSingleRowHandler = wrap(async (req: Request, res: Response) => {
+  const updateSingleRowHandler = wrap(async (req, res) => {
     const db = ctx.getContext(req);
     const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -412,7 +403,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
-  const bulkUpdateHandler = wrap(async (req: Request, res: Response) => {
+  const bulkUpdateHandler = wrap(async (req, res) => {
     const db = ctx.getContext(req);
     const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -447,7 +438,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
   router.put('/api/tables/:db/:table/rows', bulkUpdateHandler);
   router.post('/api/tables/:db/:table/rows/bulk-update', bulkUpdateHandler);
 
-  const deleteSingleRowHandler = wrap(async (req: Request, res: Response) => {
+  const deleteSingleRowHandler = wrap(async (req, res) => {
     const db = ctx.getContext(req);
     const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);
@@ -564,7 +555,7 @@ export function registerRowRoutes(router: Router, ctx: RouteContext): void {
     }
   }));
 
-  const importCsvHandler = wrap(async (req: Request, res: Response) => {
+  const importCsvHandler = wrap(async (req, res) => {
     const db = ctx.getContext(req);
     const info = await TableService.getTableInfo(db, req.params.table);
     if (!info) return fail(res, `Table "${req.params.table}" does not exist.`, 404);

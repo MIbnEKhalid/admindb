@@ -1,19 +1,14 @@
 import type { Router, Request, Response, NextFunction } from 'express';
-import { type RouteContext, ok, fail, wrap, notFound, initPageLocals } from '../../core/router';
+import { type RouteContext, type RequestParams, ok, fail, wrap, notFound, initPageLocals } from '../../core/router';
 import { TableService } from '../tables/tables.service';
 import { RowsService } from '../rows/rows.service';
 import { buildColumnConfigs, MAX_SEED_ROWS, type ErChainScope } from '../../data/index';
-import {
-  SeedService,
-  parseSeedRequest,
-  parseChainSeedRequest,
-  parseUnifiedGenerationPlan,
-} from './seed.service';
+import { SeedService, parseSeedRequest, parseChainSeedRequest, parseUnifiedGenerationPlan } from './seed.service';
 
 export function registerSeedRoutes(router: Router, ctx: RouteContext): void {
   // ---- Page Routes -------------------------------------------------------
 
-  router.get('/seed/:db', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/seed/:db', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -68,7 +63,7 @@ export function registerSeedRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
-  router.get('/seed/:db/:table', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/seed/:db/:table', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;

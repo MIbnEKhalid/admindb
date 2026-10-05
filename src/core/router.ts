@@ -5,8 +5,10 @@ import { errorMessage } from '../utils/common';
 
 import type { DbManager } from '../db/manager';
 
+export type RequestParams = Record<string, string>;
+
 export interface RouteContext {
-  getContext: (req: Request) => DatabaseContext;
+  getContext: (req: Request<any>) => DatabaseContext;
   getNamedContext?: (id: string, readonlyOverride?: boolean) => DatabaseContext;
   manager?: DbManager;
   logger: Logger;
@@ -22,8 +24,8 @@ export const notFound = (res: Response, message: string): void => {
   res.status(404).render('pages/error', { title: 'Not found', status: 404, error: message });
 };
 
-export const wrap = (fn: (req: Request, res: Response, next?: NextFunction) => unknown) =>
-  async (req: Request, res: Response, next?: NextFunction): Promise<void> => {
+export const wrap = <P = RequestParams>(fn: (req: Request<P>, res: Response, next?: NextFunction) => unknown) =>
+  async (req: Request<P>, res: Response, next?: NextFunction): Promise<void> => {
     try {
       await fn(req, res, next);
     } catch (err) {

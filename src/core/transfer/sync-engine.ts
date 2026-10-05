@@ -1,11 +1,5 @@
 import type { IDatabase, TableInfoData } from '../../db/types';
-import {
-  convertValueForDialect,
-  generateCreateTableForDialect,
-  normalizeTableInfo,
-  type NormalizedTable,
-  type SupportedDialect,
-} from './dialect-mapper';
+import { convertValueForDialect, generateCreateTableForDialect, normalizeTableInfo, type NormalizedTable, type SupportedDialect } from './dialect-mapper';
 import { sortTablesTopologically, sortTablesForDeletion, type TableDependency } from './topological-sort';
 import { maskRowData, type MaskingRule } from './masking';
 

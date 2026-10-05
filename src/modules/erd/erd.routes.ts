@@ -1,12 +1,12 @@
 import type { Router, Request, Response, NextFunction } from 'express';
-import { type RouteContext, ok, fail, initPageLocals } from '../../core/router';
+import { type RouteContext, type RequestParams, ok, fail, initPageLocals } from '../../core/router';
 import { TableService } from '../tables/tables.service';
 import { ErdService } from './erd.service';
 
 export function registerErdRoutes(router: Router, ctx: RouteContext): void {
   // ---- Page Routes -------------------------------------------------------
 
-  router.get('/erd/:db', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/erd/:db', async (req: Request<RequestParams>, res: Response, next: NextFunction) => {
     try {
       const db = ctx.getContext(req);
       const dbId = req.params.db;
@@ -23,7 +23,7 @@ export function registerErdRoutes(router: Router, ctx: RouteContext): void {
 
   // ---- API Routes --------------------------------------------------------
 
-  router.get('/api/erd/:db', async (req: Request, res: Response) => {
+  router.get('/api/erd/:db', async (req: Request<RequestParams>, res: Response) => {
     try {
       const db = ctx.getContext(req);
       const graph = await ErdService.getErdGraph(db);
